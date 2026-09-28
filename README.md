@@ -191,7 +191,7 @@ MVP では、このサービスの核となる体験だけを作ります。週�
 
 | # | 機能 | 内容 |
 |---|---|---|
-| 1 | ログイン | Google アカウントでログインします。初めての人は、そのままアカウントが作られます。デモデータが入ったゲストログインも用意します。アバターの振り返りまで、登録なしで試せます。 |
+| 1 | ログイン | Google アカウントでログインします。初めての人は、そのままアカウントが作られます。デモデータが入ったゲストログインも用意します。ゲストは見るだけで、書き込みはできません。アバターの振り返りまで、登録なしで試せます。 |
 | 2 | 送信用トークンの発行 | 設定画面でトークンを発行し、iPhone の送信アプリに設定します。再発行もできます。 |
 | 3 | 記録の受け取り | 送信アプリ（Health Auto Export）から届く、ワークアウト（自転車とラン）と VO2max を保存します。取り込むのは、Apple Watch の記録だけです。同じ記録が何度届いても、二重には数えません。 |
 | 4 | 設定 | 最大心拍、安静時心拍、強度の境目になる2つの心拍を入力します。タイムゾーンと、振り返りの曜日も選べます。メモを AI に送らない設定もできます。 |
@@ -283,7 +283,7 @@ MVP では、このサービスの核となる体験だけを作ります。週�
 - **バックエンド**: FastAPI 0.141（Python 3.12）
 - **DB**: PostgreSQL 18（Neon）
 - **認証**: Firebase Authentication（firebase 12、firebase-admin 7）
-- **デプロイ先**: Cloud Run（Dockerfile と GitHub Actions）。音声ファイルは Cloud Storage。週に1回の生成は Cloud Scheduler と Cloud Tasks
+- **デプロイ先**: Google Cloud の Cloud Run（Dockerfile と GitHub Actions）。音声ファイルは Cloud Storage。週に1回の生成は Cloud Scheduler と Cloud Tasks
 - **セリフの生成**: Gemini 3.8 Flash（Vertex AI 経由。google-genai 2.24）
 - **セリフの確認**: Jev 1.13（TypeSafe AI。typesafe-sdk 0.7）
 - **音声合成**: Kokoro v1.0（オープンソース。kokoro-onnx 0.6）
@@ -331,3 +331,7 @@ MVP では、このサービスの核となる体験だけを作ります。週�
 ## 11. 画面遷移図
 
 Figma：https://www.figma.com/design/pDaqElgJnCQmxnGYE3Adyh
+
+## 12. ER図
+
+ER 図：[docs/er-diagram.md](docs/er-diagram.md)
