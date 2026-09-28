@@ -331,3 +331,7 @@ MVP では、このサービスの核となる体験だけを作ります。週�
 ## 11. 画面遷移図
 
 Figma：https://www.figma.com/design/pDaqElgJnCQmxnGYE3Adyh
+
+## 12. ER図
+
+ER 図：[docs/er-diagram.md](docs/er-diagram.md)
