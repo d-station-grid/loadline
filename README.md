@@ -280,7 +280,7 @@ MVP では、このサービスの核となる体験だけを作ります。週�
 - **フロントエンド**: React 19、TypeScript 6、Vite 8
 - **アバター**: three.js 0.186、@pixiv/three-vrm 3.5（VRM 形式のアバター。モデルは VRoid Studio で自作）
 - **チャート**: ECharts 6
-- **バックエンド**: FastAPI 0.141（Python 3.12）
+- **バックエンド**: FastAPI 0.142（Python 3.12）
 - **DB**: PostgreSQL 18（Neon）
 - **認証**: Firebase Authentication（firebase 12、firebase-admin 7）
 - **デプロイ先**: Google Cloud の Cloud Run（Dockerfile と GitHub Actions）。音声ファイルは Cloud Storage。週に1回の生成は Cloud Scheduler と Cloud Tasks
@@ -339,5 +339,14 @@ ER 図：[docs/er-diagram.md](docs/er-diagram.md)
 ## 13. 開発
 
 clone したあと、最初に 1 回だけ実行します。
+
 - `nvm use`（Node のバージョンを合わせる）
 - `pre-commit install`（コミット前の検査を有効にする）
+- `api/` で `cp .env.example .env` をして、値を埋める
+- `api/` で `uv sync`（Python の依存を入れる）
+- `web/` で `npm install`（Node の依存を入れる）
+
+検査はそれぞれのディレクトリで実行します。
+
+- `api/`: `uv run pytest`、`uv run ruff check .`、`uv run mypy app tests`
+- `web/`: `npm run check`
