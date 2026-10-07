@@ -335,3 +335,9 @@ Figma：https://www.figma.com/design/pDaqElgJnCQmxnGYE3Adyh
 ## 12. ER図
 
 ER 図：[docs/er-diagram.md](docs/er-diagram.md)
+
+## 13. 開発
+
+clone したあと、最初に 1 回だけ実行します。
+- `nvm use`（Node のバージョンを合わせる）
+- `pre-commit install`（コミット前の検査を有効にする）
