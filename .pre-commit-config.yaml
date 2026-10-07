@@ -12,3 +12,26 @@ repos:
     rev: v8.30.0
     hooks:
       - id: gitleaks
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.10
+    hooks:
+      - id: ruff-check
+        files: ^api/
+      - id: ruff-format
+        files: ^api/
+
+  - repo: local
+    hooks:
+      - id: web-lint
+        name: web lint (oxlint)
+        entry: npm --prefix web run lint
+        language: system
+        files: ^web/
+        pass_filenames: false
+      - id: web-format
+        name: web format (prettier)
+        entry: npm --prefix web run format
+        language: system
+        files: ^web/
+        pass_filenames: false
