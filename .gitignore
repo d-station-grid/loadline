@@ -13,6 +13,7 @@ dist/
 
 *.onnx
 *.bin
+*.wav
 
 .idea/
 .vscode/

@@ -1,0 +1,24 @@
+[project]
+name = "tts"
+version = "0.1.0"
+description = "loadline TTS"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.143.0",
+    "kokoro-onnx>=0.6.1",
+    "numpy>=2.5.3",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.10",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
