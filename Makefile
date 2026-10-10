@@ -1,6 +1,6 @@
-.PHONY: check check-api check-web fmt types dev dev-api dev-web
+.PHONY: check check-api check-web fmt types dev dev-api dev-web check-tts
 
-check: check-api check-web
+check: check-api check-web check-tts
 
 check-api:
 	cd api && uv run ruff check . && uv run ruff format --check . && uv run mypy app tests scripts && uv run pytest
@@ -8,9 +8,13 @@ check-api:
 check-web:
 	cd web && npm run check
 
+check-tts:
+	cd tts && uv run ruff check . && uv run ruff format --check .
+
 fmt:
 	cd api && uv run ruff format . && uv run ruff check --fix .
 	cd web && npm run format
+	cd tts && uv run ruff format . && uv run ruff check --fix .
 
 types:
 	cd api && uv run python -m scripts.export_openapi
