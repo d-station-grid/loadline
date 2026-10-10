@@ -7,32 +7,38 @@
 """
 
 import io
+import threading
 import wave
 from pathlib import Path
+from typing import Annotated
 
 import numpy as np
 from fastapi import FastAPI, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, StringConstraints
 
 HERE = Path(__file__).parent
 MODEL = HERE / "kokoro-v1.0.onnx"
 VOICES = HERE / "voices-v1.0.bin"
 
 app = FastAPI()
+
 _kokoro = None
+_lock = threading.Lock()
 
 
 def kokoro():
     global _kokoro
     if _kokoro is None:
-        from kokoro_onnx import Kokoro
+        with _lock:
+            if _kokoro is None:
+                from kokoro_onnx import Kokoro
 
-        _kokoro = Kokoro(str(MODEL), str(VOICES))
+                _kokoro = Kokoro(str(MODEL), str(VOICES))
     return _kokoro
 
 
 class Line(BaseModel):
-    text: str
+    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
 @app.get("/health")
