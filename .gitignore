@@ -15,5 +15,7 @@ dist/
 *.bin
 *.wav
 
+CLAUDE.local.md
+
 .idea/
 .vscode/
