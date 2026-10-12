@@ -20,6 +20,23 @@ jobs:
     defaults:
       run:
         working-directory: api
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: loadline
+          POSTGRES_PASSWORD: loadline
+          POSTGRES_DB: loadline
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U loadline -d loadline"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+asyncpg://loadline:loadline@localhost:5432/loadline
     steps:
       - uses: actions/checkout@v5
 
