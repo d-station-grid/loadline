@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engin
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.main import app
-from app.models.base import Base
+from app.models import Base
 
 
 def _test_url() -> URL:

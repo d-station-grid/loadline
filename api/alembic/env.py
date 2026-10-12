@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 from app.core.config import get_settings
+from app.models import Base
 
 config = context.config
 
@@ -16,8 +17,8 @@ config.set_main_option("sqlalchemy.url", get_settings().database_url)
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# モデルの MetaData。users 表を作るときに Base.metadata を入れる
-target_metadata = None
+# autogenerate が比べる相手。app.models が全モデルを import ずみの Base を返す
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
