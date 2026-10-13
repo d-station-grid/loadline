@@ -14,6 +14,7 @@ Apple Watch の記録を取り込み、アバターが声で振り返りを話�
 - 数値や日付の比較はコードでやる。LLM に任せない
 - 取り込むのは Apple Watch の記録だけ
 - 音声はファイルに保存して URL を再生する。web を音声の形式（WAV、24kHz）に依存させない。声の生成は後で替える
+- GCP のリージョンは `asia-northeast1`（東京）。api、tts、Artifact Registry、Cloud Storage を揃える
 
 ## 検査コマンド（ルートで）
 

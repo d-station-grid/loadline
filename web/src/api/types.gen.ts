@@ -4,6 +4,39 @@ export type ClientOptions = {
   baseUrl: `${string}://${string}` | (string & {});
 };
 
+/**
+ * UserOut
+ *
+ * ログインした本人に返す情報。
+ */
+export type UserOut = {
+  /**
+   * Id
+   */
+  id: number;
+  /**
+   * Email
+   */
+  email: string;
+};
+
+export type LoginAuthLoginPostData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/auth/login";
+};
+
+export type LoginAuthLoginPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: UserOut;
+};
+
+export type LoginAuthLoginPostResponse =
+  LoginAuthLoginPostResponses[keyof LoginAuthLoginPostResponses];
+
 export type HealthHealthGetData = {
   body?: never;
   path?: never;

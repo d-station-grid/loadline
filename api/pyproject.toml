@@ -4,13 +4,18 @@ version = "0.1.0"
 description = "loadline API"
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.20.0",
+    "asyncpg>=0.32.0",
     "fastapi>=0.142.2",
+    "firebase-admin>=7.7.0",
     "pydantic-settings>=2.15.0",
+    "sqlalchemy[asyncio]>=2.1.4",
     "uvicorn[standard]>=0.54.0",
 ]
 
 [dependency-groups]
 dev = [
+    "asyncpg-stubs>=0.32.0",
     "httpx>=0.28.1",
     "mypy>=2.4.0",
     "pytest>=9.1.1",
@@ -29,5 +34,11 @@ select = ["E", "F", "I", "B", "UP"]
 strict = true
 plugins = ["pydantic.mypy"]
 
+[[tool.mypy.overrides]]
+module = ["firebase_admin", "firebase_admin.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
