@@ -39,6 +39,30 @@ export type HeartRatePoint = {
 };
 
 /**
+ * HeartRateSample
+ *
+ * 1 分ごとの心拍。
+ */
+export type HeartRateSample = {
+  /**
+   * Recorded At
+   */
+  recorded_at: string;
+  /**
+   * Min Bpm
+   */
+  min_bpm: number;
+  /**
+   * Avg Bpm
+   */
+  avg_bpm: number;
+  /**
+   * Max Bpm
+   */
+  max_bpm: number;
+};
+
+/**
  * IngestData
  */
 export type IngestData = {
@@ -266,6 +290,45 @@ export type ValidationError = {
 };
 
 /**
+ * WorkoutDetail
+ */
+export type WorkoutDetail = {
+  /**
+   * Id
+   */
+  id: number;
+  /**
+   * Sport
+   */
+  sport: string;
+  /**
+   * Started At
+   */
+  started_at: string;
+  /**
+   * Ended At
+   */
+  ended_at: string;
+  /**
+   * Duration Sec
+   */
+  duration_sec: number;
+  /**
+   * Avg Heart Rate
+   */
+  avg_heart_rate: number | null;
+  /**
+   * Max Heart Rate
+   */
+  max_heart_rate: number | null;
+  /**
+   * Heart Rates
+   */
+  heart_rates: Array<HeartRateSample>;
+  zones: ZoneSeconds | null;
+};
+
+/**
  * WorkoutIn
  */
 export type WorkoutIn = {
@@ -299,6 +362,16 @@ export type WorkoutIn = {
 };
 
 /**
+ * WorkoutList
+ */
+export type WorkoutList = {
+  /**
+   * Items
+   */
+  items: Array<WorkoutSummary>;
+};
+
+/**
  * WorkoutSource
  */
 export type WorkoutSource = {
@@ -306,6 +379,62 @@ export type WorkoutSource = {
    * Name
    */
   name: string;
+};
+
+/**
+ * WorkoutSummary
+ *
+ * 一覧の 1 行。
+ */
+export type WorkoutSummary = {
+  /**
+   * Id
+   */
+  id: number;
+  /**
+   * Sport
+   */
+  sport: string;
+  /**
+   * Started At
+   */
+  started_at: string;
+  /**
+   * Ended At
+   */
+  ended_at: string;
+  /**
+   * Duration Sec
+   */
+  duration_sec: number;
+  /**
+   * Avg Heart Rate
+   */
+  avg_heart_rate: number | null;
+  /**
+   * Max Heart Rate
+   */
+  max_heart_rate: number | null;
+};
+
+/**
+ * ZoneSeconds
+ *
+ * 強度ごとの時間（秒）。設定の境目 2 つがそろっているときだけ出す。
+ */
+export type ZoneSeconds = {
+  /**
+   * Low
+   */
+  low: number;
+  /**
+   * Mid
+   */
+  mid: number;
+  /**
+   * High
+   */
+  high: number;
 };
 
 export type LoginAuthLoginPostData = {
@@ -412,6 +541,78 @@ export type ReissueIngestTokenSettingsIngestTokenPostResponses = {
 
 export type ReissueIngestTokenSettingsIngestTokenPostResponse =
   ReissueIngestTokenSettingsIngestTokenPostResponses[keyof ReissueIngestTokenSettingsIngestTokenPostResponses];
+
+export type ReadWorkoutsWorkoutsGetData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Since
+     */
+    since?: string | null;
+    /**
+     * Until
+     */
+    until?: string | null;
+    /**
+     * Limit
+     */
+    limit?: number;
+  };
+  url: "/workouts";
+};
+
+export type ReadWorkoutsWorkoutsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type ReadWorkoutsWorkoutsGetError =
+  ReadWorkoutsWorkoutsGetErrors[keyof ReadWorkoutsWorkoutsGetErrors];
+
+export type ReadWorkoutsWorkoutsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: WorkoutList;
+};
+
+export type ReadWorkoutsWorkoutsGetResponse =
+  ReadWorkoutsWorkoutsGetResponses[keyof ReadWorkoutsWorkoutsGetResponses];
+
+export type ReadWorkoutWorkoutsWorkoutIdGetData = {
+  body?: never;
+  path: {
+    /**
+     * Workout Id
+     */
+    workout_id: number;
+  };
+  query?: never;
+  url: "/workouts/{workout_id}";
+};
+
+export type ReadWorkoutWorkoutsWorkoutIdGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type ReadWorkoutWorkoutsWorkoutIdGetError =
+  ReadWorkoutWorkoutsWorkoutIdGetErrors[keyof ReadWorkoutWorkoutsWorkoutIdGetErrors];
+
+export type ReadWorkoutWorkoutsWorkoutIdGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: WorkoutDetail;
+};
+
+export type ReadWorkoutWorkoutsWorkoutIdGetResponse =
+  ReadWorkoutWorkoutsWorkoutIdGetResponses[keyof ReadWorkoutWorkoutsWorkoutIdGetResponses];
 
 export type HealthHealthGetData = {
   body?: never;

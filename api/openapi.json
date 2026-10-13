@@ -177,6 +177,139 @@
         ]
       }
     },
+    "/workouts": {
+      "get": {
+        "tags": [
+          "workouts"
+        ],
+        "summary": "Read Workouts",
+        "description": "本人のワークアウトを新しい順に。since 以上、until 未満。",
+        "operationId": "read_workouts_workouts_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkoutList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workouts/{workout_id}": {
+      "get": {
+        "tags": [
+          "workouts"
+        ],
+        "summary": "Read Workout",
+        "description": "1 件の詳細。心拍の推移と、設定の境目がそろっていれば強度ごとの時間。",
+        "operationId": "read_workout_workouts__workout_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workout_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Workout Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkoutDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -243,6 +376,36 @@
         ],
         "title": "HeartRatePoint",
         "description": "1 分ごとの心拍。キーが大文字なので alias で受ける。"
+      },
+      "HeartRateSample": {
+        "properties": {
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Recorded At"
+          },
+          "min_bpm": {
+            "type": "integer",
+            "title": "Min Bpm"
+          },
+          "avg_bpm": {
+            "type": "integer",
+            "title": "Avg Bpm"
+          },
+          "max_bpm": {
+            "type": "integer",
+            "title": "Max Bpm"
+          }
+        },
+        "type": "object",
+        "required": [
+          "recorded_at",
+          "min_bpm",
+          "avg_bpm",
+          "max_bpm"
+        ],
+        "title": "HeartRateSample",
+        "description": "1 分ごとの心拍。"
       },
       "IngestData": {
         "properties": {
@@ -611,6 +774,84 @@
         ],
         "title": "ValidationError"
       },
+      "WorkoutDetail": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "sport": {
+            "type": "string",
+            "title": "Sport"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "ended_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ended At"
+          },
+          "duration_sec": {
+            "type": "integer",
+            "title": "Duration Sec"
+          },
+          "avg_heart_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Heart Rate"
+          },
+          "max_heart_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Heart Rate"
+          },
+          "heart_rates": {
+            "items": {
+              "$ref": "#/components/schemas/HeartRateSample"
+            },
+            "type": "array",
+            "title": "Heart Rates"
+          },
+          "zones": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ZoneSeconds"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "sport",
+          "started_at",
+          "ended_at",
+          "duration_sec",
+          "avg_heart_rate",
+          "max_heart_rate",
+          "heart_rates",
+          "zones"
+        ],
+        "title": "WorkoutDetail"
+      },
       "WorkoutIn": {
         "properties": {
           "id": {
@@ -675,6 +916,22 @@
         ],
         "title": "WorkoutIn"
       },
+      "WorkoutList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkoutSummary"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "WorkoutList"
+      },
       "WorkoutSource": {
         "properties": {
           "name": {
@@ -687,6 +944,90 @@
           "name"
         ],
         "title": "WorkoutSource"
+      },
+      "WorkoutSummary": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "sport": {
+            "type": "string",
+            "title": "Sport"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "ended_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ended At"
+          },
+          "duration_sec": {
+            "type": "integer",
+            "title": "Duration Sec"
+          },
+          "avg_heart_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Heart Rate"
+          },
+          "max_heart_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Heart Rate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "sport",
+          "started_at",
+          "ended_at",
+          "duration_sec",
+          "avg_heart_rate",
+          "max_heart_rate"
+        ],
+        "title": "WorkoutSummary",
+        "description": "一覧の 1 行。"
+      },
+      "ZoneSeconds": {
+        "properties": {
+          "low": {
+            "type": "integer",
+            "title": "Low"
+          },
+          "mid": {
+            "type": "integer",
+            "title": "Mid"
+          },
+          "high": {
+            "type": "integer",
+            "title": "High"
+          }
+        },
+        "type": "object",
+        "required": [
+          "low",
+          "mid",
+          "high"
+        ],
+        "title": "ZoneSeconds",
+        "description": "強度ごとの時間（秒）。設定の境目 2 つがそろっているときだけ出す。"
       }
     },
     "securitySchemes": {
