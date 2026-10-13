@@ -338,15 +338,39 @@ ER 図：[docs/er-diagram.md](docs/er-diagram.md)
 
 ## 13. 開発
 
-clone したあと、最初に 1 回だけ実行します。
+### 最初に 1 回
+
+clone したあとに実行します。
 
 - `nvm use`（Node のバージョンを合わせる）
 - `pre-commit install`（コミット前の検査を有効にする）
-- `api/` で `cp .env.example .env` をして、値を埋める
+- `api/` で `cp .env.example .env`。手元の Postgres の URL と Firebase のプロジェクト ID が入っています。そのままで動きます
+- `web/` で `cp .env.example .env.local` をして、Firebase コンソールの Web アプリの設定（apiKey など 4 つ）を埋める
 - `api/` で `uv sync`（Python の依存を入れる）
 - `web/` で `npm install`（Node の依存を入れる）
 
-検査はそれぞれのディレクトリで実行します。
+### 手元で動かす
 
-- `api/`: `uv run pytest`、`uv run ruff check .`、`uv run mypy app tests`
-- `web/`: `npm run check`
+- ルートで `docker compose up -d`（Postgres を起動する）
+- `api/` で `uv run alembic upgrade head`（表を作る）
+- ルートで `make dev`（api が 8000、web が 5173 で起動する）
+- `http://localhost:5173` を開いて、Google でログインする
+
+### データを入れる
+
+Health Auto Export の JSON を、受け口と同じ処理で取り込みます。Apple Watch 以外は入らず、同じ記録は二重になりません。`api/` で実行します。
+
+- 自分の行に入れる: `uv run python -m scripts.seed --email <ログインしたメール> ../notes/sample_health-auto-export_workouts-v2.json`
+- デモ用の利用者を作って入れる: `uv run python -m scripts.seed --demo ../notes/sample_health-auto-export_workouts-v2.json`
+
+iPhone から実際に送るには、設定画面でトークンを発行し、Health Auto Export の送信先に本番の URL（`/ingest`）とヘッダー `Authorization: Bearer <トークン>` を設定します。
+
+### 検査
+
+ルートで実行します。
+
+- `make check`: api（ruff、mypy、pytest）、web（typecheck、lint、format、vitest）、tts（ruff）
+- `make fmt`: 整形
+- `make types`: OpenAPI から web の型を生成する。api の schema を変えたら実行し、生成物もコミットする
+
+api のテストは、`DATABASE_URL` の DB 名に `_test` を付けた DB を自動で作って使います。開発用の DB には触りません。
