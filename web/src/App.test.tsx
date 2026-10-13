@@ -1,7 +1,8 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { User } from "firebase/auth";
 import { beforeEach, expect, test, vi } from "vitest";
 
+import type { UserOut } from "./api";
 import App from "./App";
 import { login } from "./lib/api";
 
@@ -86,4 +87,30 @@ test("api で失敗したらログアウトしてエラーを出す", async () =
   );
   expect(firebaseAuth.signOut).toHaveBeenCalled();
   expect(screen.queryByText("Signed in as Taro")).not.toBeInTheDocument();
+});
+
+test("api の応答待ちの間にログアウトされたら、古い処理は画面を戻さない", async () => {
+  let finishLogin: (user: UserOut) => void = () => {};
+  vi.mocked(login).mockImplementation(
+    () => new Promise<UserOut>((resolve) => (finishLogin = resolve)),
+  );
+  restoredUser(taro);
+  render(<App />);
+
+  // 応答を待っている間に、別タブのログアウトで null の通知が来る
+  await act(async () => {
+    notify(null);
+  });
+  expect(
+    screen.getByRole("button", { name: "Sign in with Google" }),
+  ).toBeInTheDocument();
+
+  // そのあとで api が成功しても、ログイン済みには戻らない
+  await act(async () => {
+    finishLogin({ id: 1, email: "taro@example.com" });
+  });
+  expect(screen.queryByText("Signed in as Taro")).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Sign in with Google" }),
+  ).toBeInTheDocument();
 });

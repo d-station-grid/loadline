@@ -4,7 +4,7 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { login } from "./lib/api";
 import { auth, googleProvider } from "./lib/firebase";
@@ -17,10 +17,15 @@ function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Firebase の通知の連番。api の応答を待つ間に次の通知が来たら、古い処理は状態を触らない
+  const latest = useRef(0);
 
   useEffect(() => {
     // Firebase がログイン状態を通知するたびに呼ばれる。初回ログインも再読み込みの復元も同じ経路
-    return onAuthStateChanged(auth, async (next) => {
+    const unsubscribe = onAuthStateChanged(auth, async (next) => {
+      const seq = ++latest.current;
+      const isLatest = () => seq === latest.current;
+
       if (next === null) {
         setUser(null);
         setLoading(false);
@@ -29,14 +34,24 @@ function App() {
       try {
         // api に行があることを確かめてから、ログイン済みにする
         await login(await next.getIdToken());
-        setUser(next);
+        if (isLatest()) {
+          setUser(next);
+        }
       } catch (e) {
-        setError(errorMessage(e));
-        await signOut(auth); // null の通知が来て、未ログインの画面に戻る
+        if (isLatest()) {
+          setError(errorMessage(e));
+          await signOut(auth); // null の通知が来て、未ログインの画面に戻る
+        }
       } finally {
-        setLoading(false);
+        if (isLatest()) {
+          setLoading(false);
+        }
       }
     });
+    return () => {
+      latest.current += 1;
+      unsubscribe();
+    };
   }, []);
 
   async function handleSignIn() {
