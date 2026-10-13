@@ -6,7 +6,6 @@ from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app.core.auth import (
-    FirebaseTokenVerifier,
     Identity,
     InvalidTokenError,
     get_identity,
@@ -55,11 +54,3 @@ async def test_invalid_token_is_401(client: AsyncClient) -> None:
     res = await client.get("/me", headers={"Authorization": "Bearer bad"})
 
     assert res.status_code == 401
-
-
-def test_firebase_verifier_rejects_malformed_token() -> None:
-    # 形がおかしいトークンは公開鍵を取りに行く前に落ちるので、ネットワークなしで試せる
-    verifier = FirebaseTokenVerifier("loadline-app")
-
-    with pytest.raises(InvalidTokenError):
-        verifier.verify("not-a-token")

@@ -11,8 +11,9 @@ from app.models import Base
 
 config = context.config
 
-# 接続先は alembic.ini ではなく Settings（.env の DATABASE_URL）から入れる
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# 接続先は alembic.ini ではなく Settings（.env の DATABASE_URL）から入れる。
+# set_main_option は ConfigParser の補間を通す。パスワードの %40 が壊れないよう % は %% にする
+config.set_main_option("sqlalchemy.url", get_settings().database_url.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
