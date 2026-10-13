@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     database_url: str = ""
     firebase_project_id: str = ""
     cors_origins: list[str] = []
+    static_dir: str = ""
 
 
 @lru_cache
