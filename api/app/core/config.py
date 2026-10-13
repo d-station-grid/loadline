@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     app_env: str = "development"
     database_url: str = ""
+    firebase_project_id: str = ""
 
 
 @lru_cache
