@@ -6,6 +6,8 @@ import firebase_admin
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from firebase_admin import auth as firebase_auth
+from firebase_admin import credentials as firebase_credentials
+from google.auth.credentials import AnonymousCredentials
 
 from app.core.config import get_settings
 
@@ -26,10 +28,21 @@ class TokenVerifier(Protocol):
     def verify(self, token: str) -> Identity: ...
 
 
+class _NoCredential(firebase_credentials.Base):  # type: ignore[misc]
+    """ID トークンの検証は Google の公開鍵だけで済む。ADC を読みに行かない空の資格情報。"""
+
+    def get_credential(self) -> AnonymousCredentials:
+        return AnonymousCredentials()  # type: ignore[no-untyped-call]
+
+
 class FirebaseTokenVerifier:
     def __init__(self, project_id: str) -> None:
-        # projectId を渡すと、検証だけなら認証情報なしで動く
-        self._app = firebase_admin.initialize_app(options={"projectId": project_id})
+        # SDK は初期化のときに資格情報を読む。検証だけなら要らないので空のものを渡し、
+        # 認証情報のない環境（CI など）でも同じ動きにする。
+        # 利用者の管理など Google に認証が要る機能を使うときは ApplicationDefault に替える
+        self._app = firebase_admin.initialize_app(
+            _NoCredential(), options={"projectId": project_id}
+        )
 
     def verify(self, token: str) -> Identity:
         try:

@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app.core.auth import (
+    FirebaseTokenVerifier,
     Identity,
     InvalidTokenError,
     get_identity,
@@ -54,3 +55,15 @@ async def test_invalid_token_is_401(client: AsyncClient) -> None:
     res = await client.get("/me", headers={"Authorization": "Bearer bad"})
 
     assert res.status_code == 401
+
+
+def test_firebase_verifier_rejects_malformed_token_without_adc(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ADC を読みに行くと DefaultCredentialsError になる環境を作る。CI にも認証情報はない
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/nonexistent")
+    verifier = FirebaseTokenVerifier("loadline-app")
+
+    # 形がおかしいトークンは公開鍵を取りに行く前に落ちるので、ネットワークなしで試せる
+    with pytest.raises(InvalidTokenError):
+        verifier.verify("not-a-token")
