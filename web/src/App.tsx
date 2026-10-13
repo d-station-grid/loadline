@@ -9,13 +9,20 @@ import { useEffect, useRef, useState } from "react";
 import { login } from "./lib/api";
 import { auth, googleProvider } from "./lib/firebase";
 import SettingsPage from "./pages/SettingsPage";
+import WorkoutPage from "./pages/WorkoutPage";
+import WorkoutsPage from "./pages/WorkoutsPage";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Sign-in failed";
 }
 
+// ログイン済みの画面。ルーティングのライブラリは入れず、state で切り替える
+type View =
+  { name: "workouts" } | { name: "workout"; id: number } | { name: "settings" };
+
 function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [view, setView] = useState<View>({ name: "workouts" });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Firebase の通知の連番。api の応答を待つ間に次の通知が来たら、古い処理は状態を触らない
@@ -82,13 +89,38 @@ function App() {
 
   return (
     <main>
-      <h1>loadline</h1>
-      <p>Signed in as {user.displayName ?? user.email}</p>
-      <p>{user.email}</p>
-      <button type="button" onClick={() => signOut(auth)}>
-        Sign out
-      </button>
-      <SettingsPage user={user} />
+      <header>
+        <h1>loadline</h1>
+        <nav aria-label="Main">
+          <button type="button" onClick={() => setView({ name: "workouts" })}>
+            Workouts
+          </button>
+          <button type="button" onClick={() => setView({ name: "settings" })}>
+            Settings
+          </button>
+        </nav>
+        <p>
+          Signed in as {user.displayName ?? user.email}{" "}
+          <span>{user.email}</span>{" "}
+          <button type="button" onClick={() => signOut(auth)}>
+            Sign out
+          </button>
+        </p>
+      </header>
+      {view.name === "workouts" && (
+        <WorkoutsPage
+          user={user}
+          onSelect={(id) => setView({ name: "workout", id })}
+        />
+      )}
+      {view.name === "workout" && (
+        <WorkoutPage
+          user={user}
+          workoutId={view.id}
+          onBack={() => setView({ name: "workouts" })}
+        />
+      )}
+      {view.name === "settings" && <SettingsPage user={user} />}
     </main>
   );
 }
