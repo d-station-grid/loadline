@@ -5,4 +5,8 @@ export type {
   HealthHealthGetData,
   HealthHealthGetResponse,
   HealthHealthGetResponses,
+  LoginAuthLoginPostData,
+  LoginAuthLoginPostResponse,
+  LoginAuthLoginPostResponses,
+  UserOut,
 } from "./types.gen";
