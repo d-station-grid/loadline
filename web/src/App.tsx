@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { login } from "./lib/api";
 import { auth, googleProvider } from "./lib/firebase";
+import SettingsPage from "./pages/SettingsPage";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Sign-in failed";
@@ -87,6 +88,7 @@ function App() {
       <button type="button" onClick={() => signOut(auth)}>
         Sign out
       </button>
+      <SettingsPage user={user} />
     </main>
   );
 }
