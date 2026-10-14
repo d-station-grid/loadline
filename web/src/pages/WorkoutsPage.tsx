@@ -1,5 +1,5 @@
 import type { User } from "firebase/auth";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { WorkoutSummary } from "../api";
 import { getWorkouts } from "../lib/api";
@@ -36,23 +36,29 @@ type Page = {
   since: string | undefined;
   items: WorkoutSummary[];
   hasMore: boolean;
+  loadingMore: boolean;
 };
 
 export default function WorkoutsPage({ user, onSelect }: Props) {
   const [range, setRange] = useState<Range>("4w");
   const [page, setPage] = useState<Page | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 1 ページ目を取り直すたびに進める。Load more の応答は、始めたときと世代が違えば捨てる。
+  // since の比較だけだと、別の期間に行って同じ期間に戻ったときに古い応答を見分けられない
+  const generation = useRef(0);
 
   const weeks = RANGES.find((r) => r.key === range)?.weeks ?? null;
   const since = useMemo(() => sinceOf(weeks), [weeks]);
 
   // 今の期間の結果だけを表示する。期間を変えた直後は古い結果が残っていても Loading になる
-  const items = page && page.since === since ? page.items : null;
-  const hasMore = page && page.since === since ? page.hasMore : false;
+  const current = page && page.since === since ? page : null;
+  const items = current?.items ?? null;
+  const hasMore = current?.hasMore ?? false;
+  const loadingMore = current?.loadingMore ?? false;
 
   useEffect(() => {
     let cancelled = false;
+    generation.current += 1;
     (async () => {
       try {
         const list = await getWorkouts(
@@ -64,6 +70,7 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
           since,
           items: list.items,
           hasMore: list.items.length === PAGE_SIZE,
+          loadingMore: false,
         });
       } catch (e) {
         if (!cancelled) setError(errorMessage(e));
@@ -77,26 +84,28 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
   /** 表示中の一番古い記録より前を、同じ期間の中でもう 1 ページ取って末尾に足す。 */
   async function loadMore() {
     if (!items || items.length === 0) return;
-    setLoadingMore(true);
+    const started = generation.current;
+    setPage((prev) => (prev ? { ...prev, loadingMore: true } : prev));
     try {
       const list = await getWorkouts(
         { since, until: items[items.length - 1].started_at, limit: PAGE_SIZE },
         await user.getIdToken(),
       );
-      // 待っている間に期間が変わっていたら、この応答は捨てる
+      if (started !== generation.current) return;
       setPage((prev) =>
-        prev && prev.since === since
+        prev
           ? {
               since,
               items: [...prev.items, ...list.items],
               hasMore: list.items.length === PAGE_SIZE,
+              loadingMore: false,
             }
           : prev,
       );
     } catch (e) {
+      if (started !== generation.current) return;
       setError(errorMessage(e));
-    } finally {
-      setLoadingMore(false);
+      setPage((prev) => (prev ? { ...prev, loadingMore: false } : prev));
     }
   }
 

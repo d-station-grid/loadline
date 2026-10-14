@@ -144,6 +144,40 @@ test("Load more を待つ間に期間を変えたら、遅れて届いた応答�
   ).not.toBeInTheDocument();
 });
 
+test("別の期間に行って同じ期間に戻ったあと、遅れて届いた古い Load more の応答は捨てる", async () => {
+  let resolveThird: (list: { items: WorkoutSummary[] }) => void = () => {};
+  const third = new Promise<{ items: WorkoutSummary[] }>((resolve) => {
+    resolveThird = resolve;
+  });
+  vi.mocked(getWorkouts)
+    .mockResolvedValueOnce({ items: rides(100) }) // 4 週の 1 ページ目
+    .mockResolvedValueOnce({ items: rides(100, 100) }) // 4 週の 2 ページ目
+    .mockReturnValueOnce(third) // 4 週の 3 ページ目（遅い）
+    .mockResolvedValueOnce({ items: [ride] }) // All の 1 ページ目
+    .mockResolvedValueOnce({ items: rides(100) }); // 4 週に戻った 1 ページ目
+  render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+  await vi.waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(201));
+  fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+  await vi.waitFor(() => expect(getWorkouts).toHaveBeenCalledTimes(3));
+
+  fireEvent.click(screen.getByRole("button", { name: "All" }));
+  await vi.waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(2));
+  fireEvent.click(screen.getByRole("button", { name: "Last 4 weeks" }));
+  await vi.waitFor(() => expect(getWorkouts).toHaveBeenCalledTimes(5));
+  await vi.waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(101));
+
+  await act(async () => {
+    resolveThird({ items: rides(3, 200) });
+    await third;
+  });
+
+  // 戻った 4 週の 1 ページ目のままで、古い 3 ページ目は足されない。Load more は押せる
+  expect(screen.getAllByRole("row")).toHaveLength(101);
+  expect(screen.getByRole("button", { name: "Load more" })).toBeEnabled();
+});
+
 test("api が失敗したらエラーを出す", async () => {
   vi.mocked(getWorkouts).mockRejectedValue(new Error("API returned 500"));
   render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
