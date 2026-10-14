@@ -107,12 +107,13 @@ function App() {
           </button>
         </p>
       </header>
-      {view.name === "workouts" && (
+      {/* 一覧はマウントしたまま隠す。詳細から戻ったときに期間と Load more の続きを残すため */}
+      <div hidden={view.name !== "workouts"}>
         <WorkoutsPage
           user={user}
           onSelect={(id) => setView({ name: "workout", id })}
         />
-      )}
+      </div>
       {view.name === "workout" && (
         <WorkoutPage
           user={user}
