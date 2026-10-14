@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { User } from "firebase/auth";
 import { beforeEach, expect, test, vi } from "vitest";
 
@@ -99,6 +99,46 @@ test("100 件未満なら Load more は出ない", async () => {
   render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
   await screen.findByRole("button", { name: "Ride" });
 
+  expect(
+    screen.queryByRole("button", { name: "Load more" }),
+  ).not.toBeInTheDocument();
+});
+
+test("選択中の期間をもう一度押しても、一覧は消えず読み直さない", async () => {
+  vi.mocked(getWorkouts).mockResolvedValue({ items: [ride] });
+  render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
+  await screen.findByRole("button", { name: "Ride" });
+
+  fireEvent.click(screen.getByRole("button", { name: "Last 4 weeks" }));
+
+  expect(screen.getByRole("button", { name: "Ride" })).toBeInTheDocument();
+  expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+  expect(getWorkouts).toHaveBeenCalledTimes(1);
+});
+
+test("Load more を待つ間に期間を変えたら、遅れて届いた応答は捨てる", async () => {
+  let resolveMore: (list: { items: WorkoutSummary[] }) => void = () => {};
+  const more = new Promise<{ items: WorkoutSummary[] }>((resolve) => {
+    resolveMore = resolve;
+  });
+  vi.mocked(getWorkouts)
+    .mockResolvedValueOnce({ items: rides(100) }) // 4 週の 1 ページ目
+    .mockReturnValueOnce(more) // 4 週の Load more（遅い）
+    .mockResolvedValueOnce({ items: [ride] }); // All の 1 ページ目
+  render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+  fireEvent.click(screen.getByRole("button", { name: "All" }));
+  await vi.waitFor(() => expect(getWorkouts).toHaveBeenCalledTimes(3));
+  await vi.waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(2));
+
+  await act(async () => {
+    resolveMore({ items: rides(3, 100) });
+    await more;
+  });
+
+  // 遅れた応答が届いても、All の 1 件のまま
+  expect(screen.getAllByRole("row")).toHaveLength(2);
   expect(
     screen.queryByRole("button", { name: "Load more" }),
   ).not.toBeInTheDocument();

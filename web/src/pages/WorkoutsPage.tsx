@@ -31,15 +31,25 @@ function errorMessage(e: unknown): string {
 
 type Props = { user: User; onSelect: (id: number) => void };
 
+/** 取ってきた一覧。どの期間（since）の結果かを一緒に持ち、今の期間と違えば表示に使わない。 */
+type Page = {
+  since: string | undefined;
+  items: WorkoutSummary[];
+  hasMore: boolean;
+};
+
 export default function WorkoutsPage({ user, onSelect }: Props) {
   const [range, setRange] = useState<Range>("4w");
-  const [items, setItems] = useState<WorkoutSummary[] | null>(null);
-  const [hasMore, setHasMore] = useState(false);
+  const [page, setPage] = useState<Page | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const weeks = RANGES.find((r) => r.key === range)?.weeks ?? null;
   const since = useMemo(() => sinceOf(weeks), [weeks]);
+
+  // 今の期間の結果だけを表示する。期間を変えた直後は古い結果が残っていても Loading になる
+  const items = page && page.since === since ? page.items : null;
+  const hasMore = page && page.since === since ? page.hasMore : false;
 
   useEffect(() => {
     let cancelled = false;
@@ -50,8 +60,11 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
           await user.getIdToken(),
         );
         if (cancelled) return;
-        setItems(list.items);
-        setHasMore(list.items.length === PAGE_SIZE);
+        setPage({
+          since,
+          items: list.items,
+          hasMore: list.items.length === PAGE_SIZE,
+        });
       } catch (e) {
         if (!cancelled) setError(errorMessage(e));
       }
@@ -60,13 +73,6 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
       cancelled = true;
     };
   }, [user, since]);
-
-  /** 期間を変えたら、表示を空にして読み直す。 */
-  function changeRange(next: Range) {
-    setRange(next);
-    setItems(null);
-    setHasMore(false);
-  }
 
   /** 表示中の一番古い記録より前を、同じ期間の中でもう 1 ページ取って末尾に足す。 */
   async function loadMore() {
@@ -77,8 +83,16 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
         { since, until: items[items.length - 1].started_at, limit: PAGE_SIZE },
         await user.getIdToken(),
       );
-      setItems([...items, ...list.items]);
-      setHasMore(list.items.length === PAGE_SIZE);
+      // 待っている間に期間が変わっていたら、この応答は捨てる
+      setPage((prev) =>
+        prev && prev.since === since
+          ? {
+              since,
+              items: [...prev.items, ...list.items],
+              hasMore: list.items.length === PAGE_SIZE,
+            }
+          : prev,
+      );
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -95,7 +109,7 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
             key={r.key}
             type="button"
             aria-pressed={range === r.key}
-            onClick={() => changeRange(r.key)}
+            onClick={() => setRange(r.key)}
           >
             {r.label}
           </button>
