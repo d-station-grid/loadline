@@ -58,6 +58,17 @@ def test_trimp_is_none_without_settings() -> None:
     assert trimp([110], 60, 170, None) is None
 
 
+def test_trimp_is_none_without_heart_rates() -> None:
+    # 心拍の記録がない 60 分のワークアウト。0 にすると休養日と区別できない
+    assert trimp([], 3600, 175, 50) is None
+
+
+def test_workout_load_is_none_without_heart_rates() -> None:
+    point = workout_load([], 3600, max_hr=175, resting_hr=50, boundary_1=130, boundary_2=155)
+    assert point.load is None
+    assert point.zones is None
+
+
 def test_trimp_of_sample_workout() -> None:
     # 72 サンプル、4028 秒、最大 175・安静 50。各サンプル 55.94 秒で足したもの
     bpms, duration = _sample_workout()
@@ -90,8 +101,8 @@ def test_zone_times_of_sample_workout_sum_to_duration() -> None:
     assert zones.low + zones.mid + zones.high == duration
 
 
-def test_zone_times_without_samples() -> None:
-    assert zone_times([], 600, 130, 155) == ZoneTimes(low=0, mid=0, high=0)
+def test_zone_times_is_none_without_heart_rates() -> None:
+    assert zone_times([], 600, 130, 155) is None
 
 
 def test_workout_load_for_scatter() -> None:

@@ -35,6 +35,7 @@ class WorkoutLoad:
     """1 回ぶんの負荷と強度ごとの時間。散布図は load と zones.high を使う。
 
     load は最大心拍と安静時心拍、zones は境目 2 つがそろわないと None。
+    心拍の記録がなければ両方 None。
     """
 
     load: float | None
@@ -77,9 +78,10 @@ def trimp(
     """Banister の TRIMP。サンプルごとに 分 × HRr × a × e^(b × HRr) を足す。
 
     HRr（心拍予備率）は (心拍 − 安静時) / (最大 − 安静時) で、0 から 1 に収める。
-    最大心拍か安静時心拍が未設定なら計算しない（None）。
+    最大心拍か安静時心拍が未設定なら計算しない（None）。心拍の記録がないときも None。
+    0 を返すと、運動した日が休養日と同じ負荷になり、体力と疲労を低く見積もるため。
     """
-    if max_hr is None or resting_hr is None or max_hr <= resting_hr:
+    if not avg_bpms or max_hr is None or resting_hr is None or max_hr <= resting_hr:
         return None
     minutes = sample_seconds(len(avg_bpms), duration_sec) / 60
     reserve = max_hr - resting_hr
@@ -97,8 +99,9 @@ def zone_times(
 
     サンプル数の比で duration を配る。秒は整数にし、端数は大きい順に 1 秒ずつ足して
     合計を duration にそろえる。境目が 2 つそろうまでは計算しない（None）。
+    心拍の記録がないときも、どの強度だったか分からないので None。
     """
-    if boundary_1 is None or boundary_2 is None:
+    if not avg_bpms or boundary_1 is None or boundary_2 is None:
         return None
     counts = [0, 0, 0]
     for bpm in avg_bpms:
@@ -109,8 +112,6 @@ def zone_times(
         else:
             counts[2] += 1
     n = len(avg_bpms)
-    if n == 0:
-        return ZoneTimes(low=0, mid=0, high=0)
     exact = [c * duration_sec / n for c in counts]
     secs = [math.floor(x) for x in exact]
     by_remainder = sorted(range(3), key=lambda i: exact[i] - secs[i], reverse=True)
