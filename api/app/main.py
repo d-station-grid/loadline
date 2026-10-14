@@ -3,7 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
-from app.routers import auth
+from app.routers import auth, ingest, workouts
+from app.routers import settings as settings_router
 
 
 def create_app(static_dir: str | None = None) -> FastAPI:
@@ -17,6 +18,9 @@ def create_app(static_dir: str | None = None) -> FastAPI:
         allow_headers=["Authorization"],
     )
     app.include_router(auth.router)
+    app.include_router(ingest.router)
+    app.include_router(settings_router.router)
+    app.include_router(workouts.router)
 
     @app.get("/health")
     def health() -> dict[str, str]:

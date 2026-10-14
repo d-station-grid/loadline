@@ -32,6 +32,284 @@
         ]
       }
     },
+    "/ingest": {
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Receive",
+        "description": "Health Auto Export の送信先。workouts と metrics を同じ URL で受け、中身で見分ける。",
+        "operationId": "receive_ingest_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/settings": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Read Settings",
+        "operationId": "read_settings_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Update Settings",
+        "description": "設定をまとめて書き換える。検証は SettingsIn が済ませている。",
+        "operationId": "update_settings_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/settings/ingest-token": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Reissue Ingest Token",
+        "description": "取り込み用トークンを発行する。すでにあれば無効にして新しくする。平文はこの返事だけ。",
+        "operationId": "reissue_ingest_token_settings_ingest_token_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestTokenOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/workouts": {
+      "get": {
+        "tags": [
+          "workouts"
+        ],
+        "summary": "Read Workouts",
+        "description": "本人のワークアウトを新しい順に。since 以上、until 未満。",
+        "operationId": "read_workouts_workouts_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkoutList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workouts/{workout_id}": {
+      "get": {
+        "tags": [
+          "workouts"
+        ],
+        "summary": "Read Workout",
+        "description": "1 件の詳細。心拍の推移と、設定の境目がそろっていれば強度ごとの時間。",
+        "operationId": "read_workout_workouts__workout_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workout_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Workout Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkoutDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -57,6 +335,386 @@
   },
   "components": {
     "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HeartRatePoint": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "Min": {
+            "type": "number",
+            "title": "Min"
+          },
+          "Avg": {
+            "type": "number",
+            "title": "Avg"
+          },
+          "Max": {
+            "type": "number",
+            "title": "Max"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "Min",
+          "Avg",
+          "Max"
+        ],
+        "title": "HeartRatePoint",
+        "description": "1 分ごとの心拍。キーが大文字なので alias で受ける。"
+      },
+      "HeartRateSample": {
+        "properties": {
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Recorded At"
+          },
+          "min_bpm": {
+            "type": "integer",
+            "title": "Min Bpm"
+          },
+          "avg_bpm": {
+            "type": "integer",
+            "title": "Avg Bpm"
+          },
+          "max_bpm": {
+            "type": "integer",
+            "title": "Max Bpm"
+          }
+        },
+        "type": "object",
+        "required": [
+          "recorded_at",
+          "min_bpm",
+          "avg_bpm",
+          "max_bpm"
+        ],
+        "title": "HeartRateSample",
+        "description": "1 分ごとの心拍。"
+      },
+      "IngestData": {
+        "properties": {
+          "workouts": {
+            "items": {
+              "$ref": "#/components/schemas/WorkoutIn"
+            },
+            "type": "array",
+            "title": "Workouts"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricIn"
+            },
+            "type": "array",
+            "title": "Metrics"
+          }
+        },
+        "type": "object",
+        "title": "IngestData"
+      },
+      "IngestPayload": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/IngestData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "IngestPayload"
+      },
+      "IngestResult": {
+        "properties": {
+          "workouts_added": {
+            "type": "integer",
+            "title": "Workouts Added",
+            "default": 0
+          },
+          "workouts_updated": {
+            "type": "integer",
+            "title": "Workouts Updated",
+            "default": 0
+          },
+          "workouts_skipped": {
+            "type": "integer",
+            "title": "Workouts Skipped",
+            "default": 0
+          },
+          "vo2max_added": {
+            "type": "integer",
+            "title": "Vo2Max Added",
+            "default": 0
+          },
+          "vo2max_skipped": {
+            "type": "integer",
+            "title": "Vo2Max Skipped",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "IngestResult",
+        "description": "受け口が返す集計。Health Auto Export の画面に出るだけなので、数だけ返す。"
+      },
+      "IngestTokenOut": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "last_four": {
+            "type": "string",
+            "title": "Last Four"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "last_four"
+        ],
+        "title": "IngestTokenOut",
+        "description": "POST /settings/ingest-token の返事。平文のトークンはこのときだけ返す。"
+      },
+      "MetricIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/MetricPoint"
+            },
+            "type": "array",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "MetricIn"
+      },
+      "MetricPoint": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "qty": {
+            "type": "number",
+            "title": "Qty"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "qty"
+        ],
+        "title": "MetricPoint"
+      },
+      "Quantity": {
+        "properties": {
+          "qty": {
+            "type": "number",
+            "title": "Qty"
+          }
+        },
+        "type": "object",
+        "required": [
+          "qty"
+        ],
+        "title": "Quantity"
+      },
+      "SettingsIn": {
+        "properties": {
+          "max_heart_rate": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 250.0,
+                "minimum": 100.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Heart Rate"
+          },
+          "resting_heart_rate": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 120.0,
+                "minimum": 30.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resting Heart Rate"
+          },
+          "zone_boundary_1": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 250.0,
+                "minimum": 60.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone Boundary 1"
+          },
+          "zone_boundary_2": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 250.0,
+                "minimum": 60.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone Boundary 2"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "default": "Asia/Tokyo"
+          },
+          "review_weekday": {
+            "type": "integer",
+            "maximum": 6.0,
+            "minimum": 0.0,
+            "title": "Review Weekday",
+            "default": 0
+          },
+          "send_notes_to_ai": {
+            "type": "boolean",
+            "title": "Send Notes To Ai",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "SettingsIn",
+        "description": "PUT /settings の本文。"
+      },
+      "SettingsOut": {
+        "properties": {
+          "max_heart_rate": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 250.0,
+                "minimum": 100.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Heart Rate"
+          },
+          "resting_heart_rate": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 120.0,
+                "minimum": 30.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resting Heart Rate"
+          },
+          "zone_boundary_1": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 250.0,
+                "minimum": 60.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone Boundary 1"
+          },
+          "zone_boundary_2": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 250.0,
+                "minimum": 60.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone Boundary 2"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "default": "Asia/Tokyo"
+          },
+          "review_weekday": {
+            "type": "integer",
+            "maximum": 6.0,
+            "minimum": 0.0,
+            "title": "Review Weekday",
+            "default": 0
+          },
+          "send_notes_to_ai": {
+            "type": "boolean",
+            "title": "Send Notes To Ai",
+            "default": true
+          },
+          "ingest_token_last_four": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingest Token Last Four"
+          }
+        },
+        "type": "object",
+        "title": "SettingsOut",
+        "description": "GET /settings の返事。トークンは末尾 4 文字だけ。未発行なら None。"
+      },
       "UserOut": {
         "properties": {
           "id": {
@@ -75,6 +733,301 @@
         ],
         "title": "UserOut",
         "description": "ログインした本人に返す情報。"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "WorkoutDetail": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "sport": {
+            "type": "string",
+            "title": "Sport"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "ended_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ended At"
+          },
+          "duration_sec": {
+            "type": "integer",
+            "title": "Duration Sec"
+          },
+          "avg_heart_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Heart Rate"
+          },
+          "max_heart_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Heart Rate"
+          },
+          "heart_rates": {
+            "items": {
+              "$ref": "#/components/schemas/HeartRateSample"
+            },
+            "type": "array",
+            "title": "Heart Rates"
+          },
+          "zones": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ZoneSeconds"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "sport",
+          "started_at",
+          "ended_at",
+          "duration_sec",
+          "avg_heart_rate",
+          "max_heart_rate",
+          "heart_rates",
+          "zones"
+        ],
+        "title": "WorkoutDetail"
+      },
+      "WorkoutIn": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "start": {
+            "type": "string",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "title": "End"
+          },
+          "duration": {
+            "type": "number",
+            "title": "Duration"
+          },
+          "source": {
+            "$ref": "#/components/schemas/WorkoutSource"
+          },
+          "avgHeartRate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Quantity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "maxHeartRate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Quantity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "heartRateData": {
+            "items": {
+              "$ref": "#/components/schemas/HeartRatePoint"
+            },
+            "type": "array",
+            "title": "Heartratedata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "start",
+          "end",
+          "duration",
+          "source"
+        ],
+        "title": "WorkoutIn"
+      },
+      "WorkoutList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkoutSummary"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "WorkoutList"
+      },
+      "WorkoutSource": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "WorkoutSource"
+      },
+      "WorkoutSummary": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "sport": {
+            "type": "string",
+            "title": "Sport"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "ended_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ended At"
+          },
+          "duration_sec": {
+            "type": "integer",
+            "title": "Duration Sec"
+          },
+          "avg_heart_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Heart Rate"
+          },
+          "max_heart_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Heart Rate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "sport",
+          "started_at",
+          "ended_at",
+          "duration_sec",
+          "avg_heart_rate",
+          "max_heart_rate"
+        ],
+        "title": "WorkoutSummary",
+        "description": "一覧の 1 行。"
+      },
+      "ZoneSeconds": {
+        "properties": {
+          "low": {
+            "type": "integer",
+            "title": "Low"
+          },
+          "mid": {
+            "type": "integer",
+            "title": "Mid"
+          },
+          "high": {
+            "type": "integer",
+            "title": "High"
+          }
+        },
+        "type": "object",
+        "required": [
+          "low",
+          "mid",
+          "high"
+        ],
+        "title": "ZoneSeconds",
+        "description": "強度ごとの時間（秒）。設定の境目 2 つがそろっているときだけ出す。"
       }
     },
     "securitySchemes": {

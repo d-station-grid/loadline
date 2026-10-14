@@ -5,6 +5,247 @@ export type ClientOptions = {
 };
 
 /**
+ * HTTPValidationError
+ */
+export type HttpValidationError = {
+  /**
+   * Detail
+   */
+  detail?: Array<ValidationError>;
+};
+
+/**
+ * HeartRatePoint
+ *
+ * 1 分ごとの心拍。キーが大文字なので alias で受ける。
+ */
+export type HeartRatePoint = {
+  /**
+   * Date
+   */
+  date: string;
+  /**
+   * Min
+   */
+  Min: number;
+  /**
+   * Avg
+   */
+  Avg: number;
+  /**
+   * Max
+   */
+  Max: number;
+};
+
+/**
+ * HeartRateSample
+ *
+ * 1 分ごとの心拍。
+ */
+export type HeartRateSample = {
+  /**
+   * Recorded At
+   */
+  recorded_at: string;
+  /**
+   * Min Bpm
+   */
+  min_bpm: number;
+  /**
+   * Avg Bpm
+   */
+  avg_bpm: number;
+  /**
+   * Max Bpm
+   */
+  max_bpm: number;
+};
+
+/**
+ * IngestData
+ */
+export type IngestData = {
+  /**
+   * Workouts
+   */
+  workouts?: Array<WorkoutIn>;
+  /**
+   * Metrics
+   */
+  metrics?: Array<MetricIn>;
+};
+
+/**
+ * IngestPayload
+ */
+export type IngestPayload = {
+  data: IngestData;
+};
+
+/**
+ * IngestResult
+ *
+ * 受け口が返す集計。Health Auto Export の画面に出るだけなので、数だけ返す。
+ */
+export type IngestResult = {
+  /**
+   * Workouts Added
+   */
+  workouts_added?: number;
+  /**
+   * Workouts Updated
+   */
+  workouts_updated?: number;
+  /**
+   * Workouts Skipped
+   */
+  workouts_skipped?: number;
+  /**
+   * Vo2Max Added
+   */
+  vo2max_added?: number;
+  /**
+   * Vo2Max Skipped
+   */
+  vo2max_skipped?: number;
+};
+
+/**
+ * IngestTokenOut
+ *
+ * POST /settings/ingest-token の返事。平文のトークンはこのときだけ返す。
+ */
+export type IngestTokenOut = {
+  /**
+   * Token
+   */
+  token: string;
+  /**
+   * Last Four
+   */
+  last_four: string;
+};
+
+/**
+ * MetricIn
+ */
+export type MetricIn = {
+  /**
+   * Name
+   */
+  name: string;
+  /**
+   * Data
+   */
+  data?: Array<MetricPoint>;
+};
+
+/**
+ * MetricPoint
+ */
+export type MetricPoint = {
+  /**
+   * Date
+   */
+  date: string;
+  /**
+   * Qty
+   */
+  qty: number;
+  /**
+   * Source
+   */
+  source?: string | null;
+};
+
+/**
+ * Quantity
+ */
+export type Quantity = {
+  /**
+   * Qty
+   */
+  qty: number;
+};
+
+/**
+ * SettingsIn
+ *
+ * PUT /settings の本文。
+ */
+export type SettingsIn = {
+  /**
+   * Max Heart Rate
+   */
+  max_heart_rate?: number | null;
+  /**
+   * Resting Heart Rate
+   */
+  resting_heart_rate?: number | null;
+  /**
+   * Zone Boundary 1
+   */
+  zone_boundary_1?: number | null;
+  /**
+   * Zone Boundary 2
+   */
+  zone_boundary_2?: number | null;
+  /**
+   * Timezone
+   */
+  timezone?: string;
+  /**
+   * Review Weekday
+   */
+  review_weekday?: number;
+  /**
+   * Send Notes To Ai
+   */
+  send_notes_to_ai?: boolean;
+};
+
+/**
+ * SettingsOut
+ *
+ * GET /settings の返事。トークンは末尾 4 文字だけ。未発行なら None。
+ */
+export type SettingsOut = {
+  /**
+   * Max Heart Rate
+   */
+  max_heart_rate?: number | null;
+  /**
+   * Resting Heart Rate
+   */
+  resting_heart_rate?: number | null;
+  /**
+   * Zone Boundary 1
+   */
+  zone_boundary_1?: number | null;
+  /**
+   * Zone Boundary 2
+   */
+  zone_boundary_2?: number | null;
+  /**
+   * Timezone
+   */
+  timezone?: string;
+  /**
+   * Review Weekday
+   */
+  review_weekday?: number;
+  /**
+   * Send Notes To Ai
+   */
+  send_notes_to_ai?: boolean;
+  /**
+   * Ingest Token Last Four
+   */
+  ingest_token_last_four?: string | null;
+};
+
+/**
  * UserOut
  *
  * ログインした本人に返す情報。
@@ -18,6 +259,182 @@ export type UserOut = {
    * Email
    */
   email: string;
+};
+
+/**
+ * ValidationError
+ */
+export type ValidationError = {
+  /**
+   * Location
+   */
+  loc: Array<string | number>;
+  /**
+   * Message
+   */
+  msg: string;
+  /**
+   * Error Type
+   */
+  type: string;
+  /**
+   * Input
+   */
+  input?: unknown;
+  /**
+   * Context
+   */
+  ctx?: {
+    [key: string]: unknown;
+  };
+};
+
+/**
+ * WorkoutDetail
+ */
+export type WorkoutDetail = {
+  /**
+   * Id
+   */
+  id: number;
+  /**
+   * Sport
+   */
+  sport: string;
+  /**
+   * Started At
+   */
+  started_at: string;
+  /**
+   * Ended At
+   */
+  ended_at: string;
+  /**
+   * Duration Sec
+   */
+  duration_sec: number;
+  /**
+   * Avg Heart Rate
+   */
+  avg_heart_rate: number | null;
+  /**
+   * Max Heart Rate
+   */
+  max_heart_rate: number | null;
+  /**
+   * Heart Rates
+   */
+  heart_rates: Array<HeartRateSample>;
+  zones: ZoneSeconds | null;
+};
+
+/**
+ * WorkoutIn
+ */
+export type WorkoutIn = {
+  /**
+   * Id
+   */
+  id: string;
+  /**
+   * Name
+   */
+  name: string;
+  /**
+   * Start
+   */
+  start: string;
+  /**
+   * End
+   */
+  end: string;
+  /**
+   * Duration
+   */
+  duration: number;
+  source: WorkoutSource;
+  avgHeartRate?: Quantity | null;
+  maxHeartRate?: Quantity | null;
+  /**
+   * Heartratedata
+   */
+  heartRateData?: Array<HeartRatePoint>;
+};
+
+/**
+ * WorkoutList
+ */
+export type WorkoutList = {
+  /**
+   * Items
+   */
+  items: Array<WorkoutSummary>;
+};
+
+/**
+ * WorkoutSource
+ */
+export type WorkoutSource = {
+  /**
+   * Name
+   */
+  name: string;
+};
+
+/**
+ * WorkoutSummary
+ *
+ * 一覧の 1 行。
+ */
+export type WorkoutSummary = {
+  /**
+   * Id
+   */
+  id: number;
+  /**
+   * Sport
+   */
+  sport: string;
+  /**
+   * Started At
+   */
+  started_at: string;
+  /**
+   * Ended At
+   */
+  ended_at: string;
+  /**
+   * Duration Sec
+   */
+  duration_sec: number;
+  /**
+   * Avg Heart Rate
+   */
+  avg_heart_rate: number | null;
+  /**
+   * Max Heart Rate
+   */
+  max_heart_rate: number | null;
+};
+
+/**
+ * ZoneSeconds
+ *
+ * 強度ごとの時間（秒）。設定の境目 2 つがそろっているときだけ出す。
+ */
+export type ZoneSeconds = {
+  /**
+   * Low
+   */
+  low: number;
+  /**
+   * Mid
+   */
+  mid: number;
+  /**
+   * High
+   */
+  high: number;
 };
 
 export type LoginAuthLoginPostData = {
@@ -36,6 +453,166 @@ export type LoginAuthLoginPostResponses = {
 
 export type LoginAuthLoginPostResponse =
   LoginAuthLoginPostResponses[keyof LoginAuthLoginPostResponses];
+
+export type ReceiveIngestPostData = {
+  body: IngestPayload;
+  path?: never;
+  query?: never;
+  url: "/ingest";
+};
+
+export type ReceiveIngestPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type ReceiveIngestPostError =
+  ReceiveIngestPostErrors[keyof ReceiveIngestPostErrors];
+
+export type ReceiveIngestPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: IngestResult;
+};
+
+export type ReceiveIngestPostResponse =
+  ReceiveIngestPostResponses[keyof ReceiveIngestPostResponses];
+
+export type ReadSettingsSettingsGetData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/settings";
+};
+
+export type ReadSettingsSettingsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: SettingsOut;
+};
+
+export type ReadSettingsSettingsGetResponse =
+  ReadSettingsSettingsGetResponses[keyof ReadSettingsSettingsGetResponses];
+
+export type UpdateSettingsSettingsPutData = {
+  body: SettingsIn;
+  path?: never;
+  query?: never;
+  url: "/settings";
+};
+
+export type UpdateSettingsSettingsPutErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type UpdateSettingsSettingsPutError =
+  UpdateSettingsSettingsPutErrors[keyof UpdateSettingsSettingsPutErrors];
+
+export type UpdateSettingsSettingsPutResponses = {
+  /**
+   * Successful Response
+   */
+  200: SettingsOut;
+};
+
+export type UpdateSettingsSettingsPutResponse =
+  UpdateSettingsSettingsPutResponses[keyof UpdateSettingsSettingsPutResponses];
+
+export type ReissueIngestTokenSettingsIngestTokenPostData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/settings/ingest-token";
+};
+
+export type ReissueIngestTokenSettingsIngestTokenPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: IngestTokenOut;
+};
+
+export type ReissueIngestTokenSettingsIngestTokenPostResponse =
+  ReissueIngestTokenSettingsIngestTokenPostResponses[keyof ReissueIngestTokenSettingsIngestTokenPostResponses];
+
+export type ReadWorkoutsWorkoutsGetData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Since
+     */
+    since?: string | null;
+    /**
+     * Until
+     */
+    until?: string | null;
+    /**
+     * Limit
+     */
+    limit?: number;
+  };
+  url: "/workouts";
+};
+
+export type ReadWorkoutsWorkoutsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type ReadWorkoutsWorkoutsGetError =
+  ReadWorkoutsWorkoutsGetErrors[keyof ReadWorkoutsWorkoutsGetErrors];
+
+export type ReadWorkoutsWorkoutsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: WorkoutList;
+};
+
+export type ReadWorkoutsWorkoutsGetResponse =
+  ReadWorkoutsWorkoutsGetResponses[keyof ReadWorkoutsWorkoutsGetResponses];
+
+export type ReadWorkoutWorkoutsWorkoutIdGetData = {
+  body?: never;
+  path: {
+    /**
+     * Workout Id
+     */
+    workout_id: number;
+  };
+  query?: never;
+  url: "/workouts/{workout_id}";
+};
+
+export type ReadWorkoutWorkoutsWorkoutIdGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type ReadWorkoutWorkoutsWorkoutIdGetError =
+  ReadWorkoutWorkoutsWorkoutIdGetErrors[keyof ReadWorkoutWorkoutsWorkoutIdGetErrors];
+
+export type ReadWorkoutWorkoutsWorkoutIdGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: WorkoutDetail;
+};
+
+export type ReadWorkoutWorkoutsWorkoutIdGetResponse =
+  ReadWorkoutWorkoutsWorkoutIdGetResponses[keyof ReadWorkoutWorkoutsWorkoutIdGetResponses];
 
 export type HealthHealthGetData = {
   body?: never;

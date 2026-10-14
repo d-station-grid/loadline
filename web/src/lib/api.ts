@@ -1,4 +1,11 @@
-import type { UserOut } from "../api";
+import type {
+  IngestTokenOut,
+  SettingsIn,
+  SettingsOut,
+  UserOut,
+  WorkoutDetail,
+  WorkoutList,
+} from "../api";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "";
 
@@ -26,7 +33,57 @@ async function request<T>(
   return (await res.json()) as T;
 }
 
+function putJson(body: unknown): RequestInit {
+  return {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  };
+}
+
 /** ID トークンで本人を確かめ、初回なら利用者の行を作る。 */
 export function login(idToken: string): Promise<UserOut> {
   return request<UserOut>("/auth/login", { method: "POST" }, idToken);
+}
+
+export function getSettings(idToken: string): Promise<SettingsOut> {
+  return request<SettingsOut>("/settings", { method: "GET" }, idToken);
+}
+
+export function putSettings(
+  body: SettingsIn,
+  idToken: string,
+): Promise<SettingsOut> {
+  return request<SettingsOut>("/settings", putJson(body), idToken);
+}
+
+/** 取り込み用トークンを発行する。平文はこの返事でしか見られない。 */
+export function issueIngestToken(idToken: string): Promise<IngestTokenOut> {
+  return request<IngestTokenOut>(
+    "/settings/ingest-token",
+    { method: "POST" },
+    idToken,
+  );
+}
+
+export type WorkoutQuery = { since?: string; until?: string; limit?: number };
+
+/** 本人のワークアウトを新しい順に。since 以上、until 未満（ISO 8601）。 */
+export function getWorkouts(
+  query: WorkoutQuery,
+  idToken: string,
+): Promise<WorkoutList> {
+  const params = new URLSearchParams();
+  if (query.since) params.set("since", query.since);
+  if (query.until) params.set("until", query.until);
+  if (query.limit) params.set("limit", String(query.limit));
+  const qs = params.size > 0 ? `?${params}` : "";
+  return request<WorkoutList>(`/workouts${qs}`, { method: "GET" }, idToken);
+}
+
+export function getWorkout(
+  id: number,
+  idToken: string,
+): Promise<WorkoutDetail> {
+  return request<WorkoutDetail>(`/workouts/${id}`, { method: "GET" }, idToken);
 }

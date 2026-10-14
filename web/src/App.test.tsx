@@ -15,6 +15,10 @@ const firebaseAuth = vi.hoisted(() => ({
 vi.mock("firebase/auth", () => firebaseAuth);
 vi.mock("./lib/firebase", () => ({ auth: {}, googleProvider: {} }));
 vi.mock("./lib/api", () => ({ login: vi.fn() }));
+// 設定ページは自分のテストで見る。ここではログインの流れだけ
+vi.mock("./pages/SettingsPage", () => ({ default: () => <p>settings</p> }));
+vi.mock("./pages/WorkoutsPage", () => ({ default: () => <p>workouts</p> }));
+vi.mock("./pages/WorkoutPage", () => ({ default: () => <p>workout</p> }));
 
 /** Firebase からの通知を起こす。テストの途中でログインを起こすときにも使う。 */
 let notify: (user: User | null) => void = () => {};

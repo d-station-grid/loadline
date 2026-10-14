@@ -1,0 +1,1701 @@
+{
+  "data": {
+    "workouts": [
+      {
+        "source": {
+          "identifier": "com.apple.health.9B4CCF68-6001-45CF-A6DD-1BF87A946F52",
+          "name": "Apple Watch"
+        },
+        "location": "屋外",
+        "events": [
+          {
+            "type": "pause",
+            "index": 1,
+            "start": "2026-09-13 14:12:06 +0900",
+            "boundaryKind": "point",
+            "typeCode": 1,
+            "end": "2026-09-13 14:12:06 +0900",
+            "boundaryOrigin": "recordedEvent"
+          },
+          {
+            "boundaryOrigin": "recordedEvent",
+            "index": 2,
+            "type": "resume",
+            "start": "2026-09-13 14:12:29 +0900",
+            "boundaryKind": "point",
+            "typeCode": 2,
+            "end": "2026-09-13 14:12:29 +0900"
+          },
+          {
+            "boundaryOrigin": "recordedEvent",
+            "boundaryKind": "point",
+            "typeCode": 1,
+            "start": "2026-09-13 14:20:13 +0900",
+            "index": 3,
+            "type": "pause",
+            "end": "2026-09-13 14:20:13 +0900"
+          },
+          {
+            "start": "2026-09-13 14:20:29 +0900",
+            "boundaryOrigin": "recordedEvent",
+            "type": "resume",
+            "typeCode": 2,
+            "index": 4,
+            "boundaryKind": "point",
+            "end": "2026-09-13 14:20:29 +0900"
+          },
+          {
+            "boundaryOrigin": "recordedEvent",
+            "typeCode": 1,
+            "type": "pause",
+            "end": "2026-09-13 14:21:50 +0900",
+            "index": 5,
+            "boundaryKind": "point",
+            "start": "2026-09-13 14:21:50 +0900"
+          },
+          {
+            "index": 6,
+            "end": "2026-09-13 14:22:08 +0900",
+            "typeCode": 2,
+            "boundaryKind": "point",
+            "start": "2026-09-13 14:22:08 +0900",
+            "type": "resume",
+            "boundaryOrigin": "recordedEvent"
+          },
+          {
+            "type": "pause",
+            "index": 7,
+            "boundaryOrigin": "recordedEvent",
+            "start": "2026-09-13 14:25:02 +0900",
+            "end": "2026-09-13 14:25:02 +0900",
+            "boundaryKind": "point",
+            "typeCode": 1
+          },
+          {
+            "boundaryOrigin": "recordedEvent",
+            "type": "resume",
+            "index": 8,
+            "typeCode": 2,
+            "start": "2026-09-13 14:25:58 +0900",
+            "boundaryKind": "point",
+            "end": "2026-09-13 14:25:58 +0900"
+          },
+          {
+            "index": 9,
+            "type": "pause",
+            "boundaryKind": "point",
+            "end": "2026-09-13 14:58:56 +0900",
+            "boundaryOrigin": "recordedEvent",
+            "typeCode": 1,
+            "start": "2026-09-13 14:58:56 +0900"
+          },
+          {
+            "typeCode": 2,
+            "start": "2026-09-13 14:59:06 +0900",
+            "type": "resume",
+            "end": "2026-09-13 14:59:06 +0900",
+            "index": 10,
+            "boundaryKind": "point",
+            "boundaryOrigin": "recordedEvent"
+          },
+          {
+            "start": "2026-09-13 15:00:25 +0900",
+            "end": "2026-09-13 15:00:25 +0900",
+            "type": "pause",
+            "index": 11,
+            "boundaryKind": "point",
+            "typeCode": 1,
+            "boundaryOrigin": "recordedEvent"
+          },
+          {
+            "type": "resume",
+            "start": "2026-09-13 15:00:53 +0900",
+            "index": 12,
+            "typeCode": 2,
+            "end": "2026-09-13 15:00:53 +0900",
+            "boundaryOrigin": "recordedEvent",
+            "boundaryKind": "point"
+          },
+          {
+            "boundaryKind": "point",
+            "end": "2026-09-13 15:05:01 +0900",
+            "boundaryOrigin": "recordedEvent",
+            "index": 13,
+            "typeCode": 1,
+            "start": "2026-09-13 15:05:01 +0900",
+            "type": "pause"
+          },
+          {
+            "end": "2026-09-13 15:05:24 +0900",
+            "typeCode": 2,
+            "index": 14,
+            "type": "resume",
+            "start": "2026-09-13 15:05:24 +0900",
+            "boundaryOrigin": "recordedEvent",
+            "boundaryKind": "point"
+          },
+          {
+            "type": "pause",
+            "boundaryOrigin": "recordedEvent",
+            "end": "2026-09-13 15:08:23 +0900",
+            "start": "2026-09-13 15:08:23 +0900",
+            "typeCode": 1,
+            "index": 15,
+            "boundaryKind": "point"
+          },
+          {
+            "type": "resume",
+            "typeCode": 2,
+            "end": "2026-09-13 15:08:43 +0900",
+            "index": 16,
+            "start": "2026-09-13 15:08:43 +0900",
+            "boundaryKind": "point",
+            "boundaryOrigin": "recordedEvent"
+          },
+          {
+            "index": 17,
+            "type": "pause",
+            "start": "2026-09-13 15:18:27 +0900",
+            "end": "2026-09-13 15:18:27 +0900",
+            "boundaryKind": "point",
+            "typeCode": 1,
+            "boundaryOrigin": "recordedEvent"
+          },
+          {
+            "boundaryKind": "point",
+            "index": 18,
+            "typeCode": 2,
+            "type": "resume",
+            "end": "2026-09-13 15:18:45 +0900",
+            "start": "2026-09-13 15:18:45 +0900",
+            "boundaryOrigin": "recordedEvent"
+          }
+        ],
+        "activities": [
+          {
+            "metrics": {
+              "heartRateMaximum": {
+                "origin": "activityStatistics",
+                "qty": 174,
+                "units": "bpm"
+              },
+              "heartRateMinimum": {
+                "origin": "activityStatistics",
+                "qty": 100,
+                "units": "bpm"
+              },
+              "activeEnergy": {
+                "origin": "activityStatistics",
+                "units": "kcal",
+                "qty": 456.14588781863245
+              },
+              "heartRateAverage": {
+                "units": "bpm",
+                "qty": 126.37590039068911,
+                "origin": "activityStatistics"
+              }
+            },
+            "start": "2026-09-13 14:10:45 +0900",
+            "elapsedDuration": 4239.972440004349,
+            "activeDuration": 4028.134097337723,
+            "id": "EC706163-46F5-4250-916B-3909437C8064",
+            "activityType": "cycling",
+            "activityTypeCode": 13,
+            "boundaryOrigin": "recordedActivity",
+            "end": "2026-09-13 15:21:25 +0900",
+            "duration": 4028.134097337723,
+            "index": 1,
+            "boundaryKind": "interval",
+            "configuration": {
+              "locationType": "outdoor",
+              "swimmingLocationType": "unknown"
+            }
+          }
+        ],
+        "heartRateRecovery": [
+          {
+            "Min": 116,
+            "Avg": 116,
+            "date": "2026-09-13 15:21:29 +0900",
+            "Max": 116,
+            "units": "count/min"
+          },
+          {
+            "Min": 115,
+            "Avg": 115,
+            "units": "count/min",
+            "date": "2026-09-13 15:21:34 +0900",
+            "Max": 115
+          },
+          {
+            "Max": 115,
+            "Avg": 115,
+            "date": "2026-09-13 15:21:35 +0900",
+            "units": "count/min",
+            "Min": 115
+          },
+          {
+            "Max": 115,
+            "Avg": 115,
+            "units": "count/min",
+            "date": "2026-09-13 15:21:41 +0900",
+            "Min": 115
+          },
+          {
+            "Min": 116,
+            "units": "count/min",
+            "Avg": 116,
+            "date": "2026-09-13 15:21:49 +0900",
+            "Max": 116
+          },
+          {
+            "Avg": 116,
+            "date": "2026-09-13 15:21:53 +0900",
+            "Max": 116,
+            "Min": 116,
+            "units": "count/min"
+          },
+          {
+            "date": "2026-09-13 15:21:58 +0900",
+            "units": "count/min",
+            "Max": 114,
+            "Avg": 114,
+            "Min": 114
+          },
+          {
+            "Min": 111.46153846153847,
+            "units": "count/min",
+            "date": "2026-09-13 15:22:00 +0900",
+            "Avg": 111.46153846153847,
+            "Max": 111.46153846153847
+          },
+          {
+            "Avg": 113,
+            "Min": 113,
+            "date": "2026-09-13 15:22:03 +0900",
+            "units": "count/min",
+            "Max": 113
+          },
+          {
+            "Min": 111,
+            "date": "2026-09-13 15:22:07 +0900",
+            "Avg": 111,
+            "Max": 111,
+            "units": "count/min"
+          },
+          {
+            "Min": 112,
+            "units": "count/min",
+            "Avg": 112,
+            "date": "2026-09-13 15:22:12 +0900",
+            "Max": 112
+          },
+          {
+            "Max": 110,
+            "Min": 110,
+            "date": "2026-09-13 15:22:16 +0900",
+            "units": "count/min",
+            "Avg": 110
+          },
+          {
+            "date": "2026-09-13 15:22:25 +0900",
+            "units": "count/min",
+            "Avg": 110,
+            "Max": 110,
+            "Min": 110
+          },
+          {
+            "Max": 109,
+            "units": "count/min",
+            "Min": 109,
+            "Avg": 109,
+            "date": "2026-09-13 15:22:27 +0900"
+          },
+          {
+            "date": "2026-09-13 15:22:32 +0900",
+            "Min": 111,
+            "units": "count/min",
+            "Avg": 111,
+            "Max": 111
+          },
+          {
+            "units": "count/min",
+            "date": "2026-09-13 15:22:39 +0900",
+            "Avg": 111,
+            "Max": 111,
+            "Min": 111
+          },
+          {
+            "Avg": 111,
+            "date": "2026-09-13 15:22:41 +0900",
+            "Max": 111,
+            "units": "count/min",
+            "Min": 111
+          },
+          {
+            "Min": 112,
+            "date": "2026-09-13 15:22:47 +0900",
+            "Avg": 112,
+            "units": "count/min",
+            "Max": 112
+          },
+          {
+            "Max": 111,
+            "Min": 111,
+            "Avg": 111,
+            "units": "count/min",
+            "date": "2026-09-13 15:22:55 +0900"
+          },
+          {
+            "Avg": 111,
+            "units": "count/min",
+            "Max": 111,
+            "Min": 111,
+            "date": "2026-09-13 15:22:57 +0900"
+          },
+          {
+            "Min": 109.35714285714286,
+            "date": "2026-09-13 15:23:00 +0900",
+            "units": "count/min",
+            "Max": 109.35714285714286,
+            "Avg": 109.35714285714286
+          },
+          {
+            "units": "count/min",
+            "Avg": 115,
+            "date": "2026-09-13 15:23:01 +0900",
+            "Max": 115,
+            "Min": 115
+          },
+          {
+            "Max": 110,
+            "date": "2026-09-13 15:23:09 +0900",
+            "Min": 110,
+            "units": "count/min",
+            "Avg": 110
+          },
+          {
+            "Min": 111,
+            "Avg": 111,
+            "date": "2026-09-13 15:23:11 +0900",
+            "Max": 111,
+            "units": "count/min"
+          },
+          {
+            "date": "2026-09-13 15:23:18 +0900",
+            "units": "count/min",
+            "Min": 108,
+            "Max": 108,
+            "Avg": 108
+          },
+          {
+            "units": "count/min",
+            "Avg": 108,
+            "Min": 108,
+            "date": "2026-09-13 15:23:22 +0900",
+            "Max": 108
+          }
+        ],
+        "name": "屋外 サイクリング",
+        "isIndoor": false,
+        "heartRate": {
+          "avg": {
+            "units": "count/min",
+            "qty": 126.37590039068911
+          },
+          "max": {
+            "qty": 174,
+            "units": "count/min"
+          },
+          "min": {
+            "qty": 100,
+            "units": "count/min"
+          }
+        },
+        "id": "EC706163-46F5-4250-916B-3909437C8064",
+        "activeEnergyBurned": {
+          "qty": 1908.5143946331582,
+          "units": "kJ"
+        },
+        "start": "2026-09-13 14:10:45 +0900",
+        "end": "2026-09-13 15:21:25 +0900",
+        "elevationUp": {
+          "qty": 46.660000000000004,
+          "units": "m"
+        },
+        "metadata": {},
+        "humidity": {
+          "qty": 73,
+          "units": "%"
+        },
+        "temperature": {
+          "qty": 27.047821044919488,
+          "units": "degC"
+        },
+        "intensity": {
+          "units": "kcal/hr·kg",
+          "qty": 7.883109889288889
+        },
+        "maxHeartRate": {
+          "qty": 174,
+          "units": "count/min"
+        },
+        "duration": 4028.134097337723,
+        "heartRateData": [
+          {
+            "Min": 104,
+            "Max": 107,
+            "Avg": 105,
+            "date": "2026-09-13 14:10:00 +0900",
+            "units": "count/min"
+          },
+          {
+            "Avg": 109.01851851851852,
+            "Min": 107,
+            "date": "2026-09-13 14:11:00 +0900",
+            "Max": 111.03703703703704,
+            "units": "count/min"
+          },
+          {
+            "date": "2026-09-13 14:12:00 +0900",
+            "Min": 100,
+            "units": "count/min",
+            "Avg": 108.13017751479289,
+            "Max": 113.6923076923077
+          },
+          {
+            "units": "count/min",
+            "date": "2026-09-13 14:13:00 +0900",
+            "Max": 122.34482758620689,
+            "Min": 101,
+            "Avg": 104.79575596816977
+          },
+          {
+            "Max": 119.2,
+            "date": "2026-09-13 14:14:00 +0900",
+            "Min": 104,
+            "Avg": 107.86153846153846,
+            "units": "count/min"
+          },
+          {
+            "Max": 126,
+            "Min": 104,
+            "Avg": 109.51234567901236,
+            "date": "2026-09-13 14:15:00 +0900",
+            "units": "count/min"
+          },
+          {
+            "Avg": 139.18285714285713,
+            "Min": 114.28,
+            "date": "2026-09-13 14:16:00 +0900",
+            "Max": 151,
+            "units": "count/min"
+          },
+          {
+            "date": "2026-09-13 14:17:00 +0900",
+            "Max": 125,
+            "units": "count/min",
+            "Min": 110,
+            "Avg": 117.65976331360947
+          },
+          {
+            "date": "2026-09-13 14:18:00 +0900",
+            "Min": 107,
+            "Avg": 112.58391608391608,
+            "units": "count/min",
+            "Max": 125.42307692307692
+          },
+          {
+            "Avg": 127.72826086956522,
+            "units": "count/min",
+            "Min": 124,
+            "date": "2026-09-13 14:19:00 +0900",
+            "Max": 131
+          },
+          {
+            "Avg": 118.61538461538461,
+            "Min": 106,
+            "units": "count/min",
+            "date": "2026-09-13 14:20:00 +0900",
+            "Max": 129
+          },
+          {
+            "Avg": 113.47115384615385,
+            "date": "2026-09-13 14:21:00 +0900",
+            "Max": 117.65384615384616,
+            "units": "count/min",
+            "Min": 107
+          },
+          {
+            "Avg": 109.01923076923077,
+            "units": "count/min",
+            "date": "2026-09-13 14:22:00 +0900",
+            "Max": 116.25,
+            "Min": 105
+          },
+          {
+            "Avg": 127.65782493368701,
+            "Max": 132,
+            "units": "count/min",
+            "Min": 119,
+            "date": "2026-09-13 14:23:00 +0900"
+          },
+          {
+            "Min": 131,
+            "Avg": 140.40740740740742,
+            "Max": 152,
+            "units": "count/min",
+            "date": "2026-09-13 14:24:00 +0900"
+          },
+          {
+            "Avg": 119,
+            "units": "count/min",
+            "Min": 112,
+            "Max": 131,
+            "date": "2026-09-13 14:25:00 +0900"
+          },
+          {
+            "units": "count/min",
+            "Min": 112,
+            "date": "2026-09-13 14:26:00 +0900",
+            "Avg": 114.32967032967032,
+            "Max": 118
+          },
+          {
+            "date": "2026-09-13 14:27:00 +0900",
+            "units": "count/min",
+            "Min": 111,
+            "Max": 121,
+            "Avg": 115.52923076923078
+          },
+          {
+            "Min": 120,
+            "Avg": 125.83136094674556,
+            "units": "count/min",
+            "date": "2026-09-13 14:28:00 +0900",
+            "Max": 133
+          },
+          {
+            "Max": 137,
+            "Min": 126,
+            "units": "count/min",
+            "Avg": 131.85576923076923,
+            "date": "2026-09-13 14:29:00 +0900"
+          },
+          {
+            "Max": 131,
+            "units": "count/min",
+            "Min": 129,
+            "Avg": 130.33846153846156,
+            "date": "2026-09-13 14:30:00 +0900"
+          },
+          {
+            "Max": 132,
+            "Avg": 130.9145299145299,
+            "units": "count/min",
+            "Min": 129.88888888888889,
+            "date": "2026-09-13 14:31:00 +0900"
+          },
+          {
+            "units": "count/min",
+            "Min": 127,
+            "date": "2026-09-13 14:32:00 +0900",
+            "Max": 133,
+            "Avg": 129.9446153846154
+          },
+          {
+            "Min": 123,
+            "Avg": 127.0997150997151,
+            "date": "2026-09-13 14:33:00 +0900",
+            "Max": 133,
+            "units": "count/min"
+          },
+          {
+            "units": "count/min",
+            "Min": 133,
+            "Max": 139,
+            "Avg": 135.6346153846154,
+            "date": "2026-09-13 14:34:00 +0900"
+          },
+          {
+            "Avg": 147.69230769230768,
+            "Max": 155,
+            "units": "count/min",
+            "Min": 142,
+            "date": "2026-09-13 14:35:00 +0900"
+          },
+          {
+            "date": "2026-09-13 14:36:00 +0900",
+            "Min": 139,
+            "Avg": 143.45562130177515,
+            "units": "count/min",
+            "Max": 159
+          },
+          {
+            "Max": 174,
+            "Avg": 167.6614420062696,
+            "date": "2026-09-13 14:37:00 +0900",
+            "units": "count/min",
+            "Min": 160
+          },
+          {
+            "Min": 147,
+            "Max": 157,
+            "Avg": 149.75147928994082,
+            "units": "count/min",
+            "date": "2026-09-13 14:38:00 +0900"
+          },
+          {
+            "units": "count/min",
+            "date": "2026-09-13 14:39:00 +0900",
+            "Min": 134,
+            "Avg": 137.30461538461537,
+            "Max": 144
+          },
+          {
+            "date": "2026-09-13 14:40:00 +0900",
+            "Avg": 132.51923076923077,
+            "Max": 134,
+            "units": "count/min",
+            "Min": 131
+          },
+          {
+            "Min": 123,
+            "date": "2026-09-13 14:41:00 +0900",
+            "Avg": 128.8227424749164,
+            "units": "count/min",
+            "Max": 134
+          },
+          {
+            "date": "2026-09-13 14:42:00 +0900",
+            "Avg": 127.88757396449704,
+            "units": "count/min",
+            "Min": 123,
+            "Max": 134
+          },
+          {
+            "Avg": 129.19230769230768,
+            "Max": 133,
+            "units": "count/min",
+            "Min": 126,
+            "date": "2026-09-13 14:43:00 +0900"
+          },
+          {
+            "Min": 122,
+            "date": "2026-09-13 14:44:00 +0900",
+            "Max": 131,
+            "Avg": 124.53276353276352,
+            "units": "count/min"
+          },
+          {
+            "date": "2026-09-13 14:45:00 +0900",
+            "Min": 124,
+            "Max": 131,
+            "Avg": 128.71076923076924,
+            "units": "count/min"
+          },
+          {
+            "units": "count/min",
+            "Max": 131,
+            "date": "2026-09-13 14:46:00 +0900",
+            "Min": 124,
+            "Avg": 126.93910256410255
+          },
+          {
+            "Avg": 130.01672240802674,
+            "Min": 125,
+            "units": "count/min",
+            "date": "2026-09-13 14:47:00 +0900",
+            "Max": 133
+          },
+          {
+            "units": "count/min",
+            "Min": 127,
+            "Max": 132,
+            "date": "2026-09-13 14:48:00 +0900",
+            "Avg": 128.92603550295857
+          },
+          {
+            "Max": 133,
+            "units": "count/min",
+            "Min": 128,
+            "Avg": 130.32692307692307,
+            "date": "2026-09-13 14:49:00 +0900"
+          },
+          {
+            "Max": 137,
+            "units": "count/min",
+            "Min": 126,
+            "Avg": 130.84615384615384,
+            "date": "2026-09-13 14:50:00 +0900"
+          },
+          {
+            "Max": 133,
+            "date": "2026-09-13 14:51:00 +0900",
+            "Min": 125,
+            "Avg": 129.42899408284023,
+            "units": "count/min"
+          },
+          {
+            "Max": 136,
+            "Min": 126,
+            "Avg": 127.62130177514793,
+            "date": "2026-09-13 14:52:00 +0900",
+            "units": "count/min"
+          },
+          {
+            "Min": 130,
+            "date": "2026-09-13 14:53:00 +0900",
+            "Max": 136,
+            "Avg": 131.89297658862876,
+            "units": "count/min"
+          },
+          {
+            "Max": 130,
+            "units": "count/min",
+            "Min": 122,
+            "Avg": 124.57538461538462,
+            "date": "2026-09-13 14:54:00 +0900"
+          },
+          {
+            "Min": 121,
+            "date": "2026-09-13 14:55:00 +0900",
+            "units": "count/min",
+            "Max": 125,
+            "Avg": 123.22781065088758
+          },
+          {
+            "units": "count/min",
+            "Min": 120,
+            "Max": 129,
+            "date": "2026-09-13 14:56:00 +0900",
+            "Avg": 123.39130434782608
+          },
+          {
+            "Min": 124,
+            "Avg": 126.60615384615386,
+            "Max": 129,
+            "units": "count/min",
+            "date": "2026-09-13 14:57:00 +0900"
+          },
+          {
+            "Avg": 126.05325443786981,
+            "Max": 130,
+            "date": "2026-09-13 14:58:00 +0900",
+            "Min": 123,
+            "units": "count/min"
+          },
+          {
+            "Min": 123,
+            "date": "2026-09-13 14:59:00 +0900",
+            "Avg": 126.04142011834318,
+            "units": "count/min",
+            "Max": 131
+          },
+          {
+            "date": "2026-09-13 15:00:00 +0900",
+            "Min": 119,
+            "Max": 135,
+            "Avg": 127.26602564102564,
+            "units": "count/min"
+          },
+          {
+            "Min": 119,
+            "Avg": 121.92615384615384,
+            "Max": 128,
+            "date": "2026-09-13 15:01:00 +0900",
+            "units": "count/min"
+          },
+          {
+            "Max": 132,
+            "Avg": 129.70118343195267,
+            "units": "count/min",
+            "Min": 128,
+            "date": "2026-09-13 15:02:00 +0900"
+          },
+          {
+            "Min": 132.33333333333334,
+            "Avg": 135.03030303030303,
+            "Max": 136,
+            "units": "count/min",
+            "date": "2026-09-13 15:03:00 +0900"
+          },
+          {
+            "Avg": 124.87692307692308,
+            "Max": 134,
+            "date": "2026-09-13 15:04:00 +0900",
+            "units": "count/min",
+            "Min": 116
+          },
+          {
+            "Min": 114,
+            "Avg": 117.45879120879121,
+            "units": "count/min",
+            "date": "2026-09-13 15:05:00 +0900",
+            "Max": 122
+          },
+          {
+            "Max": 132,
+            "Avg": 126.27884615384616,
+            "date": "2026-09-13 15:06:00 +0900",
+            "Min": 121,
+            "units": "count/min"
+          },
+          {
+            "units": "count/min",
+            "Avg": 122.22461538461539,
+            "Min": 117,
+            "date": "2026-09-13 15:07:00 +0900",
+            "Max": 130
+          },
+          {
+            "units": "count/min",
+            "Min": 118,
+            "Max": 126,
+            "date": "2026-09-13 15:08:00 +0900",
+            "Avg": 122.1490909090909
+          },
+          {
+            "units": "count/min",
+            "date": "2026-09-13 15:09:00 +0900",
+            "Min": 110,
+            "Avg": 114.66381766381765,
+            "Max": 120
+          },
+          {
+            "units": "count/min",
+            "Min": 115,
+            "date": "2026-09-13 15:10:00 +0900",
+            "Max": 122,
+            "Avg": 118.92948717948717
+          },
+          {
+            "Min": 116,
+            "Avg": 125.82336182336182,
+            "date": "2026-09-13 15:11:00 +0900",
+            "Max": 133,
+            "units": "count/min"
+          },
+          {
+            "Max": 129,
+            "Min": 111,
+            "units": "count/min",
+            "Avg": 117.95156695156696,
+            "date": "2026-09-13 15:12:00 +0900"
+          },
+          {
+            "Min": 123,
+            "units": "count/min",
+            "date": "2026-09-13 15:13:00 +0900",
+            "Avg": 124.6276923076923,
+            "Max": 128
+          },
+          {
+            "date": "2026-09-13 15:14:00 +0900",
+            "Min": 118,
+            "Avg": 122.40740740740742,
+            "Max": 125,
+            "units": "count/min"
+          },
+          {
+            "Min": 116,
+            "date": "2026-09-13 15:15:00 +0900",
+            "Max": 121,
+            "Avg": 118.52991452991454,
+            "units": "count/min"
+          },
+          {
+            "Min": 119,
+            "Avg": 126.00615384615384,
+            "date": "2026-09-13 15:16:00 +0900",
+            "Max": 135,
+            "units": "count/min"
+          },
+          {
+            "Max": 136,
+            "Min": 129,
+            "date": "2026-09-13 15:17:00 +0900",
+            "units": "count/min",
+            "Avg": 134.2022792022792
+          },
+          {
+            "Max": 128,
+            "Min": 118,
+            "units": "count/min",
+            "date": "2026-09-13 15:18:00 +0900",
+            "Avg": 123.3076923076923
+          },
+          {
+            "Avg": 132.77718832891247,
+            "Min": 126,
+            "date": "2026-09-13 15:19:00 +0900",
+            "units": "count/min",
+            "Max": 141
+          },
+          {
+            "Max": 138,
+            "Avg": 131.04713804713805,
+            "units": "count/min",
+            "Min": 126.51851851851852,
+            "date": "2026-09-13 15:20:00 +0900"
+          },
+          {
+            "Avg": 125.00666666666666,
+            "Max": 129,
+            "units": "count/min",
+            "date": "2026-09-13 15:21:00 +0900",
+            "Min": 116.04
+          }
+        ],
+        "avgHeartRate": {
+          "units": "count/min",
+          "qty": 126.37590039068911
+        }
+      },
+      {
+        "maxHeartRate": {
+          "units": "count/min",
+          "qty": 174
+        },
+        "id": "41B25C29-C3F7-47D1-8787-7F9E61413A28",
+        "metadata": {},
+        "duration": 4164,
+        "name": "サイクリング",
+        "start": "2026-09-13 14:10:44 +0900",
+        "end": "2026-09-13 15:20:08 +0900",
+        "activeEnergyBurned": {
+          "units": "kJ",
+          "qty": 1732.176
+        },
+        "avgHeartRate": {
+          "qty": 125.83367833793423,
+          "units": "count/min"
+        },
+        "activities": [
+          {
+            "index": 1,
+            "duration": 4164,
+            "boundaryKind": "interval",
+            "configuration": {
+              "swimmingLocationType": "unknown",
+              "locationType": "outdoor"
+            },
+            "start": "2026-09-13 14:10:44 +0900",
+            "end": "2026-09-13 15:20:08 +0900",
+            "activityTypeCode": 13,
+            "boundaryOrigin": "recordedActivity",
+            "elapsedDuration": 4164,
+            "id": "41B25C29-C3F7-47D1-8787-7F9E61413A28",
+            "activeDuration": 4164,
+            "activityType": "cycling",
+            "metrics": {
+              "heartRateMaximum": {
+                "qty": 174,
+                "units": "bpm",
+                "origin": "sampleSummary",
+                "sampleCount": 864
+              },
+              "heartRateMinimum": {
+                "sampleCount": 864,
+                "units": "bpm",
+                "qty": 100,
+                "origin": "sampleSummary"
+              },
+              "heartRateAverage": {
+                "units": "bpm",
+                "origin": "sampleSummary",
+                "qty": 126.0538344413481,
+                "sampleCount": 864
+              },
+              "activeEnergy": {
+                "units": "kcal",
+                "qty": 414,
+                "origin": "activityStatistics"
+              }
+            }
+          }
+        ],
+        "source": {
+          "name": "Google Health",
+          "identifier": "com.fitbit.FitbitMobile"
+        },
+        "heartRate": {
+          "avg": {
+            "qty": 125.83367833793423,
+            "units": "count/min"
+          },
+          "min": {
+            "units": "count/min",
+            "qty": 100
+          },
+          "max": {
+            "qty": 174,
+            "units": "count/min"
+          }
+        },
+        "heartRateRecovery": [
+          {
+            "Min": 131,
+            "Avg": 131,
+            "Max": 131,
+            "date": "2026-09-13 15:20:20 +0900",
+            "units": "count/min"
+          },
+          {
+            "Avg": 130,
+            "units": "count/min",
+            "date": "2026-09-13 15:20:25 +0900",
+            "Max": 130,
+            "Min": 130
+          },
+          {
+            "Avg": 132,
+            "Min": 132,
+            "Max": 132,
+            "units": "count/min",
+            "date": "2026-09-13 15:20:34 +0900"
+          },
+          {
+            "Avg": 131,
+            "Max": 131,
+            "Min": 131,
+            "units": "count/min",
+            "date": "2026-09-13 15:20:35 +0900"
+          },
+          {
+            "units": "count/min",
+            "date": "2026-09-13 15:20:40 +0900",
+            "Max": 130,
+            "Avg": 130,
+            "Min": 130
+          },
+          {
+            "units": "count/min",
+            "Min": 130,
+            "Avg": 130,
+            "date": "2026-09-13 15:20:48 +0900",
+            "Max": 130
+          },
+          {
+            "Max": 129,
+            "units": "count/min",
+            "date": "2026-09-13 15:20:54 +0900",
+            "Avg": 129,
+            "Min": 129
+          },
+          {
+            "Max": 128,
+            "Min": 128,
+            "Avg": 128,
+            "date": "2026-09-13 15:20:56 +0900",
+            "units": "count/min"
+          },
+          {
+            "date": "2026-09-13 15:21:00 +0900",
+            "units": "count/min",
+            "Avg": 122.52000000000001,
+            "Min": 116.04,
+            "Max": 129
+          },
+          {
+            "Min": 129,
+            "Max": 129,
+            "units": "count/min",
+            "date": "2026-09-13 15:21:08 +0900",
+            "Avg": 129
+          },
+          {
+            "Avg": 129,
+            "date": "2026-09-13 15:21:13 +0900",
+            "Min": 129,
+            "Max": 129,
+            "units": "count/min"
+          },
+          {
+            "units": "count/min",
+            "Avg": 127,
+            "date": "2026-09-13 15:21:18 +0900",
+            "Min": 127,
+            "Max": 127
+          },
+          {
+            "Min": 120,
+            "date": "2026-09-13 15:21:24 +0900",
+            "Avg": 120,
+            "Max": 120,
+            "units": "count/min"
+          },
+          {
+            "Avg": 116,
+            "Max": 116,
+            "Min": 116,
+            "date": "2026-09-13 15:21:29 +0900",
+            "units": "count/min"
+          },
+          {
+            "Min": 115,
+            "Avg": 115,
+            "date": "2026-09-13 15:21:34 +0900",
+            "Max": 115,
+            "units": "count/min"
+          },
+          {
+            "Min": 115,
+            "date": "2026-09-13 15:21:35 +0900",
+            "units": "count/min",
+            "Avg": 115,
+            "Max": 115
+          },
+          {
+            "units": "count/min",
+            "Max": 115,
+            "Min": 115,
+            "Avg": 115,
+            "date": "2026-09-13 15:21:41 +0900"
+          },
+          {
+            "date": "2026-09-13 15:21:49 +0900",
+            "Avg": 116,
+            "Min": 116,
+            "Max": 116,
+            "units": "count/min"
+          },
+          {
+            "date": "2026-09-13 15:21:53 +0900",
+            "Min": 116,
+            "Avg": 116,
+            "Max": 116,
+            "units": "count/min"
+          },
+          {
+            "date": "2026-09-13 15:21:58 +0900",
+            "Min": 114,
+            "Avg": 114,
+            "Max": 114,
+            "units": "count/min"
+          },
+          {
+            "Avg": 111.46153846153847,
+            "Max": 111.46153846153847,
+            "Min": 111.46153846153847,
+            "date": "2026-09-13 15:22:00 +0900",
+            "units": "count/min"
+          },
+          {
+            "Max": 113,
+            "date": "2026-09-13 15:22:03 +0900",
+            "Avg": 113,
+            "units": "count/min",
+            "Min": 113
+          },
+          {
+            "Avg": 111,
+            "Min": 111,
+            "Max": 111,
+            "date": "2026-09-13 15:22:07 +0900",
+            "units": "count/min"
+          }
+        ],
+        "heartRateData": [
+          {
+            "Max": 107,
+            "units": "count/min",
+            "date": "2026-09-13 14:10:00 +0900",
+            "Avg": 105,
+            "Min": 104
+          },
+          {
+            "Min": 107,
+            "Avg": 109.01851851851852,
+            "Max": 111.03703703703704,
+            "units": "count/min",
+            "date": "2026-09-13 14:11:00 +0900"
+          },
+          {
+            "Max": 113.6923076923077,
+            "Avg": 108.13017751479289,
+            "date": "2026-09-13 14:12:00 +0900",
+            "Min": 100,
+            "units": "count/min"
+          },
+          {
+            "Min": 101,
+            "Avg": 104.79575596816977,
+            "Max": 122.34482758620689,
+            "date": "2026-09-13 14:13:00 +0900",
+            "units": "count/min"
+          },
+          {
+            "date": "2026-09-13 14:14:00 +0900",
+            "units": "count/min",
+            "Min": 104,
+            "Avg": 107.86153846153846,
+            "Max": 119.2
+          },
+          {
+            "Avg": 109.51234567901236,
+            "Max": 126,
+            "Min": 104,
+            "date": "2026-09-13 14:15:00 +0900",
+            "units": "count/min"
+          },
+          {
+            "units": "count/min",
+            "date": "2026-09-13 14:16:00 +0900",
+            "Avg": 139.18285714285713,
+            "Max": 151,
+            "Min": 114.28
+          },
+          {
+            "Max": 125,
+            "Avg": 117.65976331360947,
+            "Min": 110,
+            "date": "2026-09-13 14:17:00 +0900",
+            "units": "count/min"
+          },
+          {
+            "Min": 107,
+            "date": "2026-09-13 14:18:00 +0900",
+            "Avg": 112.58391608391608,
+            "Max": 125.42307692307692,
+            "units": "count/min"
+          },
+          {
+            "Avg": 127.72826086956522,
+            "Min": 124,
+            "units": "count/min",
+            "date": "2026-09-13 14:19:00 +0900",
+            "Max": 131
+          },
+          {
+            "units": "count/min",
+            "Max": 129,
+            "Min": 106,
+            "date": "2026-09-13 14:20:00 +0900",
+            "Avg": 118.61538461538461
+          },
+          {
+            "units": "count/min",
+            "Min": 107,
+            "Max": 117.65384615384616,
+            "date": "2026-09-13 14:21:00 +0900",
+            "Avg": 113.47115384615385
+          },
+          {
+            "units": "count/min",
+            "Max": 116.25,
+            "Min": 105,
+            "date": "2026-09-13 14:22:00 +0900",
+            "Avg": 109.01923076923077
+          },
+          {
+            "Avg": 127.65782493368701,
+            "date": "2026-09-13 14:23:00 +0900",
+            "Min": 119,
+            "Max": 132,
+            "units": "count/min"
+          },
+          {
+            "Max": 152,
+            "Min": 131,
+            "date": "2026-09-13 14:24:00 +0900",
+            "units": "count/min",
+            "Avg": 140.40740740740742
+          },
+          {
+            "date": "2026-09-13 14:25:00 +0900",
+            "Min": 112,
+            "Avg": 119,
+            "Max": 131,
+            "units": "count/min"
+          },
+          {
+            "Avg": 114.32967032967032,
+            "date": "2026-09-13 14:26:00 +0900",
+            "Max": 118,
+            "Min": 112,
+            "units": "count/min"
+          },
+          {
+            "date": "2026-09-13 14:27:00 +0900",
+            "units": "count/min",
+            "Avg": 115.52923076923078,
+            "Max": 121,
+            "Min": 111
+          },
+          {
+            "units": "count/min",
+            "Avg": 125.83136094674556,
+            "date": "2026-09-13 14:28:00 +0900",
+            "Min": 120,
+            "Max": 133
+          },
+          {
+            "units": "count/min",
+            "date": "2026-09-13 14:29:00 +0900",
+            "Max": 137,
+            "Avg": 131.85576923076923,
+            "Min": 126
+          },
+          {
+            "date": "2026-09-13 14:30:00 +0900",
+            "Avg": 130.33846153846156,
+            "Min": 129,
+            "Max": 131,
+            "units": "count/min"
+          },
+          {
+            "Min": 129.88888888888889,
+            "date": "2026-09-13 14:31:00 +0900",
+            "Avg": 130.9145299145299,
+            "Max": 132,
+            "units": "count/min"
+          },
+          {
+            "date": "2026-09-13 14:32:00 +0900",
+            "units": "count/min",
+            "Min": 127,
+            "Max": 133,
+            "Avg": 129.9446153846154
+          },
+          {
+            "date": "2026-09-13 14:33:00 +0900",
+            "Avg": 127.0997150997151,
+            "units": "count/min",
+            "Max": 133,
+            "Min": 123
+          },
+          {
+            "Min": 133,
+            "Avg": 135.6346153846154,
+            "Max": 139,
+            "date": "2026-09-13 14:34:00 +0900",
+            "units": "count/min"
+          },
+          {
+            "Avg": 147.69230769230768,
+            "Max": 155,
+            "units": "count/min",
+            "date": "2026-09-13 14:35:00 +0900",
+            "Min": 142
+          },
+          {
+            "Min": 139,
+            "Avg": 143.45562130177515,
+            "date": "2026-09-13 14:36:00 +0900",
+            "Max": 159,
+            "units": "count/min"
+          },
+          {
+            "date": "2026-09-13 14:37:00 +0900",
+            "units": "count/min",
+            "Min": 160,
+            "Max": 174,
+            "Avg": 167.6614420062696
+          },
+          {
+            "Min": 147,
+            "Avg": 149.75147928994082,
+            "units": "count/min",
+            "Max": 157,
+            "date": "2026-09-13 14:38:00 +0900"
+          },
+          {
+            "Max": 144,
+            "units": "count/min",
+            "Avg": 137.30461538461537,
+            "Min": 134,
+            "date": "2026-09-13 14:39:00 +0900"
+          },
+          {
+            "Avg": 132.51923076923077,
+            "units": "count/min",
+            "Min": 131,
+            "date": "2026-09-13 14:40:00 +0900",
+            "Max": 134
+          },
+          {
+            "date": "2026-09-13 14:41:00 +0900",
+            "Min": 123,
+            "Avg": 128.8227424749164,
+            "units": "count/min",
+            "Max": 134
+          },
+          {
+            "Avg": 127.88757396449704,
+            "Max": 134,
+            "Min": 123,
+            "units": "count/min",
+            "date": "2026-09-13 14:42:00 +0900"
+          },
+          {
+            "Avg": 129.19230769230768,
+            "Max": 133,
+            "units": "count/min",
+            "date": "2026-09-13 14:43:00 +0900",
+            "Min": 126
+          },
+          {
+            "date": "2026-09-13 14:44:00 +0900",
+            "Max": 131,
+            "Avg": 124.53276353276352,
+            "Min": 122,
+            "units": "count/min"
+          },
+          {
+            "Min": 124,
+            "date": "2026-09-13 14:45:00 +0900",
+            "Max": 131,
+            "Avg": 128.71076923076924,
+            "units": "count/min"
+          },
+          {
+            "Min": 124,
+            "Avg": 126.93910256410255,
+            "Max": 131,
+            "units": "count/min",
+            "date": "2026-09-13 14:46:00 +0900"
+          },
+          {
+            "Avg": 130.01672240802674,
+            "date": "2026-09-13 14:47:00 +0900",
+            "Min": 125,
+            "units": "count/min",
+            "Max": 133
+          },
+          {
+            "units": "count/min",
+            "date": "2026-09-13 14:48:00 +0900",
+            "Max": 132,
+            "Avg": 128.92603550295857,
+            "Min": 127
+          },
+          {
+            "units": "count/min",
+            "Min": 128,
+            "date": "2026-09-13 14:49:00 +0900",
+            "Avg": 130.32692307692307,
+            "Max": 133
+          },
+          {
+            "Min": 126,
+            "Avg": 130.84615384615384,
+            "units": "count/min",
+            "Max": 137,
+            "date": "2026-09-13 14:50:00 +0900"
+          },
+          {
+            "Avg": 129.42899408284023,
+            "date": "2026-09-13 14:51:00 +0900",
+            "units": "count/min",
+            "Min": 125,
+            "Max": 133
+          },
+          {
+            "Avg": 127.62130177514793,
+            "Min": 126,
+            "Max": 136,
+            "units": "count/min",
+            "date": "2026-09-13 14:52:00 +0900"
+          },
+          {
+            "Min": 130,
+            "units": "count/min",
+            "Avg": 131.89297658862876,
+            "date": "2026-09-13 14:53:00 +0900",
+            "Max": 136
+          },
+          {
+            "units": "count/min",
+            "date": "2026-09-13 14:54:00 +0900",
+            "Max": 130,
+            "Min": 122,
+            "Avg": 124.57538461538462
+          },
+          {
+            "date": "2026-09-13 14:55:00 +0900",
+            "Min": 121,
+            "Max": 125,
+            "units": "count/min",
+            "Avg": 123.22781065088758
+          },
+          {
+            "Min": 120,
+            "units": "count/min",
+            "Avg": 123.39130434782608,
+            "date": "2026-09-13 14:56:00 +0900",
+            "Max": 129
+          },
+          {
+            "units": "count/min",
+            "Min": 124,
+            "date": "2026-09-13 14:57:00 +0900",
+            "Avg": 126.60615384615386,
+            "Max": 129
+          },
+          {
+            "Min": 123,
+            "date": "2026-09-13 14:58:00 +0900",
+            "Max": 130,
+            "units": "count/min",
+            "Avg": 126.05325443786981
+          },
+          {
+            "Min": 123,
+            "Max": 131,
+            "units": "count/min",
+            "date": "2026-09-13 14:59:00 +0900",
+            "Avg": 126.04142011834318
+          },
+          {
+            "units": "count/min",
+            "Avg": 127.26602564102564,
+            "Max": 135,
+            "date": "2026-09-13 15:00:00 +0900",
+            "Min": 119
+          },
+          {
+            "date": "2026-09-13 15:01:00 +0900",
+            "Max": 128,
+            "Avg": 121.92615384615384,
+            "units": "count/min",
+            "Min": 119
+          },
+          {
+            "Min": 128,
+            "Max": 132,
+            "units": "count/min",
+            "date": "2026-09-13 15:02:00 +0900",
+            "Avg": 129.70118343195267
+          },
+          {
+            "Avg": 135.03030303030303,
+            "Min": 132.33333333333334,
+            "units": "count/min",
+            "Max": 136,
+            "date": "2026-09-13 15:03:00 +0900"
+          },
+          {
+            "Min": 116,
+            "Max": 134,
+            "date": "2026-09-13 15:04:00 +0900",
+            "Avg": 124.87692307692308,
+            "units": "count/min"
+          },
+          {
+            "units": "count/min",
+            "Avg": 117.45879120879121,
+            "Min": 114,
+            "date": "2026-09-13 15:05:00 +0900",
+            "Max": 122
+          },
+          {
+            "Avg": 126.27884615384616,
+            "Max": 132,
+            "date": "2026-09-13 15:06:00 +0900",
+            "units": "count/min",
+            "Min": 121
+          },
+          {
+            "date": "2026-09-13 15:07:00 +0900",
+            "Avg": 122.22461538461539,
+            "units": "count/min",
+            "Max": 130,
+            "Min": 117
+          },
+          {
+            "Min": 118,
+            "Max": 126,
+            "units": "count/min",
+            "date": "2026-09-13 15:08:00 +0900",
+            "Avg": 122.1490909090909
+          },
+          {
+            "Avg": 114.66381766381765,
+            "units": "count/min",
+            "Max": 120,
+            "date": "2026-09-13 15:09:00 +0900",
+            "Min": 110
+          },
+          {
+            "Min": 115,
+            "units": "count/min",
+            "Avg": 118.92948717948717,
+            "date": "2026-09-13 15:10:00 +0900",
+            "Max": 122
+          },
+          {
+            "date": "2026-09-13 15:11:00 +0900",
+            "Avg": 125.82336182336182,
+            "Min": 116,
+            "units": "count/min",
+            "Max": 133
+          },
+          {
+            "Max": 129,
+            "Avg": 117.95156695156696,
+            "units": "count/min",
+            "Min": 111,
+            "date": "2026-09-13 15:12:00 +0900"
+          },
+          {
+            "Max": 128,
+            "units": "count/min",
+            "Min": 123,
+            "Avg": 124.6276923076923,
+            "date": "2026-09-13 15:13:00 +0900"
+          },
+          {
+            "date": "2026-09-13 15:14:00 +0900",
+            "Avg": 122.40740740740742,
+            "units": "count/min",
+            "Min": 118,
+            "Max": 125
+          },
+          {
+            "Max": 121,
+            "units": "count/min",
+            "date": "2026-09-13 15:15:00 +0900",
+            "Min": 116,
+            "Avg": 118.52991452991454
+          },
+          {
+            "Min": 119,
+            "Avg": 126.00615384615384,
+            "date": "2026-09-13 15:16:00 +0900",
+            "Max": 135,
+            "units": "count/min"
+          },
+          {
+            "date": "2026-09-13 15:17:00 +0900",
+            "Avg": 134.2022792022792,
+            "Min": 129,
+            "Max": 136,
+            "units": "count/min"
+          },
+          {
+            "Avg": 123.3076923076923,
+            "Min": 118,
+            "Max": 128,
+            "units": "count/min",
+            "date": "2026-09-13 15:18:00 +0900"
+          },
+          {
+            "Max": 141,
+            "Avg": 132.77718832891247,
+            "units": "count/min",
+            "Min": 126,
+            "date": "2026-09-13 15:19:00 +0900"
+          },
+          {
+            "Avg": 133.50617283950618,
+            "units": "count/min",
+            "Min": 126.51851851851852,
+            "date": "2026-09-13 15:20:00 +0900",
+            "Max": 138
+          }
+        ]
+      }
+    ]
+  }
+}
