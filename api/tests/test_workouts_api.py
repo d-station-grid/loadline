@@ -9,10 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import Identity, InvalidTokenError, get_token_verifier
 from app.main import app
-from app.models import User, Workout, WorkoutHeartRate
+from app.models import User, Workout
 from app.schemas.ingest import IngestPayload
 from app.services.ingest import ingest
-from app.services.workouts import zone_seconds
 
 HEADERS = {"Authorization": "Bearer good"}
 SAMPLE = Path(__file__).parent / "fixtures" / "sample_health-auto-export_workouts-v2.json"
@@ -39,24 +38,6 @@ async def _user_with_sample(session: AsyncSession, uid: str = "uid-1") -> User:
     await session.flush()
     await ingest(session, user.id, IngestPayload.model_validate(json.loads(SAMPLE.read_text())))
     return user
-
-
-def _hr(avg: int) -> WorkoutHeartRate:
-    return WorkoutHeartRate(workout_id=0, recorded_at=None, min_bpm=avg, avg_bpm=avg, max_bpm=avg)
-
-
-def test_zone_seconds_splits_by_boundaries() -> None:
-    samples = [_hr(100), _hr(129), _hr(130), _hr(154), _hr(155), _hr(170)]
-
-    zones = zone_seconds(samples, 130, 155)
-
-    assert zones is not None
-    assert (zones.low, zones.mid, zones.high) == (120, 120, 120)
-
-
-def test_zone_seconds_is_none_without_boundaries() -> None:
-    assert zone_seconds([_hr(100)], None, 155) is None
-    assert zone_seconds([_hr(100)], 130, None) is None
 
 
 async def test_list_returns_own_workouts_newest_first(
@@ -100,8 +81,8 @@ async def test_detail_has_heart_rates_and_zones(client: AsyncClient, session: As
     body = res.json()
     assert len(body["heart_rates"]) == 72
     assert body["heart_rates"][0]["avg_bpm"] == 105
-    zones = body["zones"]
-    assert zones["low"] + zones["mid"] + zones["high"] == 72 * 60
+    # 強度ごとの時間の合計は、1 サンプル 60 秒の 4320 秒ではなく duration の 4028 秒
+    assert body["zones"] == {"low": 2797, "mid": 1175, "high": 56}
 
 
 async def test_detail_zones_are_null_without_boundaries(
