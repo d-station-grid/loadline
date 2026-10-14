@@ -58,6 +58,52 @@ test("既定は直近 4 週で、期間を変えると読み直す", async () =>
   );
 });
 
+/** id と started_at だけ変えた ride を n 件。新しい順に並べる。 */
+function rides(n: number, from = 0): WorkoutSummary[] {
+  return Array.from({ length: n }, (_, i) => {
+    const day = String(28 - ((from + i) % 28)).padStart(2, "0");
+    const month = String(9 - Math.floor((from + i) / 28)).padStart(2, "0");
+    return {
+      ...ride,
+      id: 1000 - from - i,
+      started_at: `2026-${month}-${day}T05:10:45+00:00`,
+    };
+  });
+}
+
+test("100 件返ってきたら Load more を出し、押すと一番古い記録より前を足す", async () => {
+  const firstPage = rides(100);
+  const secondPage = rides(3, 100);
+  vi.mocked(getWorkouts)
+    .mockResolvedValueOnce({ items: firstPage })
+    .mockResolvedValueOnce({ items: secondPage });
+  render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
+
+  const more = await screen.findByRole("button", { name: "Load more" });
+  expect(screen.getAllByRole("row")).toHaveLength(101); // 見出し 1 行 + 100 件
+
+  fireEvent.click(more);
+
+  await vi.waitFor(() => expect(getWorkouts).toHaveBeenCalledTimes(2));
+  const second = vi.mocked(getWorkouts).mock.calls[1][0];
+  expect(second.until).toBe(firstPage[99].started_at);
+  expect(second.since).toBe(vi.mocked(getWorkouts).mock.calls[0][0].since);
+  await vi.waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(104));
+  expect(
+    screen.queryByRole("button", { name: "Load more" }),
+  ).not.toBeInTheDocument();
+});
+
+test("100 件未満なら Load more は出ない", async () => {
+  vi.mocked(getWorkouts).mockResolvedValue({ items: [ride] });
+  render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
+  await screen.findByRole("button", { name: "Ride" });
+
+  expect(
+    screen.queryByRole("button", { name: "Load more" }),
+  ).not.toBeInTheDocument();
+});
+
 test("api が失敗したらエラーを出す", async () => {
   vi.mocked(getWorkouts).mockRejectedValue(new Error("API returned 500"));
   render(<WorkoutsPage user={user} onSelect={vi.fn()} />);

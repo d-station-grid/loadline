@@ -1,11 +1,14 @@
 import type { User } from "firebase/auth";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { WorkoutSummary } from "../api";
 import { getWorkouts } from "../lib/api";
 import { formatDateTime, formatDuration, SPORT_LABEL } from "../lib/format";
 
 type Range = "4w" | "12w" | "all";
+
+/** 1 回に取る件数。これだけ返ってきたら、まだ古い記録があるとみなして Load more を出す。 */
+const PAGE_SIZE = 100;
 
 const RANGES: { key: Range; label: string; weeks: number | null }[] = [
   { key: "4w", label: "Last 4 weeks", weeks: 4 },
@@ -31,18 +34,24 @@ type Props = { user: User; onSelect: (id: number) => void };
 export default function WorkoutsPage({ user, onSelect }: Props) {
   const [range, setRange] = useState<Range>("4w");
   const [items, setItems] = useState<WorkoutSummary[] | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const weeks = RANGES.find((r) => r.key === range)?.weeks ?? null;
+  const since = useMemo(() => sinceOf(weeks), [weeks]);
 
   useEffect(() => {
     let cancelled = false;
-    const weeks = RANGES.find((r) => r.key === range)?.weeks ?? null;
     (async () => {
       try {
         const list = await getWorkouts(
-          { since: sinceOf(weeks) },
+          { since, limit: PAGE_SIZE },
           await user.getIdToken(),
         );
-        if (!cancelled) setItems(list.items);
+        if (cancelled) return;
+        setItems(list.items);
+        setHasMore(list.items.length === PAGE_SIZE);
       } catch (e) {
         if (!cancelled) setError(errorMessage(e));
       }
@@ -50,7 +59,32 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [user, range]);
+  }, [user, since]);
+
+  /** 期間を変えたら、表示を空にして読み直す。 */
+  function changeRange(next: Range) {
+    setRange(next);
+    setItems(null);
+    setHasMore(false);
+  }
+
+  /** 表示中の一番古い記録より前を、同じ期間の中でもう 1 ページ取って末尾に足す。 */
+  async function loadMore() {
+    if (!items || items.length === 0) return;
+    setLoadingMore(true);
+    try {
+      const list = await getWorkouts(
+        { since, until: items[items.length - 1].started_at, limit: PAGE_SIZE },
+        await user.getIdToken(),
+      );
+      setItems([...items, ...list.items]);
+      setHasMore(list.items.length === PAGE_SIZE);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   return (
     <section>
@@ -61,7 +95,7 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
             key={r.key}
             type="button"
             aria-pressed={range === r.key}
-            onClick={() => setRange(r.key)}
+            onClick={() => changeRange(r.key)}
           >
             {r.label}
           </button>
@@ -98,6 +132,11 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
             ))}
           </tbody>
         </table>
+      )}
+      {hasMore && (
+        <button type="button" onClick={loadMore} disabled={loadingMore}>
+          {loadingMore ? "Loading…" : "Load more"}
+        </button>
       )}
     </section>
   );
