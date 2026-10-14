@@ -7,9 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import User
 from app.services.ingest_tokens import current_token, issue_token
 
-SAMPLE = (
-    Path(__file__).resolve().parents[2] / "notes" / "sample_health-auto-export_workouts-v2.json"
-)
+SAMPLE = Path(__file__).parent / "fixtures" / "sample_health-auto-export_workouts-v2.json"
 
 
 async def _user_with_token(session: AsyncSession) -> tuple[User, str]:

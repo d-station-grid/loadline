@@ -11,9 +11,7 @@ from app.schemas.ingest import IngestPayload
 from app.services.ingest import ingest
 
 # Apple Watch と Google Health のサイクリングが 1 件ずつ入った、Health Auto Export の実データ
-SAMPLE = (
-    Path(__file__).resolve().parents[2] / "notes" / "sample_health-auto-export_workouts-v2.json"
-)
+SAMPLE = Path(__file__).parent / "fixtures" / "sample_health-auto-export_workouts-v2.json"
 APPLE_WATCH_ID = "EC706163-46F5-4250-916B-3909437C8064"
 
 

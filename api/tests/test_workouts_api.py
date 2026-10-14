@@ -15,9 +15,7 @@ from app.services.ingest import ingest
 from app.services.workouts import zone_seconds
 
 HEADERS = {"Authorization": "Bearer good"}
-SAMPLE = (
-    Path(__file__).resolve().parents[2] / "notes" / "sample_health-auto-export_workouts-v2.json"
-)
+SAMPLE = Path(__file__).parent / "fixtures" / "sample_health-auto-export_workouts-v2.json"
 
 
 class FakeVerifier:
@@ -35,7 +33,7 @@ def fake_verifier() -> Iterator[None]:
 
 
 async def _user_with_sample(session: AsyncSession, uid: str = "uid-1") -> User:
-    """ログインする本人（uid-1）と同じ uid で行を作り、notes の実データを取り込む。"""
+    """ログインする本人（uid-1）と同じ uid で行を作り、fixtures の実データを取り込む。"""
     user = User(firebase_uid=uid, email=f"{uid}@example.com")
     session.add(user)
     await session.flush()
