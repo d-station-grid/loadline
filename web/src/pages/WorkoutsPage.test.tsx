@@ -178,11 +178,60 @@ test("別の期間に行って同じ期間に戻ったあと、遅れて届い�
   expect(screen.getByRole("button", { name: "Load more" })).toBeEnabled();
 });
 
-test("api が失敗したらエラーを出す", async () => {
-  vi.mocked(getWorkouts).mockRejectedValue(new Error("API returned 500"));
+test("Load more を連打しても、同じページは一度しか足さない", async () => {
+  let resolveMore: (list: { items: WorkoutSummary[] }) => void = () => {};
+  const more = new Promise<{ items: WorkoutSummary[] }>((resolve) => {
+    resolveMore = resolve;
+  });
+  vi.mocked(getWorkouts)
+    .mockResolvedValueOnce({ items: rides(100) })
+    .mockReturnValue(more);
+  render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
+
+  const button = await screen.findByRole("button", { name: "Load more" });
+  // 1 つの act にまとめ、描画（disabled）の前に 2 回目のクリックが届く形にする
+  act(() => {
+    button.click();
+    button.click();
+  });
+
+  await act(async () => {
+    resolveMore({ items: rides(3, 100) });
+    await more;
+  });
+
+  expect(getWorkouts).toHaveBeenCalledTimes(2);
+  expect(screen.getAllByRole("row")).toHaveLength(104);
+});
+
+test("api が失敗したらエラーを出し、Retry で同じ期間を取り直す", async () => {
+  vi.mocked(getWorkouts)
+    .mockRejectedValueOnce(new Error("API returned 500"))
+    .mockResolvedValueOnce({ items: [ride] });
   render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
 
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "API returned 500",
   );
+
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+  await screen.findByRole("button", { name: "Ride" });
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(vi.mocked(getWorkouts).mock.calls[1][0].since).toBe(
+    vi.mocked(getWorkouts).mock.calls[0][0].since,
+  );
+});
+
+test("失敗のあと別の期間が取れたら、エラーは消える", async () => {
+  vi.mocked(getWorkouts)
+    .mockRejectedValueOnce(new Error("API returned 500"))
+    .mockResolvedValueOnce({ items: [ride] });
+  render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
+  await screen.findByRole("alert");
+
+  fireEvent.click(screen.getByRole("button", { name: "All" }));
+
+  await screen.findByRole("button", { name: "Ride" });
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });

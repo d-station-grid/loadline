@@ -43,9 +43,13 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
   const [range, setRange] = useState<Range>("4w");
   const [page, setPage] = useState<Page | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Retry で進める。since が同じでも effect を走らせ直すため
+  const [attempt, setAttempt] = useState(0);
   // 1 ページ目を取り直すたびに進める。Load more の応答は、始めたときと世代が違えば捨てる。
   // since の比較だけだと、別の期間に行って同じ期間に戻ったときに古い応答を見分けられない
   const generation = useRef(0);
+  // Load more の連打よけ。disabled は描画のあとにしか効かないので、クリック直後にここで止める
+  const loadingMoreNow = useRef(false);
 
   const weeks = RANGES.find((r) => r.key === range)?.weeks ?? null;
   const since = useMemo(() => sinceOf(weeks), [weeks]);
@@ -66,6 +70,7 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
           await user.getIdToken(),
         );
         if (cancelled) return;
+        setError(null);
         setPage({
           since,
           items: list.items,
@@ -79,11 +84,18 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [user, since]);
+  }, [user, since, attempt]);
+
+  /** 失敗したあと、同じ期間の 1 ページ目を取り直す。 */
+  function retry() {
+    setError(null);
+    setAttempt((n) => n + 1);
+  }
 
   /** 表示中の一番古い記録より前を、同じ期間の中でもう 1 ページ取って末尾に足す。 */
   async function loadMore() {
-    if (!items || items.length === 0) return;
+    if (!items || items.length === 0 || loadingMoreNow.current) return;
+    loadingMoreNow.current = true;
     const started = generation.current;
     setPage((prev) => (prev ? { ...prev, loadingMore: true } : prev));
     try {
@@ -106,6 +118,8 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
       if (started !== generation.current) return;
       setError(errorMessage(e));
       setPage((prev) => (prev ? { ...prev, loadingMore: false } : prev));
+    } finally {
+      loadingMoreNow.current = false;
     }
   }
 
@@ -125,7 +139,14 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
         ))}
       </div>
 
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert">
+          {error}{" "}
+          <button type="button" onClick={retry}>
+            Retry
+          </button>
+        </p>
+      )}
       {items === null && !error && <p>Loading…</p>}
       {items && items.length === 0 && <p>No workouts in this period.</p>}
       {items && items.length > 0 && (
