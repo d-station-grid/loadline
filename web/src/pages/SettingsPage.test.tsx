@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { User } from "firebase/auth";
 import { beforeEach, expect, test, vi } from "vitest";
 
@@ -80,6 +80,37 @@ test("トークンを発行すると平文が 1 回出る", async () => {
   expect(
     screen.getByRole("button", { name: "Reissue token" }),
   ).toBeInTheDocument();
+});
+
+test("発行を連打しても API は 1 回だけで、発行中はボタンが無効になる", async () => {
+  let resolveIssue: (t: {
+    token: string;
+    last_four: string;
+  }) => void = () => {};
+  const issue = new Promise<{ token: string; last_four: string }>((resolve) => {
+    resolveIssue = resolve;
+  });
+  vi.mocked(issueIngestToken).mockReturnValue(issue);
+  render(<SettingsPage user={user} />);
+  await screen.findByText("No token yet.");
+
+  const button = screen.getByRole("button", { name: "Issue token" });
+  // 1 つの act にまとめ、描画（disabled）の前に 2 回目のクリックが届く形にする
+  act(() => {
+    button.click();
+    button.click();
+  });
+
+  expect(button).toBeDisabled();
+
+  await act(async () => {
+    resolveIssue({ token: "secret-wxyz", last_four: "wxyz" });
+    await issue;
+  });
+
+  expect(issueIngestToken).toHaveBeenCalledTimes(1);
+  expect(screen.getByText("secret-wxyz")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Reissue token" })).toBeEnabled();
 });
 
 test("api が失敗したらエラーを出す", async () => {

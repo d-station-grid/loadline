@@ -1,5 +1,5 @@
 import type { User } from "firebase/auth";
-import { type SubmitEvent, useEffect, useState } from "react";
+import { type SubmitEvent, useEffect, useRef, useState } from "react";
 
 import type { SettingsIn, SettingsOut } from "../api";
 import { getSettings, issueIngestToken, putSettings } from "../lib/api";
@@ -37,6 +37,10 @@ export default function SettingsPage({ user }: Props) {
   const [form, setForm] = useState<SettingsIn | null>(null);
   const [lastFour, setLastFour] = useState<string | null>(null);
   const [freshToken, setFreshToken] = useState<string | null>(null);
+  const [issuing, setIssuing] = useState(false);
+  // 発行の連打よけ。disabled は描画のあとにしか効かないので、クリック直後にここで止める。
+  // 同時に 2 本走らなければ、先に無効になったトークンの応答が後から届くこともない
+  const issuingNow = useRef(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,6 +87,9 @@ export default function SettingsPage({ user }: Props) {
   }
 
   async function handleIssueToken() {
+    if (issuingNow.current) return;
+    issuingNow.current = true;
+    setIssuing(true);
     setError(null);
     try {
       const t = await issueIngestToken(await user.getIdToken());
@@ -90,6 +97,9 @@ export default function SettingsPage({ user }: Props) {
       setLastFour(t.last_four);
     } catch (e) {
       setError(errorMessage(e));
+    } finally {
+      issuingNow.current = false;
+      setIssuing(false);
     }
   }
 
@@ -200,7 +210,7 @@ export default function SettingsPage({ user }: Props) {
               : "No token yet."}
           </p>
         )}
-        <button type="button" onClick={handleIssueToken}>
+        <button type="button" onClick={handleIssueToken} disabled={issuing}>
           {lastFour ? "Reissue token" : "Issue token"}
         </button>
       </section>
