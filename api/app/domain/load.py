@@ -44,16 +44,22 @@ class WorkoutLoad:
 
 @dataclass(frozen=True)
 class DailyLoad:
+    """その日の負荷。負荷の分からないワークアウトが 1 件でもあれば None。"""
+
     day: date
-    load: float
+    load: float | None
 
 
 @dataclass(frozen=True)
 class FitnessPoint:
-    """その日の終わりの体力・疲労・余力。余力は体力から疲労を引いた値。"""
+    """その日の終わりの体力・疲労・余力。余力は体力から疲労を引いた値。
+
+    load が None の日は、負荷の分からないワークアウトを含む。体力と疲労は、その日の負荷を
+    0 として計算しているので、実際より低く出る。画面ではその日に印を付ける。
+    """
 
     day: date
-    load: float
+    load: float | None
     fitness: float
     fatigue: float
     headroom: float
@@ -136,15 +142,20 @@ def workout_load(
     )
 
 
-def daily_loads(loads: Iterable[tuple[date, float]], start: date, end: date) -> list[DailyLoad]:
+def daily_loads(
+    loads: Iterable[tuple[date, float | None]], start: date, end: date
+) -> list[DailyLoad]:
     """日ごとの負荷。同じ日のワークアウトは足し、記録のない日は 0。start から end まで両端を含む。
 
     loads の日付は、呼ぶ側が利用者のタイムゾーンで決めたもの。範囲の外は捨てる。
+    負荷が None（心拍の記録がないなど）のワークアウトは省かずに渡す。省くと、運動した日が
+    休養日と同じ 0 になる。1 件でも None があれば、その日の負荷は None（分からない）。
     """
-    totals: dict[date, float] = {}
+    totals: dict[date, float | None] = {}
     for day, load in loads:
         if start <= day <= end:
-            totals[day] = totals.get(day, 0.0) + load
+            known = totals.get(day, 0.0)
+            totals[day] = None if known is None or load is None else known + load
     days = (end - start).days + 1
     return [
         DailyLoad(day=d, load=totals.get(d, 0.0))
@@ -165,6 +176,10 @@ def fitness_fatigue(
     値_t = 値_(t−1) × k + 負荷_t × (1 − k)、k = e^(−1/τ)。
     初日の前の値は fitness_start と fatigue_start（既定 0）。表示の期間より前から
     渡しておくと、期間の初日が 0 から立ち上がらずにすむ。
+
+    負荷が None の日は 0 として計算を続ける。線を途切れさせないためで、その日の点の
+    load は None のまま返す。止める（前日の値のまま）のも、以降を出さないのも選ばない。
+    心拍の欠けはまれで、1 件のために以降のグラフを失うより、印を付けて見せる方がよい。
     """
     kf = _decay(FITNESS_DAYS)
     kg = _decay(FATIGUE_DAYS)
@@ -172,8 +187,9 @@ def fitness_fatigue(
     fatigue = fatigue_start
     points = []
     for d in daily:
-        fitness = fitness * kf + d.load * (1 - kf)
-        fatigue = fatigue * kg + d.load * (1 - kg)
+        load = 0.0 if d.load is None else d.load
+        fitness = fitness * kf + load * (1 - kf)
+        fatigue = fatigue * kg + load * (1 - kg)
         points.append(
             FitnessPoint(
                 day=d.day, load=d.load, fitness=fitness, fatigue=fatigue, headroom=fitness - fatigue

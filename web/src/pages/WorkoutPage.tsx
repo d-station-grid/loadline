@@ -122,6 +122,8 @@ export default function WorkoutPage({ user, workoutId, onBack }: Props) {
             High: {formatDuration(zones.high)} ({pct(zones.high)}%)
           </li>
         </ul>
+      ) : workout.heart_rates.length === 0 ? (
+        <p>No heart rate data for this workout.</p>
       ) : (
         <p>Set your heart rate boundaries in Settings to see intensity.</p>
       )}

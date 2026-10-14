@@ -71,6 +71,24 @@ test("境目が未設定なら案内を出す", async () => {
   ).toBeInTheDocument();
 });
 
+test("心拍がなければ、境目の案内ではなく心拍がないと出す", async () => {
+  vi.mocked(getWorkout).mockResolvedValue({
+    ...detail,
+    heart_rates: [],
+    zones: null,
+  });
+  render(<WorkoutPage user={user} workoutId={7} onBack={vi.fn()} />);
+
+  expect(
+    await screen.findByText("No heart rate data for this workout."),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByText(
+      "Set your heart rate boundaries in Settings to see intensity.",
+    ),
+  ).not.toBeInTheDocument();
+});
+
 test("戻るボタンで onBack を呼ぶ", async () => {
   vi.mocked(getWorkout).mockResolvedValue(detail);
   const onBack = vi.fn();

@@ -145,6 +145,35 @@ def test_daily_loads_sums_same_day_and_fills_empty_days() -> None:
 # --- 体力・疲労・余力 ---
 
 
+def test_daily_loads_is_none_when_any_workout_is_unknown() -> None:
+    # 9/13 は 2 件のうち 1 件が分からない。足せる方だけ足すと低く出るので、その日は None
+    # 9/14 は分からない 1 件だけ。省くと 0（休養日）になってしまう
+    loads: list[tuple[date, float | None]] = [
+        (date(2026, 9, 13), 40.0),
+        (date(2026, 9, 13), None),
+        (date(2026, 9, 14), None),
+        (date(2026, 9, 15), 30.0),
+    ]
+
+    daily = daily_loads(loads, date(2026, 9, 13), date(2026, 9, 16))
+
+    assert [d.load for d in daily] == [None, None, 30.0, 0.0]
+
+
+def test_fitness_fatigue_carries_on_through_unknown_day() -> None:
+    # 分からない日は 0 として計算を続け、点の load は None のまま返す
+    known = [DailyLoad(date(2026, 9, 13), 100.0), DailyLoad(date(2026, 9, 14), 0.0)]
+    unknown = [DailyLoad(date(2026, 9, 13), 100.0), DailyLoad(date(2026, 9, 14), None)]
+
+    expected = fitness_fatigue(known)
+    points = fitness_fatigue(unknown)
+
+    assert points[1].load is None
+    assert points[1].fitness == pytest.approx(expected[1].fitness)
+    assert points[1].fatigue == pytest.approx(expected[1].fatigue)
+    assert points[1].headroom == pytest.approx(expected[1].headroom)
+
+
 def test_fitness_fatigue_by_hand() -> None:
     # 初日に 100、翌日は 0
     # 体力: 100 × (1 − e^(−1/42)) = 2.35283、翌日 × e^(−1/42) = 2.29747
