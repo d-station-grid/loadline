@@ -1,34 +1,9 @@
-from collections.abc import Sequence
 from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Workout, WorkoutHeartRate
-from app.schemas.workouts import ZoneSeconds
-
-# 心拍は 1 分ごとに届くので、1 サンプルを 60 秒と数える
-SAMPLE_SEC = 60
-
-
-def zone_seconds(
-    samples: Sequence[WorkoutHeartRate], boundary_1: int | None, boundary_2: int | None
-) -> ZoneSeconds | None:
-    """強度ごとの時間。avg_bpm が boundary_1 未満は low、boundary_2 未満は mid、それ以上は high。
-
-    境目は設定で入れるもので、2 つそろうまでは計算しない（None を返す）。
-    """
-    if boundary_1 is None or boundary_2 is None:
-        return None
-    low = mid = high = 0
-    for s in samples:
-        if s.avg_bpm < boundary_1:
-            low += SAMPLE_SEC
-        elif s.avg_bpm < boundary_2:
-            mid += SAMPLE_SEC
-        else:
-            high += SAMPLE_SEC
-    return ZoneSeconds(low=low, mid=mid, high=high)
 
 
 async def list_workouts(
