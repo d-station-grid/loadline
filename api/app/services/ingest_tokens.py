@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import IngestToken
+from app.models import IngestToken, User
 
 
 def _digest(token: str) -> str:
@@ -18,6 +18,9 @@ async def issue_token(session: AsyncSession, user_id: int) -> tuple[str, IngestT
 
     平文のトークンは戻り値でしか手に入らない。設定画面はこのとき 1 回だけ表示する。
     """
+    # 同じ利用者の発行を直列にする。連打や複数タブで 2 本同時に走ると、
+    # 互いの新しいトークンを無効にできず、有効なものが 2 つ残るため
+    await session.execute(select(User.id).where(User.id == user_id).with_for_update())
     now = datetime.now(UTC)
     active = await session.scalars(
         select(IngestToken).where(IngestToken.user_id == user_id, IngestToken.revoked_at.is_(None))

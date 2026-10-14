@@ -5,7 +5,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Vo2maxReading, Workout, WorkoutHeartRate
+from app.models import User, Vo2maxReading, Workout, WorkoutHeartRate
 from app.schemas.ingest import IngestPayload, IngestResult, MetricIn, WorkoutIn
 
 APPLE_WATCH = "Apple Watch"
@@ -108,6 +108,9 @@ async def _insert_vo2max(
 async def ingest(session: AsyncSession, user_id: int, payload: IngestPayload) -> IngestResult:
     """Health Auto Export から届いた 1 回分を取り込む。workouts と metrics のどちらが来てもよい。"""
     result = IngestResult()
+    # 同じ利用者の取り込みを直列にする。同じ記録が 2 本同時に届くと、心拍の入れ替えが
+    # 重なって二重になり、新規の記録は一意制約で片方が落ちるため
+    await session.execute(select(User.id).where(User.id == user_id).with_for_update())
     for w in payload.data.workouts:
         await _upsert_workout(session, user_id, w, result)
     for metric in payload.data.metrics:

@@ -1,10 +1,11 @@
+import asyncio
 import json
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.models import User, Vo2maxReading, Workout, WorkoutHeartRate
 from app.schemas.ingest import IngestPayload
@@ -66,6 +67,49 @@ async def test_same_workout_twice_is_not_doubled(session: AsyncSession) -> None:
     assert (result.workouts_added, result.workouts_updated) == (0, 1)
     assert await _count(session, Workout) == 1
     assert await _count(session, WorkoutHeartRate) == 72
+
+
+async def test_same_workout_sent_at_once_is_not_doubled(engine: AsyncEngine) -> None:
+    """同じ記録が 2 本同時に届いても、1 件と心拍 72 件のまま。users の行のロックで直列にする。
+
+    session fixture は 1 本の接続を巻き戻す作りで同時実行を再現できないので、
+    ここだけ接続を 2 本張って本当に commit し、終わりに利用者ごと消す。
+    """
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as s:
+        user = User(firebase_uid="uid-race", email="race@example.com")
+        s.add(user)
+        await s.commit()
+        user_id = user.id
+
+    async def send() -> tuple[int, int]:
+        async with factory() as s:
+            result = await ingest(s, user_id, _workouts_payload())
+            return result.workouts_added, result.workouts_updated
+
+    try:
+        # 新規の競合: 片方が作り、もう片方は上書きになる（一意制約で落ちない）
+        results = await asyncio.gather(send(), send())
+        assert sorted(results) == [(0, 1), (1, 0)]
+
+        # 既存の競合: 心拍の入れ替えが重なっても二重にならない
+        await asyncio.gather(send(), send())
+
+        async with factory() as s:
+            workouts = await s.scalar(
+                select(func.count()).select_from(Workout).where(Workout.user_id == user_id)
+            )
+            heart_rates = await s.scalar(
+                select(func.count())
+                .select_from(WorkoutHeartRate)
+                .join(Workout)
+                .where(Workout.user_id == user_id)
+            )
+        assert (workouts, heart_rates) == (1, 72)
+    finally:
+        async with factory() as s:
+            await s.execute(delete(User).where(User.id == user_id))
+            await s.commit()
 
 
 async def test_vo2max_takes_apple_watch_and_skips_duplicates(session: AsyncSession) -> None:
