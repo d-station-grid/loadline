@@ -1,8 +1,9 @@
 import json
 from collections.abc import Iterator
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from httpx import AsyncClient
@@ -164,6 +165,26 @@ async def test_zones_are_none_without_boundaries(
     assert body["workouts"][0]["high_sec"] is None
 
 
+async def test_zones_are_none_when_a_workout_has_no_heart_rate(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """心拍のない 1 件を外して足すと 0 秒に見えるので、合計ごと分からない（None）にする。"""
+    user = await _user(session)
+    user.zone_boundary_1 = 130
+    user.zone_boundary_2 = 155
+    await ingest(session, user.id, _run(f"{SAMPLE_DAY} 06:00:00"))
+
+    everything = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY)
+    runs = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY, sport="run")
+    rides = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY, sport="ride")
+
+    assert everything["zones"] is None
+    assert runs["zones"] is None
+    assert runs["workouts"][0]["high_sec"] is None
+    # 心拍のそろったサイクリングだけに絞れば、合計は出る
+    assert sum(rides["zones"].values()) == 4028
+
+
 async def test_without_heart_rate_settings_days_are_empty(
     client: AsyncClient, session: AsyncSession
 ) -> None:
@@ -212,6 +233,17 @@ async def test_without_until_ends_today(client: AsyncClient, session: AsyncSessi
     assert body["days"][-1]["day"] == body["until"]
 
 
+async def test_future_until_is_capped_at_today(client: AsyncClient, session: AsyncSession) -> None:
+    """未来の日を負荷 0 で埋めて、体力と疲労が先まで減る線にしない。"""
+    await _user(session)
+
+    body = await _get(client, since="2026-10-01", until="9999-12-31")
+
+    today = datetime.now(ZoneInfo("Asia/Tokyo")).date().isoformat()
+    assert body["until"] == today
+    assert body["days"][-1]["day"] == today
+
+
 async def test_only_own_records(client: AsyncClient, session: AsyncSession) -> None:
     await _user(session, uid="uid-other")
     me = User(
@@ -230,11 +262,11 @@ async def test_only_own_records(client: AsyncClient, session: AsyncSession) -> N
     "params",
     [
         {"since": "2026-09-14", "until": "2026-09-13"},
-        # until を省くと今日になる。未来の since は、既定値を決めた後の検査で逆転として落ちる
+        # until は今日で切る。未来の since は、切った後の検査で逆転として落ちる
         {"since": "2100-01-01"},
+        {"since": "2100-01-01", "until": "2100-01-02"},
         # 足し引きで date の範囲からあふれる日付は、計算の前に落とす
         {"since": "0001-01-01", "until": "2026-09-13"},
-        {"since": "2026-09-13", "until": "9999-12-31"},
     ],
 )
 async def test_invalid_period_is_rejected(
@@ -245,6 +277,10 @@ async def test_invalid_period_is_rejected(
     res = await client.get("/dashboard", params=params, headers=HEADERS)
 
     assert res.status_code == 422
+    # 入力の検査と同じ形（OpenAPI の HTTPValidationError）で返す
+    (error,) = res.json()["detail"]
+    assert error["loc"] == ["query", "since"]
+    assert error["type"] == "value_error"
 
 
 async def test_requires_login(client: AsyncClient) -> None:

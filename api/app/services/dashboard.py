@@ -16,14 +16,18 @@ from app.schemas.workouts import ZoneSeconds
 # e^(−6) ≈ 0.25% しか残らない。0 から立ち上がって期間の初日の体力が低く出るのを防ぐ
 WARMUP_DAYS = 6 * FITNESS_DAYS
 
-# 受け付ける日付の範囲。Apple Watch の記録はこの中に収まり、上の日数を引いても
-# 1 日足しても date の範囲（0001-01-01〜9999-12-31）からあふれない
+# 受け付ける最も古い日付。Apple Watch の記録はこれより後で、上の日数を引いても
+# date の範囲（0001-01-01 から）からあふれない。until は今日で切るので上の端は要らない
 EARLIEST_DAY = date(2000, 1, 1)
-LATEST_DAY = date(2100, 12, 31)
 
 
 class InvalidPeriodError(ValueError):
-    """since が until より後か、受け付ける範囲の外。"""
+    """since が until より後か、受け付ける範囲の外。field はどのクエリが悪いか。"""
+
+    def __init__(self, field: str, value: date, message: str) -> None:
+        super().__init__(message)
+        self.field = field
+        self.value = value
 
 
 def _start_of(day: date, tz: ZoneInfo) -> datetime:
@@ -65,8 +69,14 @@ async def _bpms(session: AsyncSession, workout_ids: list[int]) -> dict[int, list
 
 
 def _sum_zones(loads: list[WorkoutLoad]) -> ZoneSeconds | None:
-    """期間の強度ごとの時間の合計。心拍のないワークアウトは足さない。"""
+    """期間の強度ごとの時間の合計。境目がそろっている前提で呼ぶ。
+
+    心拍のないワークアウトが 1 件でもあれば None（分からない）。外して足すと、全部が
+    心拍なしのとき 0 秒に見えるため。日ごとの負荷と同じ扱い。ワークアウトが 0 件なら 0 秒。
+    """
     known = [w.zones for w in loads if w.zones is not None]
+    if len(known) < len(loads):
+        return None
     return ZoneSeconds(
         low=sum(z.low for z in known),
         mid=sum(z.mid for z in known),
@@ -97,16 +107,20 @@ async def build_dashboard(
     """期間（両端を含む）のダッシュボード。since がなければ最初のワークアウトの日から、
     until がなければ今日まで。保存はせず、呼ばれるたびに計算する。
 
-    期間の検査は既定値を決めた後にする。until を省いて since に未来の日を渡すと、
-    決める前の検査では逆転を見逃すため。
+    until は今日で切る。未来の日を負荷 0 で埋めると、体力と疲労が先まで減っていく線が
+    予測のように見えるため。期間の検査は既定値を決めて切った後にする。until を省いて
+    since に未来の日を渡すと、決める前の検査では逆転を見逃すため。
     """
     tz = ZoneInfo(user.timezone)
-    until = until or datetime.now(tz).date()
+    today = datetime.now(tz).date()
+    until = min(until or today, today)
     if since is None:
         since = min(await _first_day(session, user.id, tz) or until, until)
-    if not EARLIEST_DAY <= since <= until <= LATEST_DAY:
+    if since < EARLIEST_DAY:
+        raise InvalidPeriodError("since", since, f"since must be on or after {EARLIEST_DAY}")
+    if since > until:
         raise InvalidPeriodError(
-            f"since and until must satisfy {EARLIEST_DAY} <= since <= until <= {LATEST_DAY}"
+            "since", since, f"since must be on or before until ({until}, capped at today)"
         )
 
     warm_start = since - timedelta(days=WARMUP_DAYS)
