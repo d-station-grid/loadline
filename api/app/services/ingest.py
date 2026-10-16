@@ -11,20 +11,26 @@ from app.schemas.ingest import IngestPayload, IngestResult, MetricIn, WorkoutIn
 APPLE_WATCH = "Apple Watch"
 _SPACES = re.compile(r"\s+")
 
-# 種目名（日本語と英語）から loadline の sport へ。ここにない種目は取り込まない
+# 種目名（日本語と英語）に含まれる語から loadline の sport へ。ここにない種目は取り込まない。
+# Health Auto Export の種目名は「屋外 ラン」「Outdoor Run」のように短いので、
+# 「ラン」「Run」で見る（「ランニング」「Running」もこれで当たる）
 _SPORTS = {
     "サイクリング": "ride",
     "Cycling": "ride",
-    "ランニング": "run",
-    "Running": "run",
+    "ラン": "run",
+    "Run": "run",
 }
 
 
 def is_apple_watch(source: str | None) -> bool:
-    """source が Apple Watch か。空白に \\xa0 が混ざるので、正規化してから比べる。"""
+    """source が Apple Watch か。空白に \\xa0 が混ざるので、正規化してから比べる。
+
+    時計に名前を付けると「TaketoshiのApple Watch」、VO2max では
+    「Apple Watch | TaketoshiのApple Watch」のように届くので、含まれているかで見る。
+    """
     if source is None:
         return False
-    return _SPACES.sub(" ", source).strip() == APPLE_WATCH
+    return APPLE_WATCH in _SPACES.sub(" ", source)
 
 
 def parse_time(value: str) -> datetime:

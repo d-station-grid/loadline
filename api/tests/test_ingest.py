@@ -4,12 +4,13 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.models import User, Vo2maxReading, Workout, WorkoutHeartRate
 from app.schemas.ingest import IngestPayload
-from app.services.ingest import ingest
+from app.services.ingest import ingest, is_apple_watch, sport_of
 
 # Apple Watch と Google Health のサイクリングが 1 件ずつ入った、Health Auto Export の実データ
 SAMPLE = Path(__file__).parent / "fixtures" / "sample_health-auto-export_workouts-v2.json"
@@ -127,6 +128,69 @@ async def test_vo2max_takes_apple_watch_and_skips_duplicates(session: AsyncSessi
     assert (second.vo2max_added, second.vo2max_skipped) == (0, 3)
     values = await session.scalars(select(Vo2maxReading.value).order_by(Vo2maxReading.measured_at))
     assert list(values) == [Decimal("46.5"), Decimal("46.7")]
+
+
+@pytest.mark.parametrize(
+    ("name", "sport"),
+    [
+        # Health Auto Export の実データに出てくる種目名
+        ("屋外 サイクリング", "ride"),
+        ("屋内 サイクリング", "ride"),
+        ("屋外 ラン", "run"),
+        ("屋内 ラン", "run"),
+        ("Outdoor Cycling", "ride"),
+        ("Outdoor Run", "run"),
+        ("Running", "run"),
+        ("屋外 歩く", None),
+        ("歩く", None),
+        ("ゴルフ", None),
+    ],
+)
+def test_sport_of(name: str, sport: str | None) -> None:
+    assert sport_of(name) == sport
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("Apple\xa0Watch", True),
+        # 名前を付けた時計。VO2max では 2 つの名前が「|」でつながって届く
+        ("TaketoshiのApple\xa0Watch", True),
+        ("Apple\xa0Watch | TaketoshiのApple\xa0Watch", True),
+        ("Google Health", False),
+        ("フィットネス", False),
+        (None, False),
+    ],
+)
+def test_is_apple_watch(source: str | None, expected: bool) -> None:
+    assert is_apple_watch(source) is expected
+
+
+async def test_run_from_named_watch_is_taken(session: AsyncSession) -> None:
+    user = await _make_user(session)
+    payload = IngestPayload.model_validate(
+        {
+            "data": {
+                "workouts": [
+                    {
+                        "id": "run-1",
+                        "name": "屋外 ラン",
+                        "start": "2026-10-04 07:00:00 +0900",
+                        "end": "2026-10-04 07:30:00 +0900",
+                        "duration": 1800,
+                        "source": {"name": "TaketoshiのApple\xa0Watch"},
+                    }
+                ]
+            }
+        }
+    )
+
+    result = await ingest(session, user.id, payload)
+
+    assert result.workouts_added == 1
+    workout = await session.scalar(select(Workout))
+    assert workout is not None
+    assert workout.sport == "run"
 
 
 async def test_other_sports_are_skipped(session: AsyncSession) -> None:
