@@ -5,6 +5,77 @@ export type ClientOptions = {
 };
 
 /**
+ * Dashboard
+ *
+ * ダッシュボードの 1 画面ぶん。日付は利用者のタイムゾーンで区切る。
+ *
+ * days は全種目で計算する（種目で絞ると疲労を低く見積もるため）。sport で絞るのは
+ * zones と workouts だけ。最大心拍か安静時心拍が未設定なら、負荷が出ないので days は空で、
+ * needs_heart_rate_settings が true。
+ */
+export type Dashboard = {
+  /**
+   * Since
+   */
+  since: string;
+  /**
+   * Until
+   */
+  until: string;
+  /**
+   * Sport
+   */
+  sport: "all" | "run" | "ride";
+  /**
+   * Needs Heart Rate Settings
+   */
+  needs_heart_rate_settings: boolean;
+  /**
+   * Days
+   */
+  days: Array<DayPoint>;
+  /**
+   * Vo2Max
+   */
+  vo2max: Array<Vo2MaxPoint>;
+  zones: ZoneSeconds | null;
+  /**
+   * Workouts
+   */
+  workouts: Array<WorkoutPoint>;
+};
+
+/**
+ * DayPoint
+ *
+ * その日の終わりの体力・疲労・余力と、その日の負荷。
+ *
+ * load が None の日は、心拍の記録がないワークアウトを含む（負荷を 0 として計算を続けている）。
+ */
+export type DayPoint = {
+  /**
+   * Day
+   */
+  day: string;
+  /**
+   * Load
+   */
+  load: number | null;
+  /**
+   * Fitness
+   */
+  fitness: number;
+  /**
+   * Fatigue
+   */
+  fatigue: number;
+  /**
+   * Headroom
+   */
+  headroom: number;
+};
+
+/**
  * HTTPValidationError
  */
 export type HttpValidationError = {
@@ -290,6 +361,26 @@ export type ValidationError = {
 };
 
 /**
+ * Vo2maxPoint
+ *
+ * 1 回の測定と、その日を含む直近 30 日の平均。
+ */
+export type Vo2MaxPoint = {
+  /**
+   * Day
+   */
+  day: string;
+  /**
+   * Value
+   */
+  value: number;
+  /**
+   * Average
+   */
+  average: number;
+};
+
+/**
  * WorkoutDetail
  */
 export type WorkoutDetail = {
@@ -369,6 +460,38 @@ export type WorkoutList = {
    * Items
    */
   items: Array<WorkoutSummary>;
+};
+
+/**
+ * WorkoutPoint
+ *
+ * 散布図の 1 点。load は心拍がないと None、high_sec は境目がそろわないと None。
+ */
+export type WorkoutPoint = {
+  /**
+   * Id
+   */
+  id: number;
+  /**
+   * Sport
+   */
+  sport: string;
+  /**
+   * Started At
+   */
+  started_at: string;
+  /**
+   * Day
+   */
+  day: string;
+  /**
+   * Load
+   */
+  load: number | null;
+  /**
+   * High Sec
+   */
+  high_sec: number | null;
 };
 
 /**
@@ -453,6 +576,46 @@ export type LoginAuthLoginPostResponses = {
 
 export type LoginAuthLoginPostResponse =
   LoginAuthLoginPostResponses[keyof LoginAuthLoginPostResponses];
+
+export type ReadDashboardDashboardGetData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Since
+     */
+    since?: string | null;
+    /**
+     * Until
+     */
+    until?: string | null;
+    /**
+     * Sport
+     */
+    sport?: "all" | "run" | "ride";
+  };
+  url: "/dashboard";
+};
+
+export type ReadDashboardDashboardGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type ReadDashboardDashboardGetError =
+  ReadDashboardDashboardGetErrors[keyof ReadDashboardDashboardGetErrors];
+
+export type ReadDashboardDashboardGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: Dashboard;
+};
+
+export type ReadDashboardDashboardGetResponse =
+  ReadDashboardDashboardGetResponses[keyof ReadDashboardDashboardGetResponses];
 
 export type ReceiveIngestPostData = {
   body: IngestPayload;
