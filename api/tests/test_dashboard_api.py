@@ -226,12 +226,23 @@ async def test_only_own_records(client: AsyncClient, session: AsyncSession) -> N
     assert body["days"][0]["load"] == 0
 
 
-async def test_since_after_until_is_rejected(client: AsyncClient, session: AsyncSession) -> None:
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"since": "2026-09-14", "until": "2026-09-13"},
+        # until を省くと今日になる。未来の since は、既定値を決めた後の検査で逆転として落ちる
+        {"since": "2100-01-01"},
+        # 足し引きで date の範囲からあふれる日付は、計算の前に落とす
+        {"since": "0001-01-01", "until": "2026-09-13"},
+        {"since": "2026-09-13", "until": "9999-12-31"},
+    ],
+)
+async def test_invalid_period_is_rejected(
+    client: AsyncClient, session: AsyncSession, params: dict[str, str]
+) -> None:
     await _user(session)
 
-    res = await client.get(
-        "/dashboard", params={"since": "2026-09-14", "until": "2026-09-13"}, headers=HEADERS
-    )
+    res = await client.get("/dashboard", params=params, headers=HEADERS)
 
     assert res.status_code == 422
 

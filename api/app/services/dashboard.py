@@ -16,6 +16,15 @@ from app.schemas.workouts import ZoneSeconds
 # e^(−6) ≈ 0.25% しか残らない。0 から立ち上がって期間の初日の体力が低く出るのを防ぐ
 WARMUP_DAYS = 6 * FITNESS_DAYS
 
+# 受け付ける日付の範囲。Apple Watch の記録はこの中に収まり、上の日数を引いても
+# 1 日足しても date の範囲（0001-01-01〜9999-12-31）からあふれない
+EARLIEST_DAY = date(2000, 1, 1)
+LATEST_DAY = date(2100, 12, 31)
+
+
+class InvalidPeriodError(ValueError):
+    """since が until より後か、受け付ける範囲の外。"""
+
 
 def _start_of(day: date, tz: ZoneInfo) -> datetime:
     """利用者のタイムゾーンでのその日の 0 時。"""
@@ -86,11 +95,19 @@ async def build_dashboard(
     session: AsyncSession, user: User, since: date | None, until: date | None, sport: Sport
 ) -> Dashboard:
     """期間（両端を含む）のダッシュボード。since がなければ最初のワークアウトの日から、
-    until がなければ今日まで。保存はせず、呼ばれるたびに計算する。"""
+    until がなければ今日まで。保存はせず、呼ばれるたびに計算する。
+
+    期間の検査は既定値を決めた後にする。until を省いて since に未来の日を渡すと、
+    決める前の検査では逆転を見逃すため。
+    """
     tz = ZoneInfo(user.timezone)
     until = until or datetime.now(tz).date()
     if since is None:
         since = min(await _first_day(session, user.id, tz) or until, until)
+    if not EARLIEST_DAY <= since <= until <= LATEST_DAY:
+        raise InvalidPeriodError(
+            f"since and until must satisfy {EARLIEST_DAY} <= since <= until <= {LATEST_DAY}"
+        )
 
     warm_start = since - timedelta(days=WARMUP_DAYS)
     rows = await _workouts(
