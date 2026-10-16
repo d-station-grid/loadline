@@ -32,6 +32,94 @@
         ]
       }
     },
+    "/dashboard": {
+      "get": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Read Dashboard",
+        "description": "本人の負荷と推移。since と until は利用者のタイムゾーンでの日付で、両端を含む。\n\n期間の誤りは、入力の検査と同じ 422 の形（detail が loc と msg の配列）で返す。",
+        "operationId": "read_dashboard_dashboard_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          },
+          {
+            "name": "sport",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "all",
+                "run",
+                "ride"
+              ],
+              "type": "string",
+              "default": "all",
+              "title": "Sport"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dashboard"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ingest": {
       "post": {
         "tags": [
@@ -335,6 +423,119 @@
   },
   "components": {
     "schemas": {
+      "Dashboard": {
+        "properties": {
+          "since": {
+            "type": "string",
+            "format": "date",
+            "title": "Since"
+          },
+          "until": {
+            "type": "string",
+            "format": "date",
+            "title": "Until"
+          },
+          "sport": {
+            "type": "string",
+            "enum": [
+              "all",
+              "run",
+              "ride"
+            ],
+            "title": "Sport"
+          },
+          "needs_heart_rate_settings": {
+            "type": "boolean",
+            "title": "Needs Heart Rate Settings"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/DayPoint"
+            },
+            "type": "array",
+            "title": "Days"
+          },
+          "vo2max": {
+            "items": {
+              "$ref": "#/components/schemas/Vo2maxPoint"
+            },
+            "type": "array",
+            "title": "Vo2Max"
+          },
+          "zones": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ZoneSeconds"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "workouts": {
+            "items": {
+              "$ref": "#/components/schemas/WorkoutPoint"
+            },
+            "type": "array",
+            "title": "Workouts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "since",
+          "until",
+          "sport",
+          "needs_heart_rate_settings",
+          "days",
+          "vo2max",
+          "zones",
+          "workouts"
+        ],
+        "title": "Dashboard",
+        "description": "ダッシュボードの 1 画面ぶん。日付は利用者のタイムゾーンで区切る。\n\ndays は全種目で計算する（種目で絞ると疲労を低く見積もるため）。sport で絞るのは\nzones と workouts だけ。最大心拍か安静時心拍が未設定なら、負荷が出ないので days は空で、\nneeds_heart_rate_settings が true。"
+      },
+      "DayPoint": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "load": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load"
+          },
+          "fitness": {
+            "type": "number",
+            "title": "Fitness"
+          },
+          "fatigue": {
+            "type": "number",
+            "title": "Fatigue"
+          },
+          "headroom": {
+            "type": "number",
+            "title": "Headroom"
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "load",
+          "fitness",
+          "fatigue",
+          "headroom"
+        ],
+        "title": "DayPoint",
+        "description": "その日の終わりの体力・疲労・余力と、その日の負荷。\n\nload が None の日は、心拍の記録がないワークアウトを含む（負荷を 0 として計算を続けている）。"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -774,6 +975,31 @@
         ],
         "title": "ValidationError"
       },
+      "Vo2maxPoint": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value"
+          },
+          "average": {
+            "type": "number",
+            "title": "Average"
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "value",
+          "average"
+        ],
+        "title": "Vo2maxPoint",
+        "description": "1 回の測定と、その日を含む直近 30 日の平均。"
+      },
       "WorkoutDetail": {
         "properties": {
           "id": {
@@ -931,6 +1157,61 @@
           "items"
         ],
         "title": "WorkoutList"
+      },
+      "WorkoutPoint": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "sport": {
+            "type": "string",
+            "title": "Sport"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "load": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load"
+          },
+          "high_sec": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High Sec"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "sport",
+          "started_at",
+          "day",
+          "load",
+          "high_sec"
+        ],
+        "title": "WorkoutPoint",
+        "description": "散布図の 1 点。load は心拍がないと None、high_sec は境目がそろわないと None。"
       },
       "WorkoutSource": {
         "properties": {
