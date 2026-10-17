@@ -47,7 +47,20 @@ jobs:
 
       - name: test
         if: ${{ !cancelled() }}
-        run: npm test
+        run: npm run test:coverage
+
+      - name: coverage summary
+        if: ${{ !cancelled() && hashFiles('web/coverage/coverage-summary.json') != '' }}
+        run: |
+          {
+            echo "## web のカバレッジ"
+            echo
+            echo "| | % | covered / total |"
+            echo "|---|---:|---:|"
+            jq -r '.total | to_entries[] | select(.key != "branchesTrue")
+              | "| \(.key) | \(.value.pct)% | \(.value.covered) / \(.value.total) |"' \
+              coverage/coverage-summary.json
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: src/api is up to date
         if: ${{ !cancelled() }}

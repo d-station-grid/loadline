@@ -21,6 +21,7 @@ dev = [
     "polyfactory>=3.3.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
     "ruff>=0.16.10",
 ]
 
@@ -38,6 +39,15 @@ plugins = ["pydantic.mypy"]
 [[tool.mypy.overrides]]
 module = ["firebase_admin", "firebase_admin.*"]
 ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+# SQLAlchemy の async は greenlet の上で動く。そこで通った行も数える
+concurrency = ["greenlet", "thread"]
+
+[tool.coverage.report]
+show_missing = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -1,4 +1,4 @@
-.PHONY: check check-api check-web fmt types dev dev-api dev-web check-tts
+.PHONY: check check-api check-web fmt types dev dev-api dev-web check-tts cov
 
 check: check-api check-web check-tts
 
@@ -10,6 +10,10 @@ check-web:
 
 check-tts:
 	cd tts && uv run ruff check . && uv run ruff format --check .
+
+cov:
+	cd api && uv run pytest --cov --cov-report=term-missing
+	cd web && npm run test:coverage
 
 fmt:
 	cd api && uv run ruff format . && uv run ruff check --fix .
