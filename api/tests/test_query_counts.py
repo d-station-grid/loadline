@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import Identity, InvalidTokenError, get_token_verifier
@@ -105,25 +106,24 @@ def _payload(days: range, duration: int = 1800) -> dict[str, Any]:
     vo2max = []
     for day in days:
         start = START + timedelta(days=day)
-        workouts.append(
-            {
-                "id": f"workout-{day}",
-                "name": "屋外 サイクリング",
-                "start": f"{start:%Y-%m-%d %H:%M:%S %z}",
-                "end": f"{start + timedelta(seconds=duration):%Y-%m-%d %H:%M:%S %z}",
-                "duration": duration,
-                "source": {"name": "Apple\xa0Watch"},
-                "heartRateData": [
-                    {
-                        "date": f"{start + timedelta(minutes=m):%Y-%m-%d %H:%M:%S %z}",
-                        "Min": 115,
-                        "Avg": 120,
-                        "Max": 125,
-                    }
-                    for m in range(3)
-                ],
-            }
-        )
+        workout: dict[str, Any] = {
+            "id": f"workout-{day}",
+            "name": "屋外 サイクリング",
+            "start": f"{start:%Y-%m-%d %H:%M:%S %z}",
+            "end": f"{start + timedelta(seconds=duration):%Y-%m-%d %H:%M:%S %z}",
+            "duration": duration,
+            "source": {"name": "Apple\xa0Watch"},
+            "heartRateData": [
+                {
+                    "date": f"{start + timedelta(minutes=m):%Y-%m-%d %H:%M:%S %z}",
+                    "Min": 115,
+                    "Avg": 120,
+                    "Max": 125,
+                }
+                for m in range(3)
+            ],
+        }
+        workouts.append(workout)
         vo2max.append(
             {"date": f"{start:%Y-%m-%d %H:%M:%S %z}", "qty": 45.0, "source": "Apple\xa0Watch"}
         )
@@ -167,3 +167,30 @@ async def test_ingest_sent_again(
 
     assert len(many) == len(one), many
     assert any(s.startswith("UPDATE workouts") for s in many)
+
+
+async def test_ingest_sent_again_with_different_changes(
+    client: AsyncClient, session: AsyncSession, queries: QueryCounter
+) -> None:
+    """記録ごとに変わる項目が違っても（時間だけ、平均心拍だけ）、上書きはまとめて送る。"""
+    token, _ = await issue_token(session, (await _me()).id)
+    await _count_ingest(client, queries, token, _payload(range(MANY)))
+
+    def mixed(days: range) -> dict[str, Any]:
+        body = _payload(days)
+        for i, w in enumerate(body["data"]["workouts"]):
+            if i % 2 == 0:
+                w["duration"] = 1500
+            else:
+                w["avgHeartRate"] = {"qty": 140}
+        return body
+
+    one = await _count_ingest(client, queries, token, mixed(range(2)))
+    many = await _count_ingest(client, queries, token, mixed(range(MANY)))
+
+    assert len(many) == len(one), many
+    # まとめて送っても、記録ごとの値で上書きされている
+    stored = await session.execute(
+        select(Workout.duration_sec, Workout.avg_heart_rate).order_by(Workout.started_at)
+    )
+    assert list(stored)[:2] == [(1500, None), (1800, 140)]

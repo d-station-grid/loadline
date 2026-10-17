@@ -1,8 +1,9 @@
 import re
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
 
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import User, Vo2maxReading, Workout, WorkoutHeartRate
@@ -68,44 +69,55 @@ async def _upsert_workouts(
     if not taken:
         return
 
-    rows = {
-        row.external_id: row
-        for row in await session.scalars(
-            select(Workout).where(
+    # 前からある行は id だけ読む。上書きは下でまとめて送る
+    existing: dict[str, int] = {
+        external_id: workout_id
+        for external_id, workout_id in await session.execute(
+            select(Workout.external_id, Workout.id).where(
                 Workout.user_id == user_id, Workout.external_id.in_({w.id for w, _ in taken})
             )
         )
     }
     # 届き直した記録の心拍は入れ替える。消すのは前からある行の分だけ
-    replaced = [row.id for row in rows.values()]
-    if replaced:
+    if existing:
         await session.execute(
-            delete(WorkoutHeartRate).where(WorkoutHeartRate.workout_id.in_(replaced))
+            delete(WorkoutHeartRate).where(WorkoutHeartRate.workout_id.in_(existing.values()))
         )
 
+    added: dict[str, Workout] = {}
+    updates: dict[int, dict[str, Any]] = {}
     heart_rates: dict[str, WorkoutIn] = {}
     for w, sport in taken:
-        row = rows.get(w.id)
-        if row is None:
-            row = Workout(user_id=user_id, external_id=w.id)
-            session.add(row)
-            rows[w.id] = row
-            result.workouts_added += 1
-        else:
+        values: dict[str, Any] = {
+            "sport": sport,
+            "started_at": parse_time(w.start),
+            "ended_at": parse_time(w.end),
+            "duration_sec": round(w.duration),
+            "avg_heart_rate": _bpm(w.avg_heart_rate.qty if w.avg_heart_rate else None),
+            "max_heart_rate": _bpm(w.max_heart_rate.qty if w.max_heart_rate else None),
+        }
+        if w.id in existing:
+            updates[existing[w.id]] = {"id": existing[w.id], **values}
             result.workouts_updated += 1
-        row.sport = sport
-        row.started_at = parse_time(w.start)
-        row.ended_at = parse_time(w.end)
-        row.duration_sec = round(w.duration)
-        row.avg_heart_rate = _bpm(w.avg_heart_rate.qty if w.avg_heart_rate else None)
-        row.max_heart_rate = _bpm(w.max_heart_rate.qty if w.max_heart_rate else None)
+        elif w.id in added:
+            for key, value in values.items():
+                setattr(added[w.id], key, value)
+            result.workouts_updated += 1
+        else:
+            added[w.id] = Workout(user_id=user_id, external_id=w.id, **values)
+            session.add(added[w.id])
+            result.workouts_added += 1
         heart_rates[w.id] = w
+    if updates:
+        # どの行も全部の列を渡す。変わった列が記録ごとに違っても、1 回の executemany で送れる
+        await session.execute(update(Workout), list(updates.values()))
     # 新しい行の id を付ける
     await session.flush()
+    ids = existing | {external_id: row.id for external_id, row in added.items()}
 
     samples = [
         {
-            "workout_id": rows[external_id].id,
+            "workout_id": ids[external_id],
             "recorded_at": parse_time(p.date),
             "min_bpm": round(p.min_bpm),
             "avg_bpm": round(p.avg_bpm),
