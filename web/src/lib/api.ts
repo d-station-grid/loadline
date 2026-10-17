@@ -1,5 +1,7 @@
 import type {
+  Dashboard,
   IngestTokenOut,
+  ReadDashboardDashboardGetData,
   SettingsIn,
   SettingsOut,
   UserOut,
@@ -86,4 +88,25 @@ export function getWorkout(
   idToken: string,
 ): Promise<WorkoutDetail> {
   return request<WorkoutDetail>(`/workouts/${id}`, { method: "GET" }, idToken);
+}
+
+export type DashboardQuery = NonNullable<
+  ReadDashboardDashboardGetData["query"]
+>;
+
+/**
+ * 負荷と推移。since と until は利用者のタイムゾーンの日付（YYYY-MM-DD）で、両端を含む。
+ * 「直近 N 週」は weeks で渡し、始まりの日は api が設定のタイムゾーンの今日から決める。
+ */
+export function getDashboard(
+  query: DashboardQuery,
+  idToken: string,
+): Promise<Dashboard> {
+  const params = new URLSearchParams();
+  if (query.since) params.set("since", query.since);
+  if (query.until) params.set("until", query.until);
+  if (query.sport) params.set("sport", query.sport);
+  if (query.weeks) params.set("weeks", String(query.weeks));
+  const qs = params.size > 0 ? `?${params}` : "";
+  return request<Dashboard>(`/dashboard${qs}`, { method: "GET" }, idToken);
 }

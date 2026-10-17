@@ -102,10 +102,19 @@ async def _vo2max(
 
 
 async def build_dashboard(
-    session: AsyncSession, user: User, since: date | None, until: date | None, sport: Sport
+    session: AsyncSession,
+    user: User,
+    since: date | None,
+    until: date | None,
+    sport: Sport,
+    weeks: int | None = None,
 ) -> Dashboard:
     """期間（両端を含む）のダッシュボード。since がなければ最初のワークアウトの日から、
     until がなければ今日まで。保存はせず、呼ばれるたびに計算する。
+
+    weeks を渡すと、since は until の weeks 週前の日になる。「直近 N 週」の始まりを
+    利用者のタイムゾーンの今日から決めるため。端末の日付で決めると、端末と設定の
+    タイムゾーンがずれたときに 1 日ずれる。since と一緒には渡さない（router で落とす）。
 
     until は今日で切る。未来の日を負荷 0 で埋めると、体力と疲労が先まで減っていく線が
     予測のように見えるため。期間の検査は既定値を決めて切った後にする。until を省いて
@@ -114,6 +123,8 @@ async def build_dashboard(
     tz = ZoneInfo(user.timezone)
     today = datetime.now(tz).date()
     until = min(until or today, today)
+    if weeks is not None:
+        since = until - timedelta(weeks=weeks)
     if since is None:
         since = min(await _first_day(session, user.id, tz) or until, until)
     if since < EARLIEST_DAY:

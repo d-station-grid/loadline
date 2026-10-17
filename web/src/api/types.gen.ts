@@ -593,6 +593,10 @@ export type ReadDashboardDashboardGetData = {
      * Sport
      */
     sport?: "all" | "run" | "ride";
+    /**
+     * Weeks
+     */
+    weeks?: number | null;
   };
   url: "/dashboard";
 };
