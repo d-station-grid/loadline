@@ -1,8 +1,9 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
+from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
@@ -69,3 +70,30 @@ async def client(session: AsyncSession) -> AsyncIterator[AsyncClient]:
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()
+
+
+class QueryCounter:
+    """発行された SQL を数える。数えるのは reset() の後だけ。"""
+
+    def __init__(self) -> None:
+        self.statements: list[str] = []
+
+    @property
+    def count(self) -> int:
+        return len(self.statements)
+
+    def reset(self) -> None:
+        self.statements.clear()
+
+
+@pytest.fixture
+def queries(engine: AsyncEngine) -> Iterator[QueryCounter]:
+    """このテストの間に DB へ送った SQL。executemany でまとめて送ったものは 1 回と数える。"""
+    counter = QueryCounter()
+
+    def _count(_conn: Any, _cursor: Any, statement: str, *_args: Any) -> None:
+        counter.statements.append(statement)
+
+    event.listen(engine.sync_engine, "before_cursor_execute", _count)
+    yield counter
+    event.remove(engine.sync_engine, "before_cursor_execute", _count)

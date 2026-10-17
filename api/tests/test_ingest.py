@@ -210,3 +210,41 @@ async def test_other_sports_are_skipped(session: AsyncSession) -> None:
 
     assert result.workouts_skipped == 1
     assert await _count(session, Workout) == 0
+
+
+async def test_same_record_twice_in_one_payload(session: AsyncSession) -> None:
+    """1 回の中に同じ記録が 2 度あれば、後のほうで上書きし、心拍も後のほうだけ残す。"""
+    user = await UserFactory.create_async()
+    first, second = (
+        {
+            "id": "ride-1",
+            "name": "屋外 サイクリング",
+            "start": "2026-10-04 07:00:00 +0900",
+            "end": "2026-10-04 07:30:00 +0900",
+            "duration": duration,
+            "source": {"name": "Apple\xa0Watch"},
+            "heartRateData": [
+                {"date": "2026-10-04 07:00:00 +0900", "Min": bpm, "Avg": bpm, "Max": bpm}
+            ],
+        }
+        for duration, bpm in [(1800, 120), (1500, 130)]
+    )
+    vo2max = {"date": "2026-10-04 08:00:00 +0900", "qty": 45.0, "source": "Apple\xa0Watch"}
+    payload = IngestPayload.model_validate(
+        {
+            "data": {
+                "workouts": [first, second],
+                "metrics": [{"name": "vo2_max", "data": [vo2max, vo2max]}],
+            }
+        }
+    )
+
+    result = await ingest(session, user.id, payload)
+
+    assert (result.workouts_added, result.workouts_updated) == (1, 1)
+    assert (result.vo2max_added, result.vo2max_skipped) == (1, 1)
+    workout = await session.scalar(select(Workout))
+    assert workout is not None
+    assert workout.duration_sec == 1500
+    assert list(await session.scalars(select(WorkoutHeartRate.avg_bpm))) == [130]
+    assert await _count(session, Vo2maxReading) == 1
