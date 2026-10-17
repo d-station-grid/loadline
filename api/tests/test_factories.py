@@ -27,8 +27,21 @@ async def test_each_factory_saves_a_row(session: AsyncSession) -> None:
     assert vo2max.user_id == user.id
 
 
-async def test_users_and_workouts_do_not_collide(session: AsyncSession) -> None:
+async def test_many_rows_for_one_user_do_not_collide(session: AsyncSession) -> None:
+    """既定の値のまま同じ利用者に何件作っても、一意制約で落ちない。"""
     first, second = await UserFactory.create_batch_async(2)
     await WorkoutFactory.create_batch_async(2, user_id=first.id)
+    readings = await Vo2maxReadingFactory.create_batch_async(2, user_id=first.id)
+    workout = await WorkoutFactory.create_async(user_id=first.id)
+    heart_rates = await WorkoutHeartRateFactory.create_batch_async(2, workout_id=workout.id)
 
     assert first.firebase_uid != second.firebase_uid
+    assert readings[0].measured_at != readings[1].measured_at
+    assert heart_rates[1].recorded_at - heart_rates[0].recorded_at == timedelta(minutes=1)
+
+
+async def test_default_uid_is_not_the_logged_in_one(session: AsyncSession) -> None:
+    """テストの偽のログインは uid-1 を使う。既定で作った利用者が本人に化けない。"""
+    users = await UserFactory.create_batch_async(3)
+
+    assert all(u.firebase_uid and u.firebase_uid.startswith("factory-uid-") for u in users)

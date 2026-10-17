@@ -25,6 +25,12 @@ T = TypeVar("T")
 _serial = count(1)
 
 
+def _serial_time(start: datetime, step: timedelta) -> Use[Any, datetime]:
+    """呼ぶたびに step ずつ進む日時。同じ利用者に何件作っても一意制約で落ちない。"""
+    numbers = count()
+    return Use(lambda: start + step * next(numbers))
+
+
 class BaseFactory(SQLAlchemyFactory[T]):
     __is_base_factory__ = True
     __set_primary_key__ = False
@@ -36,7 +42,8 @@ class BaseFactory(SQLAlchemyFactory[T]):
 class UserFactory(BaseFactory[User]):
     __model__ = User
 
-    firebase_uid = Use(lambda: f"uid-{next(_serial)}")
+    # テストの偽のログインが決め打ちする uid-1 などと重ならない頭にする
+    firebase_uid = Use(lambda: f"factory-uid-{next(_serial)}")
     email = PostGenerated(lambda _name, values: f"{values['firebase_uid']}@example.com")
     is_demo = False
     # 心拍の設定は、設定画面で入れるまで空
@@ -89,7 +96,7 @@ class WorkoutHeartRateFactory(BaseFactory[WorkoutHeartRate]):
 
     __model__ = WorkoutHeartRate
 
-    recorded_at = datetime(2026, 9, 13, 5, 0, tzinfo=UTC)
+    recorded_at = _serial_time(datetime(2026, 9, 13, 5, 0, tzinfo=UTC), timedelta(minutes=1))
     min_bpm = 115
     avg_bpm = 120
     max_bpm = 125
@@ -98,6 +105,6 @@ class WorkoutHeartRateFactory(BaseFactory[WorkoutHeartRate]):
 class Vo2maxReadingFactory(BaseFactory[Vo2maxReading]):
     __model__ = Vo2maxReading
 
-    measured_at = datetime(2026, 9, 13, 8, 0, tzinfo=UTC)
+    measured_at = _serial_time(datetime(2026, 9, 13, 8, 0, tzinfo=UTC), timedelta(days=1))
     value = Decimal("45.0")
     created_at = Ignore()
