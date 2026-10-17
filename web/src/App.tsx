@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { login } from "./lib/api";
 import { auth, googleProvider } from "./lib/firebase";
+import DashboardPage from "./pages/DashboardPage";
 import SettingsPage from "./pages/SettingsPage";
 import WorkoutPage from "./pages/WorkoutPage";
 import WorkoutsPage from "./pages/WorkoutsPage";
@@ -18,11 +19,14 @@ function errorMessage(e: unknown): string {
 
 // ログイン済みの画面。ルーティングのライブラリは入れず、state で切り替える
 type View =
-  { name: "workouts" } | { name: "workout"; id: number } | { name: "settings" };
+  | { name: "dashboard" }
+  | { name: "workouts" }
+  | { name: "workout"; id: number }
+  | { name: "settings" };
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [view, setView] = useState<View>({ name: "workouts" });
+  const [view, setView] = useState<View>({ name: "dashboard" });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Firebase の通知の連番。api の応答を待つ間に次の通知が来たら、古い処理は状態を触らない
@@ -92,6 +96,9 @@ function App() {
       <header>
         <h1>loadline</h1>
         <nav aria-label="Main">
+          <button type="button" onClick={() => setView({ name: "dashboard" })}>
+            Dashboard
+          </button>
           <button type="button" onClick={() => setView({ name: "workouts" })}>
             Workouts
           </button>
@@ -107,6 +114,13 @@ function App() {
           </button>
         </p>
       </header>
+      {/* ダッシュボードは隠さずに外す。隠した要素の中では ECharts が幅 0 で描いてしまうため */}
+      {view.name === "dashboard" && (
+        <DashboardPage
+          user={user}
+          onOpenSettings={() => setView({ name: "settings" })}
+        />
+      )}
       {/* 一覧はマウントしたまま隠す。詳細から戻ったときに期間と Load more の続きを残すため */}
       <div hidden={view.name !== "workouts"}>
         <WorkoutsPage

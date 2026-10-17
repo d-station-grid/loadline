@@ -19,6 +19,13 @@ vi.mock("./lib/api", () => ({ login: vi.fn() }));
 vi.mock("./pages/SettingsPage", () => ({ default: () => <p>settings</p> }));
 vi.mock("./pages/WorkoutsPage", () => ({ default: () => <p>workouts</p> }));
 vi.mock("./pages/WorkoutPage", () => ({ default: () => <p>workout</p> }));
+vi.mock("./pages/DashboardPage", () => ({
+  default: ({ onOpenSettings }: { onOpenSettings: () => void }) => (
+    <button type="button" onClick={onOpenSettings}>
+      dashboard
+    </button>
+  ),
+}));
 
 /** Firebase からの通知を起こす。テストの途中でログインを起こすときにも使う。 */
 let notify: (user: User | null) => void = () => {};
@@ -117,4 +124,35 @@ test("api の応答待ちの間にログアウトされたら、古い処理は�
   expect(
     screen.getByRole("button", { name: "Sign in with Google" }),
   ).toBeInTheDocument();
+});
+
+test("ログイン後の最初の画面はダッシュボードで、ヘッダーから移れる", async () => {
+  restoredUser(taro);
+  vi.mocked(login).mockResolvedValue({ id: 1, email: "taro@example.com" });
+  render(<App />);
+
+  expect(
+    await screen.findByRole("button", { name: "dashboard" }),
+  ).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "Workouts" }));
+  expect(
+    screen.queryByRole("button", { name: "dashboard" }),
+  ).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "Dashboard" }));
+  expect(screen.getByRole("button", { name: "dashboard" })).toBeInTheDocument();
+});
+
+test("ダッシュボードから設定の画面を開ける", async () => {
+  restoredUser(taro);
+  vi.mocked(login).mockResolvedValue({ id: 1, email: "taro@example.com" });
+  render(<App />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "dashboard" }));
+
+  expect(screen.getByText("settings")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "dashboard" }),
+  ).not.toBeInTheDocument();
 });
