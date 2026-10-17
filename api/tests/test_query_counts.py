@@ -5,6 +5,7 @@
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
@@ -13,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import Identity, InvalidTokenError, get_token_verifier
 from app.main import app
 from app.models import User, Workout
+from app.services.ingest_tokens import issue_token
 from tests.conftest import QueryCounter
 from tests.factories import (
     UserFactory,
@@ -95,3 +97,73 @@ async def test_workout_detail(
     many = await _count_get(client, queries, url)
 
     assert len(many) == len(one), many
+
+
+def _payload(days: range, duration: int = 1800) -> dict[str, Any]:
+    """Health Auto Export の形で、その日ごとのワークアウト（心拍 3 件）と VO2max。"""
+    workouts = []
+    vo2max = []
+    for day in days:
+        start = START + timedelta(days=day)
+        workouts.append(
+            {
+                "id": f"workout-{day}",
+                "name": "屋外 サイクリング",
+                "start": f"{start:%Y-%m-%d %H:%M:%S %z}",
+                "end": f"{start + timedelta(seconds=duration):%Y-%m-%d %H:%M:%S %z}",
+                "duration": duration,
+                "source": {"name": "Apple\xa0Watch"},
+                "heartRateData": [
+                    {
+                        "date": f"{start + timedelta(minutes=m):%Y-%m-%d %H:%M:%S %z}",
+                        "Min": 115,
+                        "Avg": 120,
+                        "Max": 125,
+                    }
+                    for m in range(3)
+                ],
+            }
+        )
+        vo2max.append(
+            {"date": f"{start:%Y-%m-%d %H:%M:%S %z}", "qty": 45.0, "source": "Apple\xa0Watch"}
+        )
+    return {
+        "data": {
+            "workouts": workouts,
+            "metrics": [{"name": "vo2_max", "units": "ml/(kg·min)", "data": vo2max}],
+        }
+    }
+
+
+async def _count_ingest(
+    client: AsyncClient, queries: QueryCounter, token: str, body: dict[str, Any]
+) -> list[str]:
+    queries.reset()
+    res = await client.post("/ingest", json=body, headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 200
+    return list(queries.statements)
+
+
+async def test_ingest_new_records(
+    client: AsyncClient, session: AsyncSession, queries: QueryCounter
+) -> None:
+    token, _ = await issue_token(session, (await _me()).id)
+
+    one = await _count_ingest(client, queries, token, _payload(range(1)))
+    many = await _count_ingest(client, queries, token, _payload(range(1, 1 + MANY)))
+
+    assert len(many) == len(one), many
+
+
+async def test_ingest_sent_again(
+    client: AsyncClient, session: AsyncSession, queries: QueryCounter
+) -> None:
+    """値を変えて届き直すと、ワークアウトは上書き、心拍は入れ替え、VO2max は飛ばす。"""
+    token, _ = await issue_token(session, (await _me()).id)
+    await _count_ingest(client, queries, token, _payload(range(MANY)))
+
+    one = await _count_ingest(client, queries, token, _payload(range(1), duration=1500))
+    many = await _count_ingest(client, queries, token, _payload(range(MANY), duration=1200))
+
+    assert len(many) == len(one), many
+    assert any(s.startswith("UPDATE workouts") for s in many)
