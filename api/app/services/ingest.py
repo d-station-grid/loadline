@@ -47,6 +47,17 @@ def sport_of(name: str) -> str | None:
     return None
 
 
+# 届き直したときに上書きする列
+_COLUMNS = (
+    "sport",
+    "started_at",
+    "ended_at",
+    "duration_sec",
+    "avg_heart_rate",
+    "max_heart_rate",
+)
+
+
 def _bpm(value: float | None) -> int | None:
     return None if value is None else round(value)
 
@@ -69,15 +80,17 @@ async def _upsert_workouts(
     if not taken:
         return
 
-    # 前からある行は id だけ読む。上書きは下でまとめて送る
-    existing: dict[str, int] = {
-        external_id: workout_id
-        for external_id, workout_id in await session.execute(
-            select(Workout.external_id, Workout.id).where(
-                Workout.user_id == user_id, Workout.external_id.in_({w.id for w, _ in taken})
-            )
+    # 前からある行は、id と上書きする列の値だけをまとめて読む。上書きは下でまとめて送る
+    stored = await session.execute(
+        select(Workout.external_id, Workout.id, *(getattr(Workout, c) for c in _COLUMNS)).where(
+            Workout.user_id == user_id, Workout.external_id.in_({w.id for w, _ in taken})
         )
-    }
+    )
+    existing: dict[str, int] = {}
+    before: dict[int, dict[str, Any]] = {}
+    for external_id, workout_id, *columns in stored:
+        existing[external_id] = workout_id
+        before[workout_id] = dict(zip(_COLUMNS, columns, strict=True))
     # 届き直した記録の心拍は入れ替える。消すのは前からある行の分だけ
     if existing:
         await session.execute(
@@ -97,7 +110,12 @@ async def _upsert_workouts(
             "max_heart_rate": _bpm(w.max_heart_rate.qty if w.max_heart_rate else None),
         }
         if w.id in existing:
-            updates[existing[w.id]] = {"id": existing[w.id], **values}
+            workout_id = existing[w.id]
+            # 値が同じなら UPDATE を送らない。updated_at を「値が変わった日時」に保つ
+            if values == before[workout_id]:
+                updates.pop(workout_id, None)
+            else:
+                updates[workout_id] = {"id": workout_id, **values}
             result.workouts_updated += 1
         elif w.id in added:
             for key, value in values.items():

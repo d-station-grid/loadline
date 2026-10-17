@@ -194,3 +194,19 @@ async def test_ingest_sent_again_with_different_changes(
         select(Workout.duration_sec, Workout.avg_heart_rate).order_by(Workout.started_at)
     )
     assert list(stored)[:2] == [(1500, None), (1800, 140)]
+
+
+async def test_ingest_sent_again_unchanged_does_not_update(
+    client: AsyncClient, session: AsyncSession, queries: QueryCounter
+) -> None:
+    """同じ値で届き直したら UPDATE を送らない。updated_at を「値が変わった日時」に保つため。
+
+    updated_at そのものは比べない。テストは 1 つのトランザクションの中で動き、now() が
+    同じ時刻を返すので、UPDATE しても変わらないため。
+    """
+    token, _ = await issue_token(session, (await _me()).id)
+    await _count_ingest(client, queries, token, _payload(range(MANY)))
+
+    many = await _count_ingest(client, queries, token, _payload(range(MANY)))
+
+    assert not any(s.startswith("UPDATE workouts") for s in many), many
