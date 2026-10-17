@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from app.models import User, Vo2maxReading, Workout, WorkoutHeartRate
 from app.schemas.ingest import IngestPayload
 from app.services.ingest import ingest, is_apple_watch, sport_of
+from tests.factories import UserFactory
 
 # Apple Watch と Google Health のサイクリングが 1 件ずつ入った、Health Auto Export の実データ
 SAMPLE = Path(__file__).parent / "fixtures" / "sample_health-auto-export_workouts-v2.json"
@@ -28,13 +29,6 @@ def _vo2max_payload(*points: tuple[str, float, str]) -> IngestPayload:
     )
 
 
-async def _make_user(session: AsyncSession) -> User:
-    user = User(firebase_uid="uid-1", email="one@example.com")
-    session.add(user)
-    await session.flush()
-    return user
-
-
 async def _count(
     session: AsyncSession, model: type[Workout | WorkoutHeartRate | Vo2maxReading]
 ) -> int:
@@ -42,7 +36,7 @@ async def _count(
 
 
 async def test_takes_only_apple_watch_workouts(session: AsyncSession) -> None:
-    user = await _make_user(session)
+    user = await UserFactory.create_async()
 
     result = await ingest(session, user.id, _workouts_payload())
 
@@ -60,7 +54,7 @@ async def test_takes_only_apple_watch_workouts(session: AsyncSession) -> None:
 
 
 async def test_same_workout_twice_is_not_doubled(session: AsyncSession) -> None:
-    user = await _make_user(session)
+    user = await UserFactory.create_async()
     await ingest(session, user.id, _workouts_payload())
 
     result = await ingest(session, user.id, _workouts_payload())
@@ -78,7 +72,7 @@ async def test_same_workout_sent_at_once_is_not_doubled(engine: AsyncEngine) -> 
     """
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as s:
-        user = User(firebase_uid="uid-race", email="race@example.com")
+        user = UserFactory.build()
         s.add(user)
         await s.commit()
         user_id = user.id
@@ -114,7 +108,7 @@ async def test_same_workout_sent_at_once_is_not_doubled(engine: AsyncEngine) -> 
 
 
 async def test_vo2max_takes_apple_watch_and_skips_duplicates(session: AsyncSession) -> None:
-    user = await _make_user(session)
+    user = await UserFactory.create_async()
     payload = _vo2max_payload(
         ("2026-07-05 21:21:11 +0900", 46.5, "Apple\xa0Watch"),
         ("2026-07-13 22:43:55 +0900", 46.73, "Apple\xa0Watch"),
@@ -167,7 +161,7 @@ def test_is_apple_watch(source: str | None, expected: bool) -> None:
 
 
 async def test_run_from_named_watch_is_taken(session: AsyncSession) -> None:
-    user = await _make_user(session)
+    user = await UserFactory.create_async()
     payload = IngestPayload.model_validate(
         {
             "data": {
@@ -194,7 +188,7 @@ async def test_run_from_named_watch_is_taken(session: AsyncSession) -> None:
 
 
 async def test_other_sports_are_skipped(session: AsyncSession) -> None:
-    user = await _make_user(session)
+    user = await UserFactory.create_async()
     payload = IngestPayload.model_validate(
         {
             "data": {

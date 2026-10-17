@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.core.db import get_session
 from app.main import app
 from app.models import Base
+from tests.factories import BaseFactory
 
 
 def _test_url() -> URL:
@@ -49,7 +50,10 @@ async def session(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
         async with AsyncSession(
             bind=conn, expire_on_commit=False, join_transaction_mode="create_savepoint"
         ) as s:
+            # factory もこのセッションに保存する
+            BaseFactory.__async_session__ = s
             yield s
+            BaseFactory.__async_session__ = None
         await conn.rollback()
 
 

@@ -6,14 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import User
 from app.services.ingest_tokens import current_token, issue_token
+from tests.factories import UserFactory
 
 SAMPLE = Path(__file__).parent / "fixtures" / "sample_health-auto-export_workouts-v2.json"
 
 
 async def _user_with_token(session: AsyncSession) -> tuple[User, str]:
-    user = User(firebase_uid="uid-1", email="one@example.com")
-    session.add(user)
-    await session.flush()
+    user = await UserFactory.create_async()
     token, _ = await issue_token(session, user.id)
     return user, token
 
