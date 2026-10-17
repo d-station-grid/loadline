@@ -77,6 +77,21 @@ test("負荷が null の日は棒を出さず、負荷 0 の高さに印を置�
   expect(noHeartRate.data).toEqual([["2026-10-01", 0]]);
 });
 
+test("心拍のない日がなければ、凡例に No heart rate を出さない", () => {
+  const legendOf = (days: DayPoint[]) =>
+    (loadOption(days).legend as { data: string[] }).data;
+  const day = { fitness: 30, fatigue: 50, headroom: -20 };
+
+  expect(legendOf([{ day: "2026-10-01", load: 12, ...day }])).toEqual([
+    "Fitness",
+    "Fatigue",
+    "Load",
+  ]);
+  expect(legendOf([{ day: "2026-10-01", load: null, ...day }])).toContain(
+    "No heart rate",
+  );
+});
+
 test("VO2max は測定値と 30 日平均を別の series にする", () => {
   const points: Vo2MaxPoint[] = [
     { day: "2026-10-01", value: 48.24, average: 47.96 },

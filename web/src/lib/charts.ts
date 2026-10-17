@@ -14,9 +14,13 @@ const NO_HEART_RATE = "No heart rate";
  * 体力と疲労は低めに出る。棒を消すだけだと休養日と見分けがつかない。
  */
 export function loadOption(days: DayPoint[]): EChartsOption {
+  const missing = days.filter((d) => d.load === null);
+  // 印のない期間は凡例にも出さない。点のない series の凡例は薄く出て、壊れて見えるため
+  const legend = ["Fitness", "Fatigue", "Load"];
+  if (missing.length > 0) legend.push(NO_HEART_RATE);
   return {
     tooltip: { trigger: "axis" },
-    legend: { data: ["Fitness", "Fatigue", "Load", NO_HEART_RATE] },
+    legend: { data: legend },
     xAxis: { type: "time" },
     yAxis: [
       { type: "value", name: "Fitness / Fatigue" },
@@ -48,7 +52,7 @@ export function loadOption(days: DayPoint[]): EChartsOption {
         symbol: "triangle",
         symbolSize: 10,
         itemStyle: { color: "#9ca3af" },
-        data: days.filter((d) => d.load === null).map((d) => [d.day, 0]),
+        data: missing.map((d) => [d.day, 0]),
       },
     ],
   };
