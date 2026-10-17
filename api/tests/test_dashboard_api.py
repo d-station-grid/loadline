@@ -1,6 +1,6 @@
 import json
 from collections.abc import Iterator
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -244,6 +244,31 @@ async def test_future_until_is_capped_at_today(client: AsyncClient, session: Asy
     assert body["days"][-1]["day"] == today
 
 
+async def test_weeks_starts_n_weeks_before_today_in_user_timezone(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """端末ではなく設定のタイムゾーンの今日から数える。UTC+14 なら、ほかの国より先に日付が進む。"""
+    user = await _user(session)
+    user.timezone = "Pacific/Kiritimati"
+    await session.commit()
+
+    body = await _get(client, weeks="1")
+
+    today = datetime.now(ZoneInfo("Pacific/Kiritimati")).date()
+    assert body["until"] == today.isoformat()
+    assert body["since"] == (today - timedelta(weeks=1)).isoformat()
+    assert body["days"][0]["day"] == body["since"]
+
+
+async def test_weeks_counts_back_from_until(client: AsyncClient, session: AsyncSession) -> None:
+    await _user(session)
+
+    body = await _get(client, weeks="12", until="2026-10-17")
+
+    assert body["since"] == "2026-07-25"
+    assert len(body["days"]) == 12 * 7 + 1
+
+
 async def test_only_own_records(client: AsyncClient, session: AsyncSession) -> None:
     await _user(session, uid="uid-other")
     me = User(
@@ -281,6 +306,26 @@ async def test_invalid_period_is_rejected(
     (error,) = res.json()["detail"]
     assert error["loc"] == ["query", "since"]
     assert error["type"] == "value_error"
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"weeks": "12", "since": "2026-09-13"},
+        {"weeks": "0"},
+        {"weeks": "521"},
+    ],
+)
+async def test_invalid_weeks_is_rejected(
+    client: AsyncClient, session: AsyncSession, params: dict[str, str]
+) -> None:
+    await _user(session)
+
+    res = await client.get("/dashboard", params=params, headers=HEADERS)
+
+    assert res.status_code == 422
+    (error,) = res.json()["detail"]
+    assert error["loc"] == ["query", "weeks"]
 
 
 async def test_requires_login(client: AsyncClient) -> None:

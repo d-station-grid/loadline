@@ -26,16 +26,6 @@ const SPORTS: { key: Sport; label: string }[] = [
   { key: "run", label: "Run" },
 ];
 
-/** 期間の始まりの日（YYYY-MM-DD、端末のタイムゾーン）。「すべて」は api に任せて最初の記録の日から。 */
-function sinceOf(weeks: number | null, now = new Date()): string | undefined {
-  if (weeks === null) return undefined;
-  const d = new Date(now);
-  d.setDate(d.getDate() - weeks * 7);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${mm}-${dd}`;
-}
-
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Something went wrong";
 }
@@ -54,8 +44,9 @@ export default function DashboardPage({ user, onOpenSettings }: Props) {
   const [attempt, setAttempt] = useState(0);
 
   const weeks = RANGES.find((r) => r.key === range)?.weeks ?? null;
-  const since = useMemo(() => sinceOf(weeks), [weeks]);
-  const key = `${since ?? "all"}|${sport}`;
+  // 期間は週の数だけ渡し、始まりの日は api が設定のタイムゾーンで決める。
+  // 「すべて」は何も渡さず、api が最初の記録の日から返す
+  const key = `${weeks ?? "all"}|${sport}`;
   const data = result && result.key === key ? result.data : null;
 
   useEffect(() => {
@@ -63,12 +54,12 @@ export default function DashboardPage({ user, onOpenSettings }: Props) {
     (async () => {
       try {
         const dashboard = await getDashboard(
-          { since, sport },
+          { weeks: weeks ?? undefined, sport },
           await user.getIdToken(),
         );
         if (cancelled) return;
         setError(null);
-        setResult({ key: `${since ?? "all"}|${sport}`, data: dashboard });
+        setResult({ key: `${weeks ?? "all"}|${sport}`, data: dashboard });
       } catch (e) {
         if (!cancelled) setError(errorMessage(e));
       }
@@ -76,7 +67,7 @@ export default function DashboardPage({ user, onOpenSettings }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [user, since, sport, attempt]);
+  }, [user, weeks, sport, attempt]);
 
   // option は応答が変わったときだけ作り直す。毎回作ると Chart が描き直してしまう
   const load = useMemo(() => (data ? loadOption(data.days) : null), [data]);

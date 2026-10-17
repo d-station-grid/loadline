@@ -38,7 +38,7 @@
           "dashboard"
         ],
         "summary": "Read Dashboard",
-        "description": "本人の負荷と推移。since と until は利用者のタイムゾーンでの日付で、両端を含む。\n\n期間の誤りは、入力の検査と同じ 422 の形（detail が loc と msg の配列）で返す。",
+        "description": "本人の負荷と推移。since と until は利用者のタイムゾーンでの日付で、両端を含む。\n\nweeks は「直近 N 週」。since は until（省けば今日）の N 週前の日になる。since とは\n一緒に渡せない。期間の誤りは、入力の検査と同じ 422 の形（detail が loc と msg の配列）で返す。",
         "operationId": "read_dashboard_dashboard_get",
         "security": [
           {
@@ -93,6 +93,24 @@
               "type": "string",
               "default": "all",
               "title": "Sport"
+            }
+          },
+          {
+            "name": "weeks",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 520,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weeks"
             }
           }
         ],
