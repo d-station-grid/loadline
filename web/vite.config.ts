@@ -6,5 +6,12 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
+    coverage: {
+      provider: "v8",
+      include: ["src/**/*.{ts,tsx}"],
+      // OpenAPI からの生成物とテストの準備は、数字に入れない
+      exclude: ["src/api/**", "src/test/**", "src/**/*.test.{ts,tsx}"],
+      reporter: ["text", "json-summary"],
+    },
   },
 });

@@ -376,3 +376,5 @@ iPhone から実際に送るには、設定画面でトークンを発行し、H
 api のテストは、`DATABASE_URL` の DB 名に `_test` を付けた DB を自動で作って使います。開発用の DB には触りません。
 
 テストで使う行は、`api/tests/factories.py` の factory（polyfactory）で作ります。たとえば `await UserFactory.create_async(max_heart_rate=177)` のように、テストに関係する値だけを渡します。
+
+テストのカバレッジは `make cov` で測ります。api は pytest-cov で `api/app/` を、web は vitest の v8 で `web/src/` を測り、ファイルごとの割合と通っていない行を出します。web では、OpenAPI から生成した `src/api/` は数に入れません。PR の CI では、api-ci と web-ci のジョブの Summary に同じ数字が出ます。
