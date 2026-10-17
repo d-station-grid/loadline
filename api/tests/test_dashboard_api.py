@@ -1,6 +1,7 @@
 import json
 from collections.abc import Iterator
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -11,14 +12,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import Identity, InvalidTokenError, get_token_verifier
 from app.main import app
-from app.models import User
+from app.models import User, Workout
 from app.schemas.ingest import IngestPayload
 from app.services.ingest import ingest
+from tests.factories import UserFactory, Vo2maxReadingFactory, WorkoutFactory
 
 HEADERS = {"Authorization": "Bearer good"}
 # 2026-09-13 14:10 (JST) に始まる Apple Watch のサイクリング 1 件（4028 秒、心拍 72 サンプル）
 SAMPLE = Path(__file__).parent / "fixtures" / "sample_health-auto-export_workouts-v2.json"
 SAMPLE_DAY = "2026-09-13"
+JST = ZoneInfo("Asia/Tokyo")
 
 
 class FakeVerifier:
@@ -35,42 +38,21 @@ def fake_verifier() -> Iterator[None]:
     app.dependency_overrides.pop(get_token_verifier, None)
 
 
-async def _user(session: AsyncSession, uid: str = "uid-1", *, settings: bool = True) -> User:
-    user = User(firebase_uid=uid, email=f"{uid}@example.com")
+async def _user(
+    session: AsyncSession, uid: str = "uid-1", *, settings: bool = True, **fields: Any
+) -> User:
+    """fixtures の実データ（心拍あり）を取り込んだ利用者。settings で心拍の最大と安静時を入れる。"""
     if settings:
-        user.max_heart_rate = 177
-        user.resting_heart_rate = 75
-    session.add(user)
-    await session.flush()
+        fields = {"max_heart_rate": 177, "resting_heart_rate": 75, **fields}
+    user = await UserFactory.create_async(firebase_uid=uid, **fields)
     await ingest(session, user.id, IngestPayload.model_validate(json.loads(SAMPLE.read_text())))
     return user
 
 
-def _run(start: str, minutes: int = 30) -> IngestPayload:
-    """心拍のない Apple Watch のラン 1 件。"""
-    return IngestPayload.model_validate(
-        {
-            "data": {
-                "workouts": [
-                    {
-                        "id": f"run-{start}",
-                        "name": "屋外 ラン",
-                        "start": f"{start} +0900",
-                        "end": f"{start} +0900",
-                        "duration": minutes * 60,
-                        "source": {"name": "Apple\xa0Watch"},
-                    }
-                ]
-            }
-        }
-    )
-
-
-def _vo2max(*points: tuple[str, float]) -> IngestPayload:
-    data = [{"date": f"{d} +0900", "qty": q, "source": "Apple\xa0Watch"} for d, q in points]
-    return IngestPayload.model_validate(
-        {"data": {"metrics": [{"name": "vo2_max", "units": "ml/(kg·min)", "data": data}]}}
-    )
+async def _run(user: User, start: str) -> Workout:
+    """心拍のない Apple Watch のラン 1 件。start は日本時間。"""
+    started_at = datetime.fromisoformat(start).replace(tzinfo=JST)
+    return await WorkoutFactory.create_async(user_id=user.id, sport="run", started_at=started_at)
 
 
 async def _get(client: AsyncClient, **params: str) -> dict[str, Any]:
@@ -118,7 +100,7 @@ async def test_workout_point_has_load_and_day_in_user_timezone(
 ) -> None:
     user = await _user(session)
     # 日本時間の 9/14 8:00 は UTC では 9/13 23:00。日付は利用者のタイムゾーンで区切る
-    await ingest(session, user.id, _run("2026-09-14 08:00:00"))
+    await _run(user, "2026-09-14 08:00:00")
 
     body = await _get(client, since=SAMPLE_DAY, until="2026-09-14")
 
@@ -136,10 +118,7 @@ async def test_workout_point_has_load_and_day_in_user_timezone(
 async def test_sport_narrows_points_and_zones_but_not_days(
     client: AsyncClient, session: AsyncSession
 ) -> None:
-    user = await _user(session)
-    user.zone_boundary_1 = 130
-    user.zone_boundary_2 = 155
-    await session.commit()
+    await _user(session, zone_boundary_1=130, zone_boundary_2=155)
 
     everything = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY)
     runs = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY, sport="run")
@@ -169,10 +148,8 @@ async def test_zones_are_none_when_a_workout_has_no_heart_rate(
     client: AsyncClient, session: AsyncSession
 ) -> None:
     """心拍のない 1 件を外して足すと 0 秒に見えるので、合計ごと分からない（None）にする。"""
-    user = await _user(session)
-    user.zone_boundary_1 = 130
-    user.zone_boundary_2 = 155
-    await ingest(session, user.id, _run(f"{SAMPLE_DAY} 06:00:00"))
+    user = await _user(session, zone_boundary_1=130, zone_boundary_2=155)
+    await _run(user, f"{SAMPLE_DAY} 06:00:00")
 
     everything = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY)
     runs = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY, sport="run")
@@ -201,11 +178,12 @@ async def test_vo2max_average_uses_readings_before_the_period(
     client: AsyncClient, session: AsyncSession
 ) -> None:
     user = await _user(session)
-    await ingest(
-        session,
-        user.id,
-        _vo2max(("2026-09-01 08:00:00", 44.0), ("2026-09-20 08:00:00", 46.0)),
-    )
+    for day, value in [("2026-09-01", "44.0"), ("2026-09-20", "46.0")]:
+        await Vo2maxReadingFactory.create_async(
+            user_id=user.id,
+            measured_at=datetime.fromisoformat(f"{day} 08:00").replace(tzinfo=JST),
+            value=Decimal(value),
+        )
 
     body = await _get(client, since="2026-09-10", until="2026-09-30")
 
@@ -248,9 +226,7 @@ async def test_weeks_starts_n_weeks_before_today_in_user_timezone(
     client: AsyncClient, session: AsyncSession
 ) -> None:
     """端末ではなく設定のタイムゾーンの今日から数える。UTC+14 なら、ほかの国より先に日付が進む。"""
-    user = await _user(session)
-    user.timezone = "Pacific/Kiritimati"
-    await session.commit()
+    await _user(session, timezone="Pacific/Kiritimati")
 
     body = await _get(client, weeks="1")
 
@@ -271,11 +247,7 @@ async def test_weeks_counts_back_from_until(client: AsyncClient, session: AsyncS
 
 async def test_only_own_records(client: AsyncClient, session: AsyncSession) -> None:
     await _user(session, uid="uid-other")
-    me = User(
-        firebase_uid="uid-1", email="one@example.com", max_heart_rate=177, resting_heart_rate=75
-    )
-    session.add(me)
-    await session.commit()
+    await UserFactory.create_async(firebase_uid="uid-1", max_heart_rate=177, resting_heart_rate=75)
 
     body = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY)
 

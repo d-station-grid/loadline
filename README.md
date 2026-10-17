@@ -374,3 +374,5 @@ iPhone から実際に送るには、設定画面でトークンを発行し、H
 - `make types`: OpenAPI から web の型を生成する。api の schema を変えたら実行し、生成物もコミットする
 
 api のテストは、`DATABASE_URL` の DB 名に `_test` を付けた DB を自動で作って使います。開発用の DB には触りません。
+
+テストで使う行は、`api/tests/factories.py` の factory（polyfactory）で作ります。たとえば `await UserFactory.create_async(max_heart_rate=177)` のように、テストに関係する値だけを渡します。

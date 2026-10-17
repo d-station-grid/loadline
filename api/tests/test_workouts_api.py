@@ -1,6 +1,7 @@
 import json
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
@@ -12,6 +13,7 @@ from app.main import app
 from app.models import User, Workout
 from app.schemas.ingest import IngestPayload
 from app.services.ingest import ingest
+from tests.factories import UserFactory
 
 HEADERS = {"Authorization": "Bearer good"}
 SAMPLE = Path(__file__).parent / "fixtures" / "sample_health-auto-export_workouts-v2.json"
@@ -31,11 +33,9 @@ def fake_verifier() -> Iterator[None]:
     app.dependency_overrides.pop(get_token_verifier, None)
 
 
-async def _user_with_sample(session: AsyncSession, uid: str = "uid-1") -> User:
+async def _user_with_sample(session: AsyncSession, uid: str = "uid-1", **settings: Any) -> User:
     """ログインする本人（uid-1）と同じ uid で行を作り、fixtures の実データを取り込む。"""
-    user = User(firebase_uid=uid, email=f"{uid}@example.com")
-    session.add(user)
-    await session.flush()
+    user = await UserFactory.create_async(firebase_uid=uid, **settings)
     await ingest(session, user.id, IngestPayload.model_validate(json.loads(SAMPLE.read_text())))
     return user
 
@@ -69,10 +69,7 @@ async def test_list_filters_by_period(client: AsyncClient, session: AsyncSession
 
 
 async def test_detail_has_heart_rates_and_zones(client: AsyncClient, session: AsyncSession) -> None:
-    user = await _user_with_sample(session)
-    user.zone_boundary_1 = 130
-    user.zone_boundary_2 = 155
-    await session.commit()
+    await _user_with_sample(session, zone_boundary_1=130, zone_boundary_2=155)
     workout_id = await session.scalar(select(Workout.id))
 
     res = await client.get(f"/workouts/{workout_id}", headers=HEADERS)
