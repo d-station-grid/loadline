@@ -6,11 +6,17 @@ import { SPORT_LABEL } from "./format";
 // API の応答を ECharts の option に組み替える。描画はしないので、ここだけを単体で検査する。
 // 日付の軸は time にして、[日付, 値] の組で渡す。値のない日は線が途切れる。
 
-/** 体力・疲労の線と、日々の負荷の棒。負荷が null の日は棒を出さない。 */
+const NO_HEART_RATE = "No heart rate";
+
+/**
+ * 体力・疲労の線と、日々の負荷の棒。負荷が null の日（心拍のないワークアウトを含む日）は
+ * 棒を出さず、負荷 0 の高さに ▲ を置く。api はその日を負荷 0 として計算を続けるので、
+ * 体力と疲労は低めに出る。棒を消すだけだと休養日と見分けがつかない。
+ */
 export function loadOption(days: DayPoint[]): EChartsOption {
   return {
     tooltip: { trigger: "axis" },
-    legend: { data: ["Fitness", "Fatigue", "Load"] },
+    legend: { data: ["Fitness", "Fatigue", "Load", NO_HEART_RATE] },
     xAxis: { type: "time" },
     yAxis: [
       { type: "value", name: "Fitness / Fatigue" },
@@ -34,6 +40,15 @@ export function loadOption(days: DayPoint[]): EChartsOption {
         type: "bar",
         yAxisIndex: 1,
         data: days.map((d) => [d.day, d.load === null ? null : round1(d.load)]),
+      },
+      {
+        name: NO_HEART_RATE,
+        type: "scatter",
+        yAxisIndex: 1,
+        symbol: "triangle",
+        symbolSize: 10,
+        itemStyle: { color: "#9ca3af" },
+        data: days.filter((d) => d.load === null).map((d) => [d.day, 0]),
       },
     ],
   };

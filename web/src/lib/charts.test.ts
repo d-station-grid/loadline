@@ -60,14 +60,21 @@ test("体力・疲労・負荷を日付との組にし、小数 1 桁に丸め�
   ]);
 });
 
-test("負荷が null の日は、0 ではなく null のまま渡して棒を出さない", () => {
+test("負荷が null の日は棒を出さず、負荷 0 の高さに印を置く", () => {
   const days: DayPoint[] = [
     { day: "2026-10-01", load: null, fitness: 30, fatigue: 50, headroom: -20 },
+    { day: "2026-10-02", load: 0, fitness: 29, fatigue: 45, headroom: -16 },
   ];
 
-  const [, , load] = seriesOf(loadOption(days));
+  const [, , load, noHeartRate] = seriesOf(loadOption(days));
 
-  expect(load.data).toEqual([["2026-10-01", null]]);
+  expect(load.data).toEqual([
+    ["2026-10-01", null],
+    ["2026-10-02", 0],
+  ]);
+  // 休養日（負荷 0）には印を置かない
+  expect(noHeartRate.name).toBe("No heart rate");
+  expect(noHeartRate.data).toEqual([["2026-10-01", 0]]);
 });
 
 test("VO2max は測定値と 30 日平均を別の series にする", () => {
@@ -115,7 +122,7 @@ test("散布図は種目ごとに分け、負荷か高強度の時間が null �
 });
 
 test("記録がなければ、どのチャートも空の series になる", () => {
-  expect(seriesOf(loadOption([])).map((s) => s.data)).toEqual([[], [], []]);
+  expect(seriesOf(loadOption([])).map((s) => s.data)).toEqual([[], [], [], []]);
   expect(seriesOf(vo2maxOption([])).map((s) => s.data)).toEqual([[], []]);
   expect(seriesOf(workoutsOption([]))).toEqual([]);
 });

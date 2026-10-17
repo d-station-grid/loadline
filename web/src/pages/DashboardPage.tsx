@@ -82,6 +82,9 @@ export default function DashboardPage({ user, onOpenSettings }: Props) {
   );
 
   const today = data?.days.at(-1);
+  // 心拍のないワークアウトを含む日。負荷 0 として数えるので、体力と疲労は低めに出る
+  const daysWithoutHeartRate =
+    data?.days.filter((d) => d.load === null).length ?? 0;
   // 散布図に置ける回。負荷は心拍、高強度の時間は境目がないと出ない
   const plottable =
     data?.workouts.some((w) => w.load !== null && w.high_sec !== null) ?? false;
@@ -153,6 +156,13 @@ export default function DashboardPage({ user, onOpenSettings }: Props) {
               <h3>Fitness, fatigue and load</h3>
               <p>Fitness and fatigue include every sport.</p>
               {load && <Chart option={load} />}
+              {daysWithoutHeartRate > 0 && (
+                <p>
+                  ▲ marks {daysWithoutHeartRate} day(s) with a workout that has
+                  no heart rate. Their load counts as 0, so fitness and fatigue
+                  read low.
+                </p>
+              )}
             </>
           )}
 
@@ -164,7 +174,9 @@ export default function DashboardPage({ user, onOpenSettings }: Props) {
           )}
 
           <h3>Time by intensity</h3>
-          {zones ? (
+          {data.workouts.length === 0 ? (
+            <p>No workouts in this period.</p>
+          ) : zones ? (
             <Chart option={zones} height={220} />
           ) : (
             <p>
