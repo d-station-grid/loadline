@@ -18,6 +18,7 @@ from app.models import User, Workout
 from app.services.ingest_tokens import issue_token
 from tests.conftest import QueryCounter
 from tests.factories import (
+    NoteFactory,
     UserFactory,
     Vo2maxReadingFactory,
     WorkoutFactory,
@@ -80,6 +81,17 @@ async def test_list_and_dashboard(
 
     await _add_workouts(me, range(1, MANY))
     many = await _count_get(client, queries, url)
+
+    assert len(many) == len(one), many
+
+
+async def test_notes(client: AsyncClient, session: AsyncSession, queries: QueryCounter) -> None:
+    me = await _me()
+    await NoteFactory.create_async(user_id=me.id)
+    one = await _count_get(client, queries, "/notes")
+
+    await NoteFactory.create_batch_async(MANY - 1, user_id=me.id)
+    many = await _count_get(client, queries, "/notes")
 
     assert len(many) == len(one), many
 

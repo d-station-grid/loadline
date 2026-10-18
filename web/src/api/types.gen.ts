@@ -231,6 +231,62 @@ export type MetricPoint = {
 };
 
 /**
+ * NoteIn
+ *
+ * POST /notes の本文。未来の日付かどうかは、利用者のタイムゾーンを知る router で確かめる。
+ */
+export type NoteIn = {
+  /**
+   * Date
+   */
+  date: string;
+  /**
+   * Body
+   */
+  body: string;
+};
+
+/**
+ * NoteList
+ */
+export type NoteList = {
+  /**
+   * Items
+   */
+  items: Array<NoteOut>;
+};
+
+/**
+ * NoteOut
+ */
+export type NoteOut = {
+  /**
+   * Id
+   */
+  id: number;
+  /**
+   * Date
+   */
+  date: string;
+  /**
+   * Label
+   */
+  label: string | null;
+  /**
+   * Body
+   */
+  body: string;
+  /**
+   * Created At
+   */
+  created_at: string;
+  /**
+   * Updated At
+   */
+  updated_at: string;
+};
+
+/**
  * Quantity
  */
 export type Quantity = {
@@ -647,6 +703,70 @@ export type ReceiveIngestPostResponses = {
 
 export type ReceiveIngestPostResponse =
   ReceiveIngestPostResponses[keyof ReceiveIngestPostResponses];
+
+export type ReadNotesNotesGetData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Since
+     */
+    since?: string | null;
+    /**
+     * Until
+     */
+    until?: string | null;
+  };
+  url: "/notes";
+};
+
+export type ReadNotesNotesGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type ReadNotesNotesGetError =
+  ReadNotesNotesGetErrors[keyof ReadNotesNotesGetErrors];
+
+export type ReadNotesNotesGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: NoteList;
+};
+
+export type ReadNotesNotesGetResponse =
+  ReadNotesNotesGetResponses[keyof ReadNotesNotesGetResponses];
+
+export type AddNoteNotesPostData = {
+  body: NoteIn;
+  path?: never;
+  query?: never;
+  url: "/notes";
+};
+
+export type AddNoteNotesPostErrors = {
+  /**
+   * その日のメモはもうある
+   */
+  409: unknown;
+  /**
+   * 未来の日付、または本文が不正
+   */
+  422: unknown;
+};
+
+export type AddNoteNotesPostResponses = {
+  /**
+   * Successful Response
+   */
+  201: NoteOut;
+};
+
+export type AddNoteNotesPostResponse =
+  AddNoteNotesPostResponses[keyof AddNoteNotesPostResponses];
 
 export type ReadSettingsSettingsGetData = {
   body?: never;
