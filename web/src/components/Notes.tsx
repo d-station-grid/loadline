@@ -21,6 +21,9 @@ function newestFirst(notes: NoteOut[]): NoteOut[] {
   return [...notes].sort((a, b) => b.date.localeCompare(a.date));
 }
 
+/** since 以降のメモ。since は読んだときの期間の始まり。 */
+type NoteList = { since: string; items: NoteOut[] };
+
 type Props = {
   user: User;
   /** 一覧に出す最初の日。ダッシュボードの期間の始まり */
@@ -31,7 +34,10 @@ type Props = {
 
 /** ダッシュボードの期間のメモと、日付を選んで書く欄。走らなかった日にも書ける。 */
 export default function Notes({ user, since, today }: Props) {
-  const [notes, setNotes] = useState<NoteOut[] | null>(null);
+  // どの since で読んだ一覧かを組で持つ。今の since と違う間は読み込み中として扱う
+  const [list, setList] = useState<NoteList | null>(null);
+  // 保存のあとに一覧を読み直すために進める
+  const [reload, setReload] = useState(0);
   const [date, setDate] = useState(today);
   const [body, setBody] = useState("");
   const [saving, setSaving] = useState(false);
@@ -39,13 +45,20 @@ export default function Notes({ user, since, today }: Props) {
   const [error, setError] = useState<string | null>(null);
   // 保存の連打よけ。disabled は描画のあとにしか効かないので、送った直後にここで止める
   const savingNow = useRef(false);
+  // 保存が終わったときの期間。保存中に期間を切り替えられても、今の期間で判定する
+  const currentSince = useRef(since);
 
   useEffect(() => {
+    currentSince.current = since;
+  }, [since]);
+
+  useEffect(() => {
+    // 読み直すと、前に頼んだ一覧の返事は捨てる。保存より前の一覧で上書きしないため
     let cancelled = false;
     (async () => {
       try {
-        const list = await getNotes({ since }, await user.getIdToken());
-        if (!cancelled) setNotes(list.items);
+        const res = await getNotes({ since }, await user.getIdToken());
+        if (!cancelled) setList({ since, items: res.items });
       } catch (e) {
         if (!cancelled) setError(errorMessage(e));
       }
@@ -53,12 +66,18 @@ export default function Notes({ user, since, today }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [user, since]);
+  }, [user, since, reload]);
 
-  // 1 日 1 件。書いてある日を選んだら、そのメモを見せて書く欄は閉じる
+  const notes = list && list.since === since ? list.items : null;
+  // 1 日 1 件。書いてある日を選んだら、そのメモを見せて書く欄は閉じる。
+  // 一覧が届くまでは、書いてある日か分からないので保存させない
   const existing = notes?.find((n) => n.date === date) ?? null;
   const canSave =
-    !saving && existing === null && date !== "" && body.trim() !== "";
+    !saving &&
+    notes !== null &&
+    existing === null &&
+    date !== "" &&
+    body.trim() !== "";
 
   async function handleSave(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -69,9 +88,20 @@ export default function Notes({ user, since, today }: Props) {
     setStatus(null);
     try {
       const note = await addNote({ date, body }, await user.getIdToken());
-      setNotes((prev) => newestFirst([...(prev ?? []), note]));
+      // 読み直しが届くまでの間も見えるよう、期間の中なら手元の一覧に足しておく
+      setList((prev) =>
+        prev && note.date >= prev.since
+          ? { ...prev, items: newestFirst([...prev.items, note]) }
+          : prev,
+      );
+      setReload((n) => n + 1);
+      // 保存中は欄を無効にしているので、ここで消すのは送った本文だけ
       setBody("");
-      setStatus("Saved");
+      setStatus(
+        note.date >= currentSince.current
+          ? "Saved"
+          : "Saved (outside this period)",
+      );
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -84,38 +114,41 @@ export default function Notes({ user, since, today }: Props) {
     <section aria-labelledby="notes-heading">
       <h3 id="notes-heading">Notes</h3>
       <form onSubmit={handleSave}>
-        <label>
-          Date
-          <input
-            type="date"
-            value={date}
-            max={today}
-            onChange={(e) => {
-              setDate(e.target.value);
-              setStatus(null);
-              setError(null);
-            }}
-          />
-        </label>
-        {existing ? (
-          <p>You already wrote a note for this day.</p>
-        ) : (
-          <>
-            <label>
-              Note
-              <textarea
-                value={body}
-                maxLength={MAX_BODY}
-                rows={3}
-                placeholder="How did you feel? Anything that happened?"
-                onChange={(e) => setBody(e.target.value)}
-              />
-            </label>
-            <button type="submit" disabled={!canSave}>
-              Save note
-            </button>
-          </>
-        )}
+        {/* 保存中は日付も本文も触らせない。保存が終わったときに次の本文を消さないため */}
+        <fieldset disabled={saving}>
+          <label>
+            Date
+            <input
+              type="date"
+              value={date}
+              max={today}
+              onChange={(e) => {
+                setDate(e.target.value);
+                setStatus(null);
+                setError(null);
+              }}
+            />
+          </label>
+          {existing ? (
+            <p>You already wrote a note for this day.</p>
+          ) : (
+            <>
+              <label>
+                Note
+                <textarea
+                  value={body}
+                  maxLength={MAX_BODY}
+                  rows={3}
+                  placeholder="How did you feel? Anything that happened?"
+                  onChange={(e) => setBody(e.target.value)}
+                />
+              </label>
+              <button type="submit" disabled={!canSave}>
+                Save note
+              </button>
+            </>
+          )}
+        </fieldset>
       </form>
       {status && <p role="status">{status}</p>}
       {error && <p role="alert">{error}</p>}
