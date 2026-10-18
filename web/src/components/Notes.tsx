@@ -42,15 +42,11 @@ export default function Notes({ user, since, today }: Props) {
   const [body, setBody] = useState("");
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // 一覧の失敗と保存の失敗は分ける。一覧は読み直しに成功したら消し、Retry で読み直せる
+  const [listError, setListError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   // 保存の連打よけ。disabled は描画のあとにしか効かないので、送った直後にここで止める
   const savingNow = useRef(false);
-  // 保存が終わったときの期間。保存中に期間を切り替えられても、今の期間で判定する
-  const currentSince = useRef(since);
-
-  useEffect(() => {
-    currentSince.current = since;
-  }, [since]);
 
   useEffect(() => {
     // 読み直すと、前に頼んだ一覧の返事は捨てる。保存より前の一覧で上書きしないため
@@ -58,9 +54,11 @@ export default function Notes({ user, since, today }: Props) {
     (async () => {
       try {
         const res = await getNotes({ since }, await user.getIdToken());
-        if (!cancelled) setList({ since, items: res.items });
+        if (cancelled) return;
+        setList({ since, items: res.items });
+        setListError(null);
       } catch (e) {
-        if (!cancelled) setError(errorMessage(e));
+        if (!cancelled) setListError(errorMessage(e));
       }
     })();
     return () => {
@@ -72,11 +70,14 @@ export default function Notes({ user, since, today }: Props) {
   // 1 日 1 件。書いてある日を選んだら、そのメモを見せて書く欄は閉じる。
   // 一覧が届くまでは、書いてある日か分からないので保存させない
   const existing = notes?.find((n) => n.date === date) ?? null;
+  // 書けるのは今の期間の日だけ。書いたメモが必ず今の一覧に出て、1 日 1 件の判定がずれないように。
+  // YYYY-MM-DD は文字列のまま比べられる
+  const inPeriod = date >= since && date <= today;
   const canSave =
     !saving &&
     notes !== null &&
     existing === null &&
-    date !== "" &&
+    inPeriod &&
     body.trim() !== "";
 
   async function handleSave(e: SubmitEvent<HTMLFormElement>) {
@@ -84,11 +85,12 @@ export default function Notes({ user, since, today }: Props) {
     if (savingNow.current || !canSave) return;
     savingNow.current = true;
     setSaving(true);
-    setError(null);
+    setSaveError(null);
     setStatus(null);
     try {
       const note = await addNote({ date, body }, await user.getIdToken());
-      // 読み直しが届くまでの間も見えるよう、期間の中なら手元の一覧に足しておく
+      // 読み直しが届くまでの間も見えるよう、手元の一覧に足しておく。
+      // 保存中に期間を切り替えられたら、前の期間の一覧には足さない
       setList((prev) =>
         prev && note.date >= prev.since
           ? { ...prev, items: newestFirst([...prev.items, note]) }
@@ -97,13 +99,9 @@ export default function Notes({ user, since, today }: Props) {
       setReload((n) => n + 1);
       // 保存中は欄を無効にしているので、ここで消すのは送った本文だけ
       setBody("");
-      setStatus(
-        note.date >= currentSince.current
-          ? "Saved"
-          : "Saved (outside this period)",
-      );
+      setStatus("Saved");
     } catch (e) {
-      setError(errorMessage(e));
+      setSaveError(errorMessage(e));
     } finally {
       savingNow.current = false;
       setSaving(false);
@@ -121,11 +119,12 @@ export default function Notes({ user, since, today }: Props) {
             <input
               type="date"
               value={date}
+              min={since}
               max={today}
               onChange={(e) => {
                 setDate(e.target.value);
                 setStatus(null);
-                setError(null);
+                setSaveError(null);
               }}
             />
           </label>
@@ -143,6 +142,12 @@ export default function Notes({ user, since, today }: Props) {
                   onChange={(e) => setBody(e.target.value)}
                 />
               </label>
+              {/* 期間を切り替えて、選んでいた日が外に出たとき。書きかけの本文は残す */}
+              {!inPeriod && (
+                <p>
+                  Pick a day from {since} to {today}.
+                </p>
+              )}
               <button type="submit" disabled={!canSave}>
                 Save note
               </button>
@@ -151,9 +156,23 @@ export default function Notes({ user, since, today }: Props) {
         </fieldset>
       </form>
       {status && <p role="status">{status}</p>}
-      {error && <p role="alert">{error}</p>}
+      {saveError && <p role="alert">{saveError}</p>}
 
-      {notes === null && !error && <p>Loading notes…</p>}
+      {listError && (
+        <p role="alert">
+          {listError}{" "}
+          <button
+            type="button"
+            onClick={() => {
+              setListError(null);
+              setReload((n) => n + 1);
+            }}
+          >
+            Retry
+          </button>
+        </p>
+      )}
+      {notes === null && !listError && <p>Loading notes…</p>}
       {notes?.length === 0 && <p>No notes in this period.</p>}
       {notes && notes.length > 0 && (
         <ul aria-label="Notes in this period">

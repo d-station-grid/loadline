@@ -262,25 +262,57 @@ test("保存中に期間を切り替え、保存より前に頼んだ一覧が�
   expect(screen.queryByLabelText("Note")).not.toBeInTheDocument();
 });
 
-test("期間より前の日に書くと保存はするが、今の期間の一覧には出さない", async () => {
+test("期間より前の日は保存できず、選べる日を案内する", async () => {
   renderNotes("2026-09-01");
   await screen.findByText("No notes in this period.");
 
-  fireEvent.change(screen.getByLabelText("Date"), {
-    target: { value: "2026-08-20" },
-  });
+  const date = screen.getByLabelText("Date");
+  expect(date).toHaveAttribute("min", "2026-09-01");
+  fireEvent.change(date, { target: { value: "2026-08-20" } });
   fireEvent.change(screen.getByLabelText("Note"), {
     target: { value: "Old trip." },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Save note" }));
 
-  expect(await screen.findByRole("status")).toHaveTextContent(
-    "Saved (outside this period)",
+  // 書いたメモは今の期間の一覧に出るものだけにする。外に書くと 1 日 1 件の判定がずれる
+  expect(screen.getByRole("button", { name: "Save note" })).toBeDisabled();
+  expect(
+    screen.getByText("Pick a day from 2026-09-01 to 2026-10-18."),
+  ).toBeInTheDocument();
+  fireEvent.submit(screen.getByRole("button", { name: "Save note" }));
+  expect(addNote).not.toHaveBeenCalled();
+});
+
+test("期間を切り替えて選んでいた日が外に出たら、保存を止め、書きかけは残す", async () => {
+  const { rerender } = renderNotes("2026-09-01");
+  await screen.findByText("No notes in this period.");
+  fireEvent.change(screen.getByLabelText("Date"), {
+    target: { value: "2026-09-05" },
+  });
+  fireEvent.change(screen.getByLabelText("Note"), {
+    target: { value: "Draft." },
+  });
+
+  rerender(<Notes user={user} since="2026-09-15" today="2026-10-18" />);
+  await screen.findByText("No notes in this period.");
+
+  expect(screen.getByRole("button", { name: "Save note" })).toBeDisabled();
+  expect(
+    screen.getByText("Pick a day from 2026-09-15 to 2026-10-18."),
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("Note")).toHaveValue("Draft.");
+});
+
+test("一覧の読み込みに失敗しても、Retry で読み直せて、成功したらエラーを消す", async () => {
+  stored = [note("2026-10-10", "Rest day.")];
+  vi.mocked(getNotes).mockRejectedValueOnce(new ApiError(500));
+  renderNotes();
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "API returned 500",
   );
-  expect(addNote).toHaveBeenCalledWith(
-    { date: "2026-08-20", body: "Old trip." },
-    "token",
-  );
-  expect(screen.queryByText("Old trip.")).not.toBeInTheDocument();
-  expect(screen.getByText("No notes in this period.")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+  expect(await screen.findByText("Rest day.")).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(getNotes).toHaveBeenCalledTimes(2);
 });
