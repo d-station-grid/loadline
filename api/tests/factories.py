@@ -7,7 +7,7 @@
 """
 
 import secrets
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from itertools import count
 from typing import Any, TypeVar
@@ -18,7 +18,7 @@ from polyfactory.factories.sqlalchemy_factory import (
     SQLAlchemyPersistenceMethod,
 )
 
-from app.models import IngestToken, User, Vo2maxReading, Workout, WorkoutHeartRate
+from app.models import IngestToken, Note, User, Vo2maxReading, Workout, WorkoutHeartRate
 
 T = TypeVar("T")
 
@@ -29,6 +29,12 @@ def _serial_time(start: datetime, step: timedelta) -> Use[Any, datetime]:
     """呼ぶたびに step ずつ進む日時。同じ利用者に何件作っても一意制約で落ちない。"""
     numbers = count()
     return Use(lambda: start + step * next(numbers))
+
+
+def _serial_day(start: date) -> Use[Any, date]:
+    """呼ぶたびに 1 日ずつ進む日付。"""
+    numbers = count()
+    return Use(lambda: start + timedelta(days=next(numbers)))
 
 
 class BaseFactory(SQLAlchemyFactory[T]):
@@ -108,3 +114,16 @@ class Vo2maxReadingFactory(BaseFactory[Vo2maxReading]):
     measured_at = _serial_time(datetime(2026, 9, 13, 8, 0, tzinfo=UTC), timedelta(days=1))
     value = Decimal("45.0")
     created_at = Ignore()
+
+
+class NoteFactory(BaseFactory[Note]):
+    """ラベルのないメモ 1 件。"""
+
+    __model__ = Note
+
+    # 1 日 1 件なので、呼ぶたびに 1 日ずつ進める
+    date = _serial_day(date(2026, 9, 13))
+    label = None
+    body = "Legs felt heavy."
+    created_at = Ignore()
+    updated_at = Ignore()
