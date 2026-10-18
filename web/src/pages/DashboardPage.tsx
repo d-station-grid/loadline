@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { Dashboard } from "../api";
 import Chart from "../components/Chart";
+import Notes from "../components/Notes";
 import { getDashboard, type DashboardQuery } from "../lib/api";
 import {
   loadOption,
@@ -196,6 +197,15 @@ export default function DashboardPage({ user, onOpenSettings }: Props) {
             workouts && <Chart option={workouts} />
           )}
         </>
+      )}
+
+      {/* 期間を切り替えて読み込み直す間も、前の結果で出し続ける。書きかけのメモを消さないため */}
+      {result && (
+        <Notes
+          user={user}
+          since={result.data.since}
+          today={result.data.until}
+        />
       )}
     </section>
   );

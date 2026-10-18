@@ -1,6 +1,9 @@
 import type {
   Dashboard,
   IngestTokenOut,
+  NoteIn,
+  NoteList,
+  NoteOut,
   ReadDashboardDashboardGetData,
   SettingsIn,
   SettingsOut,
@@ -35,9 +38,9 @@ async function request<T>(
   return (await res.json()) as T;
 }
 
-function putJson(body: unknown): RequestInit {
+function sendJson(method: "POST" | "PUT", body: unknown): RequestInit {
   return {
-    method: "PUT",
+    method,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   };
@@ -56,7 +59,7 @@ export function putSettings(
   body: SettingsIn,
   idToken: string,
 ): Promise<SettingsOut> {
-  return request<SettingsOut>("/settings", putJson(body), idToken);
+  return request<SettingsOut>("/settings", sendJson("PUT", body), idToken);
 }
 
 /** 取り込み用トークンを発行する。平文はこの返事でしか見られない。 */
@@ -109,4 +112,20 @@ export function getDashboard(
   if (query.weeks) params.set("weeks", String(query.weeks));
   const qs = params.size > 0 ? `?${params}` : "";
   return request<Dashboard>(`/dashboard${qs}`, { method: "GET" }, idToken);
+}
+
+export type NoteQuery = { since?: string; until?: string };
+
+/** 本人のメモを新しい日付から。since 以上、until 未満（YYYY-MM-DD）。 */
+export function getNotes(query: NoteQuery, idToken: string): Promise<NoteList> {
+  const params = new URLSearchParams();
+  if (query.since) params.set("since", query.since);
+  if (query.until) params.set("until", query.until);
+  const qs = params.size > 0 ? `?${params}` : "";
+  return request<NoteList>(`/notes${qs}`, { method: "GET" }, idToken);
+}
+
+/** メモを 1 件書く。その日にもうあれば 409、未来の日付は 400。 */
+export function addNote(body: NoteIn, idToken: string): Promise<NoteOut> {
+  return request<NoteOut>("/notes", sendJson("POST", body), idToken);
 }
