@@ -2,6 +2,7 @@
 
 export type {
   AddNoteNotesPostData,
+  AddNoteNotesPostError,
   AddNoteNotesPostErrors,
   AddNoteNotesPostResponse,
   AddNoteNotesPostResponses,

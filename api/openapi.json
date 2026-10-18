@@ -290,11 +290,21 @@
               }
             }
           },
+          "400": {
+            "description": "未来の日付"
+          },
           "409": {
             "description": "その日のメモはもうある"
           },
           "422": {
-            "description": "未来の日付、または本文が不正"
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       }

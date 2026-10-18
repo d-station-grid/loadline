@@ -749,14 +749,21 @@ export type AddNoteNotesPostData = {
 
 export type AddNoteNotesPostErrors = {
   /**
+   * 未来の日付
+   */
+  400: unknown;
+  /**
    * その日のメモはもうある
    */
   409: unknown;
   /**
-   * 未来の日付、または本文が不正
+   * Validation Error
    */
-  422: unknown;
+  422: HttpValidationError;
 };
+
+export type AddNoteNotesPostError =
+  AddNoteNotesPostErrors[keyof AddNoteNotesPostErrors];
 
 export type AddNoteNotesPostResponses = {
   /**

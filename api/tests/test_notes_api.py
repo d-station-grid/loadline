@@ -109,7 +109,8 @@ async def test_future_date_in_the_users_timezone_is_rejected(
         "/notes", json={"date": tomorrow.isoformat(), "body": "Too early."}, headers=HEADERS
     )
 
-    assert res.status_code == 422
+    assert res.status_code == 400
+    assert res.json() == {"detail": "date is in the future"}
     assert await session.scalar(select(func.count()).select_from(Note)) == 0
 
 
@@ -118,6 +119,8 @@ async def test_empty_or_too_long_body_is_rejected(client: AsyncClient, text: str
     res = await client.post("/notes", json={"date": "2026-09-13", "body": text}, headers=HEADERS)
 
     assert res.status_code == 422
+    # 検証エラーの形（detail は項目ごとの配列）。生成した型の HTTPValidationError と同じ
+    assert res.json()["detail"][0]["loc"] == ["body", "body"]
 
 
 async def test_body_of_2000_characters_is_accepted(client: AsyncClient) -> None:

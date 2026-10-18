@@ -27,15 +27,16 @@ async def read_notes(
     response_model=NoteOut,
     status_code=status.HTTP_201_CREATED,
     responses={
+        # 422 は上書きしない。FastAPI が付ける検証エラーの形を、生成する型に残すため
+        status.HTTP_400_BAD_REQUEST: {"description": "未来の日付"},
         status.HTTP_409_CONFLICT: {"description": "その日のメモはもうある"},
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "未来の日付、または本文が不正"},
     },
 )
 async def add_note(body: NoteIn, user: CurrentUser, session: DbSession) -> NoteOut:
     """メモを 1 件書く。走らなかった日にも書ける。1 日 1 件で、その日にもうあれば 409。"""
     # 今日の判定は利用者のタイムゾーンで。日付の比較はここでやる
     if body.date > today_for(user):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "date is in the future")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "date is in the future")
     note = await create_note(session, user.id, body.date, body.body)
     if note is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "a note for this date already exists")
