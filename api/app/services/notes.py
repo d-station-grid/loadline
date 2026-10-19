@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,3 +41,24 @@ async def list_notes(
         stmt = stmt.where(Note.date < until)
     stmt = stmt.order_by(Note.date.desc())
     return list(await session.scalars(stmt))
+
+
+async def update_note(session: AsyncSession, user_id: int, note_id: int, body: str) -> Note | None:
+    """本人のメモの本文を直す。他人のメモか、ないメモなら None。"""
+    stmt = (
+        update(Note)
+        .where(Note.id == note_id, Note.user_id == user_id)
+        .values(body=body)
+        .returning(Note)
+    )
+    note = await session.scalar(stmt)
+    await session.commit()
+    return note
+
+
+async def delete_note(session: AsyncSession, user_id: int, note_id: int) -> bool:
+    """本人のメモを消す。他人のメモか、ないメモなら False。"""
+    stmt = delete(Note).where(Note.id == note_id, Note.user_id == user_id).returning(Note.id)
+    deleted = await session.scalar(stmt)
+    await session.commit()
+    return deleted is not None

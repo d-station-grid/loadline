@@ -160,6 +160,125 @@ async def test_list_filters_by_period(client: AsyncClient) -> None:
 async def test_notes_require_login(client: AsyncClient) -> None:
     listed = await client.get("/notes")
     created = await client.post("/notes", json={"date": "2026-09-13", "body": "x"})
+    edited = await client.patch("/notes/1", json={"body": "x"})
+    deleted = await client.delete("/notes/1")
 
     assert listed.status_code == 401
     assert created.status_code == 401
+    assert edited.status_code == 401
+    assert deleted.status_code == 401
+
+
+async def test_edit_changes_only_the_body(client: AsyncClient) -> None:
+    me = await _me()
+    note = await NoteFactory.create_async(user_id=me.id, date=date(2026, 9, 13), body="Before.")
+
+    res = await client.patch(f"/notes/{note.id}", json={"body": "  After.  "}, headers=HEADERS)
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["id"] == note.id
+    assert body["date"] == "2026-09-13"
+    assert body["body"] == "After."  # 前後の空白は落とす
+
+
+async def test_edited_note_is_listed_on_the_next_request(client: AsyncClient) -> None:
+    """直したメモは保存されていて、開き直しても直したまま。"""
+    me = await _me()
+    note = await NoteFactory.create_async(user_id=me.id, body="Before.")
+
+    await client.patch(f"/notes/{note.id}", json={"body": "After."}, headers=HEADERS)
+    res = await client.get("/notes", headers=HEADERS)
+
+    assert [n["body"] for n in res.json()["items"]] == ["After."]
+
+
+async def test_edit_moves_updated_at_forward(client: AsyncClient) -> None:
+    me = await _me()
+    old = datetime(2026, 9, 13, tzinfo=ZoneInfo("UTC"))
+    note = await NoteFactory.create_async(user_id=me.id, created_at=old, updated_at=old)
+
+    res = await client.patch(f"/notes/{note.id}", json={"body": "After."}, headers=HEADERS)
+
+    assert datetime.fromisoformat(res.json()["updated_at"]) > old
+    assert datetime.fromisoformat(res.json()["created_at"]) == old
+
+
+@pytest.mark.parametrize("text", ["", "   ", "x" * 2001])
+async def test_edit_with_empty_or_too_long_body_is_rejected(
+    client: AsyncClient, session: AsyncSession, text: str
+) -> None:
+    me = await _me()
+    note = await NoteFactory.create_async(user_id=me.id, body="Before.")
+
+    res = await client.patch(f"/notes/{note.id}", json={"body": text}, headers=HEADERS)
+
+    assert res.status_code == 422
+    assert await session.scalar(select(Note.body).where(Note.id == note.id)) == "Before."
+
+
+async def test_edit_of_another_users_note_is_not_found(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    await _me()
+    other = await UserFactory.create_async()
+    note = await NoteFactory.create_async(user_id=other.id, body="Not mine.")
+
+    res = await client.patch(f"/notes/{note.id}", json={"body": "Hacked."}, headers=HEADERS)
+
+    assert res.status_code == 404
+    assert await session.scalar(select(Note.body).where(Note.id == note.id)) == "Not mine."
+
+
+async def test_edit_of_missing_note_is_not_found(client: AsyncClient) -> None:
+    await _me()
+
+    res = await client.patch("/notes/999999", json={"body": "x"}, headers=HEADERS)
+
+    assert res.status_code == 404
+
+
+async def test_delete_removes_the_note(client: AsyncClient) -> None:
+    me = await _me()
+    note = await NoteFactory.create_async(user_id=me.id)
+
+    res = await client.delete(f"/notes/{note.id}", headers=HEADERS)
+    listed = await client.get("/notes", headers=HEADERS)
+
+    assert res.status_code == 204
+    assert res.content == b""
+    assert listed.json()["items"] == []
+
+
+async def test_deleted_day_can_be_written_again(client: AsyncClient) -> None:
+    """消した日は空くので、1 日 1 件でもまた書ける。"""
+    me = await _me()
+    note = await NoteFactory.create_async(user_id=me.id, date=date(2026, 9, 13))
+
+    await client.delete(f"/notes/{note.id}", headers=HEADERS)
+    res = await client.post(
+        "/notes", json={"date": "2026-09-13", "body": "Again."}, headers=HEADERS
+    )
+
+    assert res.status_code == 201
+
+
+async def test_delete_of_another_users_note_is_not_found(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    await _me()
+    other = await UserFactory.create_async()
+    note = await NoteFactory.create_async(user_id=other.id)
+
+    res = await client.delete(f"/notes/{note.id}", headers=HEADERS)
+
+    assert res.status_code == 404
+    assert await session.scalar(select(func.count()).select_from(Note)) == 1
+
+
+async def test_delete_of_missing_note_is_not_found(client: AsyncClient) -> None:
+    await _me()
+
+    res = await client.delete("/notes/999999", headers=HEADERS)
+
+    assert res.status_code == 404
