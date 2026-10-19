@@ -3,7 +3,7 @@ import type { User } from "firebase/auth";
 import { beforeEach, expect, test, vi } from "vitest";
 
 import type { NoteOut } from "../api";
-import { addNote, ApiError, getNotes } from "../lib/api";
+import { addNote, ApiError, deleteNote, editNote, getNotes } from "../lib/api";
 import Notes from "./Notes";
 
 vi.mock("../lib/api", async (importOriginal) => ({
@@ -11,6 +11,8 @@ vi.mock("../lib/api", async (importOriginal) => ({
   ApiError: (await importOriginal<typeof import("../lib/api")>()).ApiError,
   getNotes: vi.fn(),
   addNote: vi.fn(),
+  editNote: vi.fn(),
+  deleteNote: vi.fn(),
 }));
 
 const user = { getIdToken: async () => "token" } as unknown as User;
@@ -43,6 +45,7 @@ function deferred<T>() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.restoreAllMocks();
   stored = [];
   vi.mocked(getNotes).mockImplementation(async ({ since }) => ({
     items: stored
@@ -53,6 +56,17 @@ beforeEach(() => {
     const saved = note(body.date, body.body, stored.length + 1);
     stored.push(saved);
     return saved;
+  });
+  vi.mocked(editNote).mockImplementation(async (id, body) => {
+    const found = stored.find((n) => n.id === id);
+    if (!found) throw new ApiError(404);
+    const saved = { ...found, body: body.body };
+    stored = stored.map((n) => (n.id === id ? saved : n));
+    return saved;
+  });
+  vi.mocked(deleteNote).mockImplementation(async (id) => {
+    if (!stored.some((n) => n.id === id)) throw new ApiError(404);
+    stored = stored.filter((n) => n.id !== id);
   });
 });
 
@@ -101,8 +115,11 @@ test("走らなかった日を選んで書くと、保存して一覧に足す",
     "2026-10-12 Legs heavy.",
     "2026-10-10 Rest day.",
   ]);
-  // 書いた日は 1 日 1 件になったので、書く欄を閉じる
-  expect(screen.queryByLabelText("Note")).not.toBeInTheDocument();
+  // 書いた日は 1 日 1 件になったので、書く欄はそのメモを直す欄になる
+  expect(screen.getByLabelText("Note")).toHaveValue("Legs heavy.");
+  expect(
+    screen.queryByRole("button", { name: "Save note" }),
+  ).not.toBeInTheDocument();
 
   // 別の日を選ぶと、空の書く欄が開く
   fireEvent.change(screen.getByLabelText("Date"), {
@@ -122,18 +139,18 @@ test("本文が空白だけなら保存できない", async () => {
   expect(screen.getByRole("button", { name: "Save note" })).toBeDisabled();
 });
 
-test("書いてある日を選ぶと、書く欄を閉じる", async () => {
+test("書いてある日を選ぶと、そのメモを直す欄になる", async () => {
   stored = [note("2026-10-18", "Good ride.")];
   renderNotes();
   await screen.findByRole("list", { name: "Notes in this period" });
 
-  expect(
-    screen.getByText("You already wrote a note for this day."),
-  ).toBeInTheDocument();
-  expect(screen.queryByLabelText("Note")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Note")).toHaveValue("Good ride.");
   expect(
     screen.queryByRole("button", { name: "Save note" }),
   ).not.toBeInTheDocument();
+  // 直していないうちは保存できない
+  expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Delete" })).toBeEnabled();
 });
 
 test("一覧の日付を押すと、その日を選ぶ", async () => {
@@ -251,15 +268,18 @@ test("保存中に期間を切り替え、保存より前に頼んだ一覧が�
     added.resolve(saved);
     await added.promise;
   });
-  expect(await screen.findByText("Late.")).toBeInTheDocument();
+  // 書いた日は直す欄になり本文が入るので、一覧の行で確かめる
+  expect(await screen.findByRole("listitem")).toHaveTextContent("Late.");
 
   // 古い一覧が遅れて届いても、捨てる
   await act(async () => {
     stale.resolve({ items: [] });
     await stale.promise;
   });
-  expect(screen.getByText("Late.")).toBeInTheDocument();
-  expect(screen.queryByLabelText("Note")).not.toBeInTheDocument();
+  expect(screen.getByRole("listitem")).toHaveTextContent("Late.");
+  expect(
+    screen.getByRole("button", { name: "Save changes" }),
+  ).toBeInTheDocument();
 });
 
 test("期間より前の日は保存できず、選べる日を案内する", async () => {
@@ -315,4 +335,134 @@ test("一覧の読み込みに失敗しても、Retry で読み直せて、成�
   expect(await screen.findByText("Rest day.")).toBeInTheDocument();
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   expect(getNotes).toHaveBeenCalledTimes(2);
+});
+
+test("書いてある日の本文を直して保存すると、一覧も直り、開き直しても直ったまま", async () => {
+  stored = [note("2026-10-10", "Rest day.", 7)];
+  const { unmount } = renderNotes();
+  fireEvent.click(await screen.findByRole("button", { name: "2026-10-10" }));
+
+  fireEvent.change(screen.getByLabelText("Note"), {
+    target: { value: "Rest day. Slept 9 hours." },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+  expect(await screen.findByRole("status")).toHaveTextContent("Saved");
+  expect(editNote).toHaveBeenCalledWith(
+    7,
+    { body: "Rest day. Slept 9 hours." },
+    "token",
+  );
+  expect(screen.getByRole("listitem")).toHaveTextContent(
+    "2026-10-10 Rest day. Slept 9 hours.",
+  );
+  expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+
+  unmount();
+  renderNotes();
+  expect(
+    await screen.findByText("Rest day. Slept 9 hours."),
+  ).toBeInTheDocument();
+});
+
+test("直している途中で新しく書く日に移っても、書きかけの新しい本文は残る", async () => {
+  stored = [note("2026-10-10", "Rest day.")];
+  renderNotes();
+  await screen.findByRole("list", { name: "Notes in this period" });
+  fireEvent.change(screen.getByLabelText("Note"), {
+    target: { value: "New draft." },
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "2026-10-10" }));
+  expect(screen.getByLabelText("Note")).toHaveValue("Rest day.");
+  fireEvent.change(screen.getByLabelText("Date"), {
+    target: { value: "2026-10-18" },
+  });
+
+  expect(screen.getByLabelText("Note")).toHaveValue("New draft.");
+});
+
+test("本文を空白だけにすると、直した保存はできない", async () => {
+  stored = [note("2026-10-18", "Good ride.")];
+  renderNotes();
+  await screen.findByRole("list", { name: "Notes in this period" });
+
+  fireEvent.change(screen.getByLabelText("Note"), {
+    target: { value: "   " },
+  });
+
+  expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+});
+
+test("確かめてから消すと、一覧から消え、その日は新しく書ける", async () => {
+  stored = [note("2026-10-10", "Rest day.", 7)];
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  renderNotes();
+  fireEvent.click(await screen.findByRole("button", { name: "2026-10-10" }));
+
+  fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+  expect(confirm).toHaveBeenCalledWith("Delete the note for 2026-10-10?");
+  expect(await screen.findByRole("status")).toHaveTextContent("Deleted");
+  expect(deleteNote).toHaveBeenCalledWith(7, "token");
+  expect(
+    await screen.findByText("No notes in this period."),
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("Note")).toHaveValue("");
+  expect(screen.getByRole("button", { name: "Save note" })).toBeInTheDocument();
+});
+
+test("確かめで取り消すと、消さない", async () => {
+  stored = [note("2026-10-10", "Rest day.")];
+  vi.spyOn(window, "confirm").mockReturnValue(false);
+  renderNotes();
+  fireEvent.click(await screen.findByRole("button", { name: "2026-10-10" }));
+
+  fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+  expect(deleteNote).not.toHaveBeenCalled();
+  expect(screen.getByRole("listitem")).toHaveTextContent("Rest day.");
+});
+
+test("直す間は日付も本文もボタンも触れない", async () => {
+  stored = [note("2026-10-18", "Good ride.")];
+  const edited = deferred<NoteOut>();
+  vi.mocked(editNote).mockReturnValue(edited.promise);
+  renderNotes();
+  await screen.findByRole("list", { name: "Notes in this period" });
+  fireEvent.change(screen.getByLabelText("Note"), {
+    target: { value: "Great ride." },
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+  expect(screen.getByLabelText("Date")).toBeDisabled();
+  expect(screen.getByLabelText("Note")).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();
+  await act(async () => {
+    edited.resolve(note("2026-10-18", "Great ride."));
+    await edited.promise;
+  });
+  expect(screen.getByLabelText("Date")).toBeEnabled();
+});
+
+test("別の画面で消されていて 404 なら、そう出して一覧を読み直す", async () => {
+  stored = [note("2026-10-18", "Good ride.")];
+  renderNotes();
+  await screen.findByRole("list", { name: "Notes in this period" });
+  fireEvent.change(screen.getByLabelText("Note"), {
+    target: { value: "Great ride." },
+  });
+  // 保存より前に、別の画面で消された
+  stored = [];
+
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "This note no longer exists.",
+  );
+  expect(
+    await screen.findByText("No notes in this period."),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Save note" })).toBeInTheDocument();
 });
