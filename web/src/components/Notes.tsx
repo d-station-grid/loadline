@@ -35,8 +35,14 @@ type Props = {
   today: string;
 };
 
-/** 直している途中の本文。どのメモのものかを組で持つ */
-type EditDraft = { id: number; body: string };
+/** 直している途中の本文。メモの id ごとに持ち、別のメモへ移っても残す */
+type EditDrafts = Record<number, string>;
+
+/** 1 件の下書きを消す。保存や削除が済んだメモの分だけ */
+function withoutDraft(drafts: EditDrafts, id: number): EditDrafts {
+  const { [id]: _done, ...rest } = drafts;
+  return rest;
+}
 
 /**
  * ダッシュボードの期間のメモと、日付を選んで書く欄。走らなかった日にも書ける。
@@ -50,8 +56,8 @@ export default function Notes({ user, since, today }: Props) {
   const [date, setDate] = useState(today);
   // 新しく書く本文。書いてある日を選んで直している間も残しておく
   const [body, setBody] = useState("");
-  // 直している本文。選んだ日のメモと id が違えば使わず、メモの本文を見せる
-  const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
+  // 直している本文。そのメモの下書きがなければ、メモの本文を見せる
+  const [editDrafts, setEditDrafts] = useState<EditDrafts>({});
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   // 一覧の失敗と保存の失敗は分ける。一覧は読み直しに成功したら消し、Retry で読み直せる
@@ -83,11 +89,7 @@ export default function Notes({ user, since, today }: Props) {
   // 一覧が届くまでは、書いてある日か分からないので保存させない
   const existing = notes?.find((n) => n.date === date) ?? null;
   const editBody =
-    existing === null
-      ? ""
-      : editDraft?.id === existing.id
-        ? editDraft.body
-        : existing.body;
+    existing === null ? "" : (editDrafts[existing.id] ?? existing.body);
   // 書けるのは今の期間の日だけ。書いたメモが必ず今の一覧に出て、1 日 1 件の判定がずれないように。
   // YYYY-MM-DD は文字列のまま比べられる
   const inPeriod = date >= since && date <= today;
@@ -150,7 +152,7 @@ export default function Notes({ user, since, today }: Props) {
         );
         replaceInList(target.id, note);
         setReload((n) => n + 1);
-        setEditDraft(null);
+        setEditDrafts((d) => withoutDraft(d, target.id));
         return "Saved";
       });
       return;
@@ -181,7 +183,8 @@ export default function Notes({ user, since, today }: Props) {
       // 消した日は空くので、書く欄に戻る
       replaceInList(target.id, null);
       setReload((n) => n + 1);
-      setEditDraft(null);
+      // 消したメモの下書きだけ消す。ほかのメモの書きかけは残す
+      setEditDrafts((d) => withoutDraft(d, target.id));
       return "Deleted";
     });
   }
@@ -215,7 +218,10 @@ export default function Notes({ user, since, today }: Props) {
                   maxLength={MAX_BODY}
                   rows={3}
                   onChange={(e) =>
-                    setEditDraft({ id: existing.id, body: e.target.value })
+                    setEditDrafts((d) => ({
+                      ...d,
+                      [existing.id]: e.target.value,
+                    }))
                   }
                 />
               </label>

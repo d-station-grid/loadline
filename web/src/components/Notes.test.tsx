@@ -466,3 +466,40 @@ test("別の画面で消されていて 404 なら、そう出して一覧を読
   ).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Save note" })).toBeInTheDocument();
 });
+
+test("A を直している途中に B へ移って B を消しても、A の下書きは残る", async () => {
+  stored = [note("2026-10-10", "A.", 1), note("2026-10-12", "B.", 2)];
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  renderNotes();
+  fireEvent.click(await screen.findByRole("button", { name: "2026-10-10" }));
+  fireEvent.change(screen.getByLabelText("Note"), {
+    target: { value: "A, edited." },
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "2026-10-12" }));
+  fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+  expect(await screen.findByRole("status")).toHaveTextContent("Deleted");
+  fireEvent.click(screen.getByRole("button", { name: "2026-10-10" }));
+
+  expect(screen.getByLabelText("Note")).toHaveValue("A, edited.");
+});
+
+test("A を直している途中に B を直しても、A の下書きは残る", async () => {
+  stored = [note("2026-10-10", "A.", 1), note("2026-10-12", "B.", 2)];
+  renderNotes();
+  fireEvent.click(await screen.findByRole("button", { name: "2026-10-10" }));
+  fireEvent.change(screen.getByLabelText("Note"), {
+    target: { value: "A, edited." },
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "2026-10-12" }));
+  fireEvent.change(screen.getByLabelText("Note"), {
+    target: { value: "B, edited." },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "2026-10-10" }));
+
+  expect(screen.getByLabelText("Note")).toHaveValue("A, edited.");
+  // B に戻れば B の下書きも残っている
+  fireEvent.click(screen.getByRole("button", { name: "2026-10-12" }));
+  expect(screen.getByLabelText("Note")).toHaveValue("B, edited.");
+});
