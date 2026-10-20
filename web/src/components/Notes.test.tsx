@@ -503,3 +503,56 @@ test("A を直している途中に B を直しても、A の下書きは残る"
   fireEvent.click(screen.getByRole("button", { name: "2026-10-12" }));
   expect(screen.getByLabelText("Note")).toHaveValue("B, edited.");
 });
+
+test("保存中は一覧の日付ボタンも押せない", async () => {
+  stored = [note("2026-10-10", "A.", 1), note("2026-10-12", "B.", 2)];
+  const edited = deferred<NoteOut>();
+  vi.mocked(editNote).mockReturnValue(edited.promise);
+  renderNotes();
+  fireEvent.click(await screen.findByRole("button", { name: "2026-10-10" }));
+  fireEvent.change(screen.getByLabelText("Note"), {
+    target: { value: "A, edited." },
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+  expect(screen.getByRole("button", { name: "2026-10-12" })).toBeDisabled();
+  await act(async () => {
+    edited.resolve(note("2026-10-10", "A, edited.", 1));
+    await edited.promise;
+  });
+  expect(screen.getByRole("button", { name: "2026-10-12" })).toBeEnabled();
+});
+
+test("保存したあとに一覧から別の日を開くと、保存の文言を消す", async () => {
+  stored = [note("2026-10-10", "A.", 1), note("2026-10-12", "B.", 2)];
+  renderNotes();
+  fireEvent.click(await screen.findByRole("button", { name: "2026-10-10" }));
+  fireEvent.change(screen.getByLabelText("Note"), {
+    target: { value: "A, edited." },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  expect(await screen.findByRole("status")).toHaveTextContent("Saved");
+
+  fireEvent.click(screen.getByRole("button", { name: "2026-10-12" }));
+
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+});
+
+test("保存に失敗したあとに一覧から別の日を開くと、エラーの文言を消す", async () => {
+  stored = [note("2026-10-10", "A.", 1), note("2026-10-12", "B.", 2)];
+  vi.mocked(editNote).mockRejectedValueOnce(new ApiError(404));
+  renderNotes();
+  fireEvent.click(await screen.findByRole("button", { name: "2026-10-10" }));
+  fireEvent.change(screen.getByLabelText("Note"), {
+    target: { value: "A, edited." },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "This note no longer exists.",
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "2026-10-12" }));
+
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});

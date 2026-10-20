@@ -125,6 +125,13 @@ export default function Notes({ user, since, today }: Props) {
     }
   }
 
+  /** 日を選ぶ。日付欄と一覧の日付ボタンで同じ。前の日の保存の文言は消す */
+  function selectDay(day: string) {
+    setDate(day);
+    setStatus(null);
+    setSaveError(null);
+  }
+
   /** 手元の一覧のメモを差し替える。読み直しが届くまでの間も見えるように */
   function replaceInList(id: number, next: NoteOut | null) {
     setList((prev) =>
@@ -202,11 +209,7 @@ export default function Notes({ user, since, today }: Props) {
               value={date}
               min={since}
               max={today}
-              onChange={(e) => {
-                setDate(e.target.value);
-                setStatus(null);
-                setSaveError(null);
-              }}
+              onChange={(e) => selectDay(e.target.value)}
             />
           </label>
           {existing ? (
@@ -280,7 +283,12 @@ export default function Notes({ user, since, today }: Props) {
         <ul aria-label="Notes in this period">
           {notes.map((n) => (
             <li key={n.id} aria-current={n.date === date ? "date" : undefined}>
-              <button type="button" onClick={() => setDate(n.date)}>
+              {/* 一覧は保存中に止める fieldset の外にあるので、ここでも止める */}
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => selectDay(n.date)}
+              >
                 {n.date}
               </button>{" "}
               <span style={{ whiteSpace: "pre-wrap" }}>{n.body}</span>
