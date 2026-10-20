@@ -1,11 +1,11 @@
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from app.routers.deps import CurrentUser, DbSession
-from app.schemas.notes import NoteIn, NoteList, NoteOut
-from app.services.notes import create_note, list_notes, today_for
+from app.schemas.notes import NoteIn, NoteList, NoteOut, NoteUpdate
+from app.services.notes import create_note, delete_note, list_notes, today_for, update_note
 
 router = APIRouter(prefix="/notes", tags=["notes"])
 
@@ -41,3 +41,28 @@ async def add_note(body: NoteIn, user: CurrentUser, session: DbSession) -> NoteO
     if note is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "a note for this date already exists")
     return NoteOut.model_validate(note)
+
+
+# 他人のメモも、ないメモも 404。どちらかは見分けさせない
+NOT_FOUND: dict[int | str, dict[str, Any]] = {
+    status.HTTP_404_NOT_FOUND: {"description": "本人のメモにない"}
+}
+
+
+@router.patch("/{note_id}", response_model=NoteOut, responses=NOT_FOUND)
+async def edit_note(
+    note_id: int, body: NoteUpdate, user: CurrentUser, session: DbSession
+) -> NoteOut:
+    """メモの本文を直す。日付は変えない。"""
+    note = await update_note(session, user.id, note_id, body.body)
+    if note is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    return NoteOut.model_validate(note)
+
+
+@router.delete("/{note_id}", status_code=status.HTTP_204_NO_CONTENT, responses=NOT_FOUND)
+async def remove_note(note_id: int, user: CurrentUser, session: DbSession) -> Response:
+    """メモを消す。消した日には、また新しく書ける。"""
+    if not await delete_note(session, user.id, note_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

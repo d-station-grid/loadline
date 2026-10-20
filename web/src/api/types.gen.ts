@@ -287,6 +287,18 @@ export type NoteOut = {
 };
 
 /**
+ * NoteUpdate
+ *
+ * PATCH /notes/{id} の本文。日付は変えない。間違えたら消して書き直す。
+ */
+export type NoteUpdate = {
+  /**
+   * Body
+   */
+  body: string;
+};
+
+/**
  * Quantity
  */
 export type Quantity = {
@@ -774,6 +786,78 @@ export type AddNoteNotesPostResponses = {
 
 export type AddNoteNotesPostResponse =
   AddNoteNotesPostResponses[keyof AddNoteNotesPostResponses];
+
+export type RemoveNoteNotesNoteIdDeleteData = {
+  body?: never;
+  path: {
+    /**
+     * Note Id
+     */
+    note_id: number;
+  };
+  query?: never;
+  url: "/notes/{note_id}";
+};
+
+export type RemoveNoteNotesNoteIdDeleteErrors = {
+  /**
+   * 本人のメモにない
+   */
+  404: unknown;
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type RemoveNoteNotesNoteIdDeleteError =
+  RemoveNoteNotesNoteIdDeleteErrors[keyof RemoveNoteNotesNoteIdDeleteErrors];
+
+export type RemoveNoteNotesNoteIdDeleteResponses = {
+  /**
+   * Successful Response
+   */
+  204: void;
+};
+
+export type RemoveNoteNotesNoteIdDeleteResponse =
+  RemoveNoteNotesNoteIdDeleteResponses[keyof RemoveNoteNotesNoteIdDeleteResponses];
+
+export type EditNoteNotesNoteIdPatchData = {
+  body: NoteUpdate;
+  path: {
+    /**
+     * Note Id
+     */
+    note_id: number;
+  };
+  query?: never;
+  url: "/notes/{note_id}";
+};
+
+export type EditNoteNotesNoteIdPatchErrors = {
+  /**
+   * 本人のメモにない
+   */
+  404: unknown;
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type EditNoteNotesNoteIdPatchError =
+  EditNoteNotesNoteIdPatchErrors[keyof EditNoteNotesNoteIdPatchErrors];
+
+export type EditNoteNotesNoteIdPatchResponses = {
+  /**
+   * Successful Response
+   */
+  200: NoteOut;
+};
+
+export type EditNoteNotesNoteIdPatchResponse =
+  EditNoteNotesNoteIdPatchResponses[keyof EditNoteNotesNoteIdPatchResponses];
 
 export type ReadSettingsSettingsGetData = {
   body?: never;

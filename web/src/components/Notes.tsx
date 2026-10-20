@@ -2,13 +2,16 @@ import type { User } from "firebase/auth";
 import { type SubmitEvent, useEffect, useRef, useState } from "react";
 
 import type { NoteOut } from "../api";
-import { addNote, ApiError, getNotes } from "../lib/api";
+import { addNote, ApiError, deleteNote, editNote, getNotes } from "../lib/api";
 
 const MAX_BODY = 2000;
 
 function errorMessage(e: unknown): string {
   if (e instanceof ApiError && e.status === 409) {
     return "You already wrote a note for this day.";
+  }
+  if (e instanceof ApiError && e.status === 404) {
+    return "This note no longer exists.";
   }
   if (e instanceof ApiError && e.status === 400) {
     return "You can't write a note for a future day.";
@@ -32,14 +35,29 @@ type Props = {
   today: string;
 };
 
-/** ダッシュボードの期間のメモと、日付を選んで書く欄。走らなかった日にも書ける。 */
+/** 直している途中の本文。メモの id ごとに持ち、別のメモへ移っても残す */
+type EditDrafts = Record<number, string>;
+
+/** 1 件の下書きを消す。保存や削除が済んだメモの分だけ */
+function withoutDraft(drafts: EditDrafts, id: number): EditDrafts {
+  const { [id]: _done, ...rest } = drafts;
+  return rest;
+}
+
+/**
+ * ダッシュボードの期間のメモと、日付を選んで書く欄。走らなかった日にも書ける。
+ * 書いてある日を選ぶと、同じ欄でそのメモを直したり消したりできる。
+ */
 export default function Notes({ user, since, today }: Props) {
   // どの since で読んだ一覧かを組で持つ。今の since と違う間は読み込み中として扱う
   const [list, setList] = useState<NoteList | null>(null);
   // 保存のあとに一覧を読み直すために進める
   const [reload, setReload] = useState(0);
   const [date, setDate] = useState(today);
+  // 新しく書く本文。書いてある日を選んで直している間も残しておく
   const [body, setBody] = useState("");
+  // 直している本文。そのメモの下書きがなければ、メモの本文を見せる
+  const [editDrafts, setEditDrafts] = useState<EditDrafts>({});
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   // 一覧の失敗と保存の失敗は分ける。一覧は読み直しに成功したら消し、Retry で読み直せる
@@ -67,9 +85,11 @@ export default function Notes({ user, since, today }: Props) {
   }, [user, since, reload]);
 
   const notes = list && list.since === since ? list.items : null;
-  // 1 日 1 件。書いてある日を選んだら、そのメモを見せて書く欄は閉じる。
+  // 1 日 1 件。書いてある日を選んだら、書く欄をそのメモを直す欄に切り替える。
   // 一覧が届くまでは、書いてある日か分からないので保存させない
   const existing = notes?.find((n) => n.date === date) ?? null;
+  const editBody =
+    existing === null ? "" : (editDrafts[existing.id] ?? existing.body);
   // 書けるのは今の期間の日だけ。書いたメモが必ず今の一覧に出て、1 日 1 件の判定がずれないように。
   // YYYY-MM-DD は文字列のまま比べられる
   const inPeriod = date >= since && date <= today;
@@ -79,15 +99,73 @@ export default function Notes({ user, since, today }: Props) {
     existing === null &&
     inPeriod &&
     body.trim() !== "";
+  // 直さずに保存しても意味がないので、本文が変わったときだけ押せる
+  const canSaveEdit =
+    !saving &&
+    existing !== null &&
+    editBody.trim() !== "" &&
+    editBody.trim() !== existing.body;
 
-  async function handleSave(e: SubmitEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (savingNow.current || !canSave) return;
+  /** 保存・削除の共通の手順。連打を止め、終わったら一覧を読み直す */
+  async function run(action: () => Promise<string>) {
+    if (savingNow.current) return;
     savingNow.current = true;
     setSaving(true);
     setSaveError(null);
     setStatus(null);
     try {
+      setStatus(await action());
+    } catch (e) {
+      setSaveError(errorMessage(e));
+      // 別の画面で消されていたときは、一覧を読み直して書く欄に戻す
+      if (e instanceof ApiError && e.status === 404) setReload((n) => n + 1);
+    } finally {
+      savingNow.current = false;
+      setSaving(false);
+    }
+  }
+
+  /** 日を選ぶ。日付欄と一覧の日付ボタンで同じ。前の日の保存の文言は消す */
+  function selectDay(day: string) {
+    setDate(day);
+    setStatus(null);
+    setSaveError(null);
+  }
+
+  /** 手元の一覧のメモを差し替える。読み直しが届くまでの間も見えるように */
+  function replaceInList(id: number, next: NoteOut | null) {
+    setList((prev) =>
+      prev
+        ? {
+            ...prev,
+            items: prev.items.flatMap((n) =>
+              n.id !== id ? [n] : next ? [next] : [],
+            ),
+          }
+        : prev,
+    );
+  }
+
+  async function handleSave(e: SubmitEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (existing) {
+      if (!canSaveEdit) return;
+      const target = existing;
+      await run(async () => {
+        const note = await editNote(
+          target.id,
+          { body: editBody },
+          await user.getIdToken(),
+        );
+        replaceInList(target.id, note);
+        setReload((n) => n + 1);
+        setEditDrafts((d) => withoutDraft(d, target.id));
+        return "Saved";
+      });
+      return;
+    }
+    if (!canSave) return;
+    await run(async () => {
       const note = await addNote({ date, body }, await user.getIdToken());
       // 読み直しが届くまでの間も見えるよう、手元の一覧に足しておく。
       // 保存中に期間を切り替えられたら、前の期間の一覧には足さない
@@ -99,13 +177,23 @@ export default function Notes({ user, since, today }: Props) {
       setReload((n) => n + 1);
       // 保存中は欄を無効にしているので、ここで消すのは送った本文だけ
       setBody("");
-      setStatus("Saved");
-    } catch (e) {
-      setSaveError(errorMessage(e));
-    } finally {
-      savingNow.current = false;
-      setSaving(false);
-    }
+      return "Saved";
+    });
+  }
+
+  async function handleDelete() {
+    if (!existing || saving) return;
+    const target = existing;
+    if (!window.confirm(`Delete the note for ${target.date}?`)) return;
+    await run(async () => {
+      await deleteNote(target.id, await user.getIdToken());
+      // 消した日は空くので、書く欄に戻る
+      replaceInList(target.id, null);
+      setReload((n) => n + 1);
+      // 消したメモの下書きだけ消す。ほかのメモの書きかけは残す
+      setEditDrafts((d) => withoutDraft(d, target.id));
+      return "Deleted";
+    });
   }
 
   return (
@@ -121,15 +209,32 @@ export default function Notes({ user, since, today }: Props) {
               value={date}
               min={since}
               max={today}
-              onChange={(e) => {
-                setDate(e.target.value);
-                setStatus(null);
-                setSaveError(null);
-              }}
+              onChange={(e) => selectDay(e.target.value)}
             />
           </label>
           {existing ? (
-            <p>You already wrote a note for this day.</p>
+            <>
+              <label>
+                Note
+                <textarea
+                  value={editBody}
+                  maxLength={MAX_BODY}
+                  rows={3}
+                  onChange={(e) =>
+                    setEditDrafts((d) => ({
+                      ...d,
+                      [existing.id]: e.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <button type="submit" disabled={!canSaveEdit}>
+                Save changes
+              </button>{" "}
+              <button type="button" onClick={handleDelete}>
+                Delete
+              </button>
+            </>
           ) : (
             <>
               <label>
@@ -178,7 +283,12 @@ export default function Notes({ user, since, today }: Props) {
         <ul aria-label="Notes in this period">
           {notes.map((n) => (
             <li key={n.id} aria-current={n.date === date ? "date" : undefined}>
-              <button type="button" onClick={() => setDate(n.date)}>
+              {/* 一覧は保存中に止める fieldset の外にあるので、ここでも止める */}
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => selectDay(n.date)}
+              >
                 {n.date}
               </button>{" "}
               <span style={{ whiteSpace: "pre-wrap" }}>{n.body}</span>

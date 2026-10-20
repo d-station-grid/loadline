@@ -4,6 +4,7 @@ import type {
   NoteIn,
   NoteList,
   NoteOut,
+  NoteUpdate,
   ReadDashboardDashboardGetData,
   SettingsIn,
   SettingsOut,
@@ -35,10 +36,17 @@ async function request<T>(
   if (!res.ok) {
     throw new ApiError(res.status);
   }
+  // 204 は本文がない
+  if (res.status === 204) {
+    return undefined as T;
+  }
   return (await res.json()) as T;
 }
 
-function sendJson(method: "POST" | "PUT", body: unknown): RequestInit {
+function sendJson(
+  method: "POST" | "PUT" | "PATCH",
+  body: unknown,
+): RequestInit {
   return {
     method,
     headers: { "Content-Type": "application/json" },
@@ -128,4 +136,18 @@ export function getNotes(query: NoteQuery, idToken: string): Promise<NoteList> {
 /** メモを 1 件書く。その日にもうあれば 409、未来の日付は 400。 */
 export function addNote(body: NoteIn, idToken: string): Promise<NoteOut> {
   return request<NoteOut>("/notes", sendJson("POST", body), idToken);
+}
+
+/** メモの本文を直す。日付は変えない。本人のメモでなければ 404。 */
+export function editNote(
+  id: number,
+  body: NoteUpdate,
+  idToken: string,
+): Promise<NoteOut> {
+  return request<NoteOut>(`/notes/${id}`, sendJson("PATCH", body), idToken);
+}
+
+/** メモを消す。本人のメモでなければ 404。 */
+export function deleteNote(id: number, idToken: string): Promise<void> {
+  return request<void>(`/notes/${id}`, { method: "DELETE" }, idToken);
 }

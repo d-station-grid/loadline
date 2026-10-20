@@ -14,6 +14,12 @@ class NoteIn(BaseModel):
     body: NoteBody
 
 
+class NoteUpdate(BaseModel):
+    """PATCH /notes/{id} の本文。日付は変えない。間違えたら消して書き直す。"""
+
+    body: NoteBody
+
+
 class NoteOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
