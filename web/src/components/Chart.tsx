@@ -2,6 +2,7 @@ import { BarChart, LineChart, ScatterChart } from "echarts/charts";
 import {
   GridComponent,
   LegendComponent,
+  MarkPointComponent,
   TooltipComponent,
 } from "echarts/components";
 import * as echarts from "echarts/core";
@@ -16,6 +17,7 @@ echarts.use([
   ScatterChart,
   GridComponent,
   LegendComponent,
+  MarkPointComponent,
   TooltipComponent,
   CanvasRenderer,
 ]);

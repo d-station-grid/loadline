@@ -1,7 +1,7 @@
 import type { User } from "firebase/auth";
 import { useEffect, useMemo, useState } from "react";
 
-import type { Dashboard } from "../api";
+import type { Dashboard, NoteOut } from "../api";
 import Chart from "../components/Chart";
 import Notes from "../components/Notes";
 import { getDashboard, type DashboardQuery } from "../lib/api";
@@ -41,6 +41,8 @@ export default function DashboardPage({ user, onOpenSettings }: Props) {
   const [sport, setSport] = useState<Sport>("all");
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Notes が読んだ期間のメモ。ラベルのある日にチャートの印を出す
+  const [notes, setNotes] = useState<NoteOut[]>([]);
   // Retry で進める。条件が同じでも effect を走らせ直すため
   const [attempt, setAttempt] = useState(0);
 
@@ -71,7 +73,10 @@ export default function DashboardPage({ user, onOpenSettings }: Props) {
   }, [user, weeks, sport, attempt]);
 
   // option は応答が変わったときだけ作り直す。毎回作ると Chart が描き直してしまう
-  const load = useMemo(() => (data ? loadOption(data.days) : null), [data]);
+  const load = useMemo(
+    () => (data ? loadOption(data.days, notes) : null),
+    [data, notes],
+  );
   const vo2max = useMemo(
     () => (data ? vo2maxOption(data.vo2max) : null),
     [data],
@@ -205,6 +210,7 @@ export default function DashboardPage({ user, onOpenSettings }: Props) {
           user={user}
           since={result.data.since}
           today={result.data.until}
+          onNotesChange={setNotes}
         />
       )}
     </section>

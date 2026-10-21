@@ -1,7 +1,7 @@
 import type { EChartsOption, SeriesOption } from "echarts";
 import { expect, test } from "vitest";
 
-import type { DayPoint, Vo2MaxPoint, WorkoutPoint } from "../api";
+import type { DayPoint, NoteOut, Vo2MaxPoint, WorkoutPoint } from "../api";
 import {
   loadOption,
   vo2maxOption,
@@ -140,4 +140,104 @@ test("記録がなければ、どのチャートも空の series になる", () 
   expect(seriesOf(loadOption([])).map((s) => s.data)).toEqual([[], [], [], []]);
   expect(seriesOf(vo2maxOption([])).map((s) => s.data)).toEqual([[], []]);
   expect(seriesOf(workoutsOption([]))).toEqual([]);
+});
+
+function day(d: string, fitness: number, fatigue: number): DayPoint {
+  return { day: d, load: 10, fitness, fatigue, headroom: fitness - fatigue };
+}
+
+function memo(date: string, label: string | null, body = "x"): NoteOut {
+  return {
+    id: 1,
+    date,
+    label,
+    body,
+    created_at: `${date}T12:00:00Z`,
+    updated_at: `${date}T12:00:00Z`,
+  };
+}
+
+type MarkPoint = {
+  data: { name: string; coord: [string, number] }[];
+  label: { formatter: string; backgroundColor: string };
+};
+
+function markPointOf(option: EChartsOption): MarkPoint | undefined {
+  const [fitness] = seriesOf(option) as (SeriesOption & {
+    markPoint?: MarkPoint;
+  })[];
+  return fitness.markPoint;
+}
+
+test("ラベルのあるメモの日に、体力と疲労の高いほうの 1.1 倍の高さで吹き出しを立てる", () => {
+  const days = [day("2026-10-01", 30, 50), day("2026-10-02", 40, 20)];
+  const notes = [memo("2026-10-01", "Race"), memo("2026-10-02", "大会")];
+
+  const mark = markPointOf(loadOption(days, notes));
+
+  expect(mark?.data).toEqual([
+    { name: "Race", coord: ["2026-10-01", 55], value: "Race" },
+    { name: "大会", coord: ["2026-10-02", 44], value: "大会" },
+  ]);
+  // 文字は吹き出しに重ね、はみ出しても読めるよう同じ色の帯を敷く
+  expect(mark?.label.formatter).toBe("{b}");
+  expect(mark?.label.backgroundColor).toBeTruthy();
+});
+
+test("ラベルのないメモと、チャートの期間の外のメモには印を出さない", () => {
+  const days = [day("2026-10-01", 30, 50)];
+  const notes = [memo("2026-10-01", null), memo("2026-09-01", "Old")];
+
+  const option = loadOption(days, notes);
+
+  expect(markPointOf(option)).toBeUndefined();
+  // 印がない間は、軸の上の余白も足さない
+  const [axis] = option.yAxis as { max?: unknown }[];
+  expect(axis.max).toBeUndefined();
+});
+
+test("印がある間は、吹き出しが切れないよう軸の上に余白を足す", () => {
+  const option = loadOption(
+    [day("2026-10-01", 30, 50)],
+    [memo("2026-10-01", "Race")],
+  );
+
+  const [axis] = option.yAxis as { max: (v: { max: number }) => number }[];
+  expect(axis.max({ max: 50 })).toBe(70);
+  // 目盛りがそろうよう 10 の倍数に切り上げる
+  expect(axis.max({ max: 55 })).toBe(80);
+});
+
+test("ツールチップに、その日のラベルと本文を出す。書いた文字は HTML にしない", () => {
+  const option = loadOption(
+    [day("2026-10-01", 30, 50)],
+    [memo("2026-10-01", "<b>", "Legs <script>heavy</script>")],
+  );
+  const { formatter } = option.tooltip as {
+    formatter: (params: unknown) => string;
+  };
+
+  const html = formatter([
+    { marker: "", seriesName: "Fitness", value: ["2026-10-01", 30] },
+  ]);
+
+  expect(html).toContain("2026-10-01");
+  expect(html).toContain("Fitness: 30");
+  expect(html).toContain("&lt;b&gt;");
+  expect(html).toContain("Legs &lt;script&gt;heavy&lt;/script&gt;");
+  expect(html).not.toContain("<script>");
+});
+
+test("メモのない日のツールチップは、いつもの行だけ", () => {
+  const option = loadOption([day("2026-10-01", 30, 50)]);
+  const { formatter } = option.tooltip as {
+    formatter: (params: unknown) => string;
+  };
+
+  const html = formatter([
+    { marker: "", seriesName: "Fitness", value: ["2026-10-01", 30] },
+    { marker: "", seriesName: "Load", value: ["2026-10-01", null] },
+  ]);
+
+  expect(html).toBe("2026-10-01<br/>Fitness: 30");
 });

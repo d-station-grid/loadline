@@ -3,6 +3,7 @@ import { type SubmitEvent, useEffect, useRef, useState } from "react";
 
 import type { NoteOut } from "../api";
 import { addNote, ApiError, deleteNote, editNote, getNotes } from "../lib/api";
+import { displayWidth, MAX_LABEL_WIDTH, normalizeLabel } from "../lib/label";
 
 const MAX_BODY = 2000;
 
@@ -33,10 +34,48 @@ type Props = {
   since: string;
   /** 利用者のタイムゾーンでの今日。api が決めた日をそのまま使い、端末の日付は使わない */
   today: string;
+  /** 読み込んだ一覧を渡す。チャートにラベルの印を出すため。保存や削除のあとも呼ぶ */
+  onNotesChange?: (notes: NoteOut[]) => void;
 };
 
-/** 直している途中の本文。メモの id ごとに持ち、別のメモへ移っても残す */
-type EditDrafts = Record<number, string>;
+/** ラベルの幅が上限に収まるか。半角 1、全角 2 で数える */
+function labelFits(label: string): boolean {
+  return displayWidth(label.trim()) <= MAX_LABEL_WIDTH;
+}
+
+/** ラベルの入力欄。文字数ではなく幅で数えるので、maxLength は使わず残りを出す */
+function LabelField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const width = displayWidth(value.trim());
+  return (
+    <>
+      <label>
+        Label (optional)
+        <input
+          type="text"
+          value={value}
+          placeholder="Shown on the chart"
+          aria-describedby="note-label-width"
+          aria-invalid={width > MAX_LABEL_WIDTH}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      </label>{" "}
+      <small id="note-label-width">
+        {width} / {MAX_LABEL_WIDTH}
+        {width > MAX_LABEL_WIDTH && " (too long; full-width counts as 2)"}
+      </small>
+    </>
+  );
+}
+
+/** 直している途中の本文とラベル。メモの id ごとに持ち、別のメモへ移っても残す */
+type EditDraft = { body: string; label: string };
+type EditDrafts = Record<number, EditDraft>;
 
 /** 1 件の下書きを消す。保存や削除が済んだメモの分だけ */
 function withoutDraft(drafts: EditDrafts, id: number): EditDrafts {
@@ -48,7 +87,7 @@ function withoutDraft(drafts: EditDrafts, id: number): EditDrafts {
  * ダッシュボードの期間のメモと、日付を選んで書く欄。走らなかった日にも書ける。
  * 書いてある日を選ぶと、同じ欄でそのメモを直したり消したりできる。
  */
-export default function Notes({ user, since, today }: Props) {
+export default function Notes({ user, since, today, onNotesChange }: Props) {
   // どの since で読んだ一覧かを組で持つ。今の since と違う間は読み込み中として扱う
   const [list, setList] = useState<NoteList | null>(null);
   // 保存のあとに一覧を読み直すために進める
@@ -56,6 +95,7 @@ export default function Notes({ user, since, today }: Props) {
   const [date, setDate] = useState(today);
   // 新しく書く本文。書いてある日を選んで直している間も残しておく
   const [body, setBody] = useState("");
+  const [label, setLabel] = useState("");
   // 直している本文。そのメモの下書きがなければ、メモの本文を見せる
   const [editDrafts, setEditDrafts] = useState<EditDrafts>({});
   const [saving, setSaving] = useState(false);
@@ -88,8 +128,15 @@ export default function Notes({ user, since, today }: Props) {
   // 1 日 1 件。書いてある日を選んだら、書く欄をそのメモを直す欄に切り替える。
   // 一覧が届くまでは、書いてある日か分からないので保存させない
   const existing = notes?.find((n) => n.date === date) ?? null;
-  const editBody =
-    existing === null ? "" : (editDrafts[existing.id] ?? existing.body);
+  const draft: EditDraft | null =
+    existing === null
+      ? null
+      : (editDrafts[existing.id] ?? {
+          body: existing.body,
+          label: existing.label ?? "",
+        });
+  const editBody = draft?.body ?? "";
+  const editLabel = draft?.label ?? "";
   // 書けるのは今の期間の日だけ。書いたメモが必ず今の一覧に出て、1 日 1 件の判定がずれないように。
   // YYYY-MM-DD は文字列のまま比べられる
   const inPeriod = date >= since && date <= today;
@@ -98,13 +145,29 @@ export default function Notes({ user, since, today }: Props) {
     notes !== null &&
     existing === null &&
     inPeriod &&
-    body.trim() !== "";
-  // 直さずに保存しても意味がないので、本文が変わったときだけ押せる
+    body.trim() !== "" &&
+    labelFits(label);
+  // 直さずに保存しても意味がないので、本文かラベルが変わったときだけ押せる
   const canSaveEdit =
     !saving &&
     existing !== null &&
     editBody.trim() !== "" &&
-    editBody.trim() !== existing.body;
+    labelFits(editLabel) &&
+    (editBody.trim() !== existing.body ||
+      normalizeLabel(editLabel) !== existing.label);
+
+  // 一覧が変わったら親に渡す。チャートの印を、保存や削除の直後に合わせるため
+  useEffect(() => {
+    if (notes) onNotesChange?.(notes);
+  }, [notes, onNotesChange]);
+
+  /** 直している本文かラベルを書き換える */
+  function changeDraft(change: Partial<EditDraft>) {
+    if (!existing || !draft) return;
+    const id = existing.id;
+    const base = draft;
+    setEditDrafts((d) => ({ ...d, [id]: { ...(d[id] ?? base), ...change } }));
+  }
 
   /** 保存・削除の共通の手順。連打を止め、終わったら一覧を読み直す */
   async function run(action: () => Promise<string>) {
@@ -154,7 +217,7 @@ export default function Notes({ user, since, today }: Props) {
       await run(async () => {
         const note = await editNote(
           target.id,
-          { body: editBody },
+          { body: editBody, label: normalizeLabel(editLabel) },
           await user.getIdToken(),
         );
         replaceInList(target.id, note);
@@ -166,7 +229,10 @@ export default function Notes({ user, since, today }: Props) {
     }
     if (!canSave) return;
     await run(async () => {
-      const note = await addNote({ date, body }, await user.getIdToken());
+      const note = await addNote(
+        { date, body, label: normalizeLabel(label) },
+        await user.getIdToken(),
+      );
       // 読み直しが届くまでの間も見えるよう、手元の一覧に足しておく。
       // 保存中に期間を切り替えられたら、前の期間の一覧には足さない
       setList((prev) =>
@@ -177,6 +243,7 @@ export default function Notes({ user, since, today }: Props) {
       setReload((n) => n + 1);
       // 保存中は欄を無効にしているので、ここで消すのは送った本文だけ
       setBody("");
+      setLabel("");
       return "Saved";
     });
   }
@@ -220,14 +287,13 @@ export default function Notes({ user, since, today }: Props) {
                   value={editBody}
                   maxLength={MAX_BODY}
                   rows={3}
-                  onChange={(e) =>
-                    setEditDrafts((d) => ({
-                      ...d,
-                      [existing.id]: e.target.value,
-                    }))
-                  }
+                  onChange={(e) => changeDraft({ body: e.target.value })}
                 />
               </label>
+              <LabelField
+                value={editLabel}
+                onChange={(value) => changeDraft({ label: value })}
+              />
               <button type="submit" disabled={!canSaveEdit}>
                 Save changes
               </button>{" "}
@@ -247,6 +313,7 @@ export default function Notes({ user, since, today }: Props) {
                   onChange={(e) => setBody(e.target.value)}
                 />
               </label>
+              <LabelField value={label} onChange={setLabel} />
               {/* 期間を切り替えて、選んでいた日が外に出たとき。書きかけの本文は残す */}
               {!inPeriod && (
                 <p>
@@ -291,6 +358,11 @@ export default function Notes({ user, since, today }: Props) {
               >
                 {n.date}
               </button>{" "}
+              {n.label && (
+                <>
+                  <strong>[{n.label}]</strong>{" "}
+                </>
+              )}
               <span style={{ whiteSpace: "pre-wrap" }}>{n.body}</span>
             </li>
           ))}
