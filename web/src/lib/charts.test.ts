@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 
 import type { DayPoint, NoteOut, Vo2MaxPoint, WorkoutPoint } from "../api";
 import {
+  axisMaxForPins,
   loadOption,
   vo2maxOption,
   workoutsOption,
@@ -196,16 +197,23 @@ test("ラベルのないメモと、チャートの期間の外のメモには�
   expect(axis.max).toBeUndefined();
 });
 
-test("印がある間は、吹き出しが切れないよう軸の上に余白を足す", () => {
+test("印がある間は、いちばん高い吹き出しの先から上に吹き出しの分を空ける", () => {
   const option = loadOption(
     [day("2026-10-01", 30, 50)],
     [memo("2026-10-01", "Race")],
   );
 
+  // 先は 50 × 1.1 = 55。グリッドの高さ 150px のうち上の 42px を空けると 76.4、切り上げて 80
   const [axis] = option.yAxis as { max: (v: { max: number }) => number }[];
-  expect(axis.max({ max: 50 })).toBe(70);
-  // 目盛りがそろうよう 10 の倍数に切り上げる
-  expect(axis.max({ max: 55 })).toBe(80);
+  expect(axis.max({ max: 50 })).toBe(80);
+  // 実際に描いて収まるかは charts.render.test.ts で確かめる
+});
+
+test("軸の上端は、データの最大のほうが高ければそちらを使い、目盛りがそろうよう切り上げる", () => {
+  expect(axisMaxForPins(200, 55)).toBe(200);
+  expect(axisMaxForPins(203, 55)).toBe(210);
+  // 50 未満は 5 刻み
+  expect(axisMaxForPins(7, 7.7)).toBe(15);
 });
 
 test("吹き出しにはツールチップを出さず、軸のツールチップは標準の表示のまま", () => {

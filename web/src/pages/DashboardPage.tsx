@@ -6,6 +6,7 @@ import Chart from "../components/Chart";
 import Notes from "../components/Notes";
 import { getDashboard, type DashboardQuery } from "../lib/api";
 import {
+  LOAD_CHART_HEIGHT,
   loadOption,
   vo2maxOption,
   workoutsOption,
@@ -161,7 +162,7 @@ export default function DashboardPage({ user, onOpenSettings }: Props) {
               )}
               <h3>Fitness, fatigue and load</h3>
               <p>Fitness and fatigue include every sport.</p>
-              {load && <Chart option={load} />}
+              {load && <Chart option={load} height={LOAD_CHART_HEIGHT} />}
               {daysWithoutHeartRate > 0 && (
                 <p>
                   ▲ marks {daysWithoutHeartRate} day(s) with a workout that has

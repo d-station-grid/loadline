@@ -17,6 +17,28 @@ const NO_HEART_RATE = "No heart rate";
 const NOTE_MARK = "#c2410c";
 // 吹き出しは、その日の体力と疲労の高いほうの 1.1 倍に立てる。線にかぶらないように
 const NOTE_MARK_LIFT = 1.1;
+// 吹き出しの高さ（px）。先が立てた点にあり、そこから上に描かれる
+export const NOTE_PIN_SIZE = 36;
+
+/** 負荷のチャートの高さ（px）。吹き出しが収まる軸の上端を、この高さから計算する */
+export const LOAD_CHART_HEIGHT = 280;
+// グリッドの上下の余白（px）。上は軸の名前、下は日付と凡例の分
+const LOAD_GRID = { top: 60, bottom: 70 };
+const LOAD_GRID_HEIGHT = LOAD_CHART_HEIGHT - LOAD_GRID.top - LOAD_GRID.bottom;
+// 吹き出しの頭の上に残す余白（px）
+const NOTE_PIN_ROOM = NOTE_PIN_SIZE + 6;
+
+/**
+ * 吹き出しの頭がグリッドに収まる、左の軸の上端。
+ * 吹き出しは px で大きさが決まり、軸は値で決まるので、いちばん高い先から上に
+ * NOTE_PIN_ROOM の px が残る値を求める。目盛りがそろうよう切り上げる。
+ */
+export function axisMaxForPins(dataMax: number, highestTip: number): number {
+  const needed = highestTip / (1 - NOTE_PIN_ROOM / LOAD_GRID_HEIGHT);
+  const value = Math.max(dataMax, needed);
+  const step = value < 50 ? 5 : 10;
+  return Math.ceil(value / step) * step;
+}
 
 /**
  * 体力・疲労の線と、日々の負荷の棒。負荷が null の日（心拍のないワークアウトを含む日）は
@@ -36,21 +58,22 @@ export function loadOption(
     const y = round1(Math.max(d.fitness, d.fatigue) * NOTE_MARK_LIFT);
     return [{ name: n.label, coord: [n.date, y], value: n.label }];
   });
+  const highestTip = Math.max(0, ...marks.map((m) => m.coord[1] as number));
   // 印のない期間は凡例にも出さない。点のない series の凡例は薄く出て、壊れて見えるため
   const legend = ["Fitness", "Fatigue", "Load"];
   if (missing.length > 0) legend.push(NO_HEART_RATE);
   return {
     tooltip: { trigger: "axis" },
     legend: { data: legend },
+    grid: LOAD_GRID,
     xAxis: { type: "time" },
     yAxis: [
       {
         type: "value",
         name: "Fitness / Fatigue",
-        // 吹き出しは軸の範囲に数えられないので、印がある間は上に余白を足して切れないようにする
+        // 吹き出しは軸の範囲に数えられないので、印がある間は上を広げて頭が切れないようにする
         ...(marks.length > 0 && {
-          // 目盛りがそろうよう 10 の倍数に切り上げる
-          max: ({ max }: { max: number }) => Math.ceil((max * 1.4) / 10) * 10,
+          max: ({ max }: { max: number }) => axisMaxForPins(max, highestTip),
         }),
       },
       { type: "value", name: "Load", splitLine: { show: false } },
@@ -64,7 +87,7 @@ export function loadOption(
         ...(marks.length > 0 && {
           markPoint: {
             symbol: "pin",
-            symbolSize: 36,
+            symbolSize: NOTE_PIN_SIZE,
             itemStyle: { color: NOTE_MARK },
             // ラベルは吹き出しの上に出ていて、本文はチャートの下の一覧で読めるので出さない
             tooltip: { show: false },
