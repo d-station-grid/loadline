@@ -315,7 +315,7 @@
           "notes"
         ],
         "summary": "Edit Note",
-        "description": "メモの本文を直す。日付は変えない。",
+        "description": "メモの本文やラベルを直す。送った項目だけを変え、日付は変えない。",
         "operationId": "edit_note_notes__note_id__patch",
         "security": [
           {
@@ -997,6 +997,17 @@
             "maxLength": 2000,
             "minLength": 1,
             "title": "Body"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
           }
         },
         "type": "object",
@@ -1074,18 +1085,33 @@
       "NoteUpdate": {
         "properties": {
           "body": {
-            "type": "string",
-            "maxLength": 2000,
-            "minLength": 1,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Body"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
           }
         },
         "type": "object",
-        "required": [
-          "body"
-        ],
         "title": "NoteUpdate",
-        "description": "PATCH /notes/{id} の本文。日付は変えない。間違えたら消して書き直す。"
+        "description": "PATCH /notes/{id} の本文。日付は変えない。間違えたら消して書き直す。\n\n送った項目だけを直す。label を送らなければ今のまま、null か空を送ると消す。"
       },
       "Quantity": {
         "properties": {

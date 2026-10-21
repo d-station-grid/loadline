@@ -37,7 +37,7 @@ async def add_note(body: NoteIn, user: CurrentUser, session: DbSession) -> NoteO
     # 今日の判定は利用者のタイムゾーンで。日付の比較はここでやる
     if body.date > today_for(user):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "date is in the future")
-    note = await create_note(session, user.id, body.date, body.body)
+    note = await create_note(session, user.id, body.date, body.body, body.label)
     if note is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "a note for this date already exists")
     return NoteOut.model_validate(note)
@@ -53,8 +53,9 @@ NOT_FOUND: dict[int | str, dict[str, Any]] = {
 async def edit_note(
     note_id: int, body: NoteUpdate, user: CurrentUser, session: DbSession
 ) -> NoteOut:
-    """メモの本文を直す。日付は変えない。"""
-    note = await update_note(session, user.id, note_id, body.body)
+    """メモの本文やラベルを直す。送った項目だけを変え、日付は変えない。"""
+    changes = body.model_dump(include=body.model_fields_set)
+    note = await update_note(session, user.id, note_id, changes)
     if note is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     return NoteOut.model_validate(note)

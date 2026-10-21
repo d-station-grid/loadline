@@ -13,7 +13,9 @@ def today_for(user: User) -> date:
     return datetime.now(ZoneInfo(user.timezone)).date()
 
 
-async def create_note(session: AsyncSession, user_id: int, day: date, body: str) -> Note | None:
+async def create_note(
+    session: AsyncSession, user_id: int, day: date, body: str, label: str | None = None
+) -> Note | None:
     """メモを 1 件作る。その日にもう書いてあれば何もせず None。
 
     先に探してから入れると、同時に 2 回届いたときに一意制約の例外になる。
@@ -21,7 +23,7 @@ async def create_note(session: AsyncSession, user_id: int, day: date, body: str)
     """
     stmt = (
         insert(Note)
-        .values(user_id=user_id, date=day, body=body)
+        .values(user_id=user_id, date=day, body=body, label=label)
         .on_conflict_do_nothing(index_elements=[Note.user_id, Note.date])
         .returning(Note)
     )
@@ -43,12 +45,19 @@ async def list_notes(
     return list(await session.scalars(stmt))
 
 
-async def update_note(session: AsyncSession, user_id: int, note_id: int, body: str) -> Note | None:
-    """本人のメモの本文を直す。他人のメモか、ないメモなら None。"""
+async def update_note(
+    session: AsyncSession, user_id: int, note_id: int, changes: dict[str, str | None]
+) -> Note | None:
+    """本人のメモの本文やラベルを直す。他人のメモか、ないメモなら None。
+
+    changes に入っている項目だけを書き換える。空なら何も変えずに今のメモを返す。
+    """
+    if not changes:
+        return await session.scalar(select(Note).where(Note.id == note_id, Note.user_id == user_id))
     stmt = (
         update(Note)
         .where(Note.id == note_id, Note.user_id == user_id)
-        .values(body=body)
+        .values(**changes)
         .returning(Note)
     )
     note = await session.scalar(stmt)

@@ -1,4 +1,11 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type { User } from "firebase/auth";
 import { beforeEach, expect, test, vi } from "vitest";
 
@@ -17,12 +24,17 @@ vi.mock("../lib/api", async (importOriginal) => ({
 
 const user = { getIdToken: async () => "token" } as unknown as User;
 
-function note(date: string, body: string, id = 1): NoteOut {
+function note(
+  date: string,
+  body: string,
+  id = 1,
+  label: string | null = null,
+): NoteOut {
   return {
     id,
     date,
     body,
-    label: null,
+    label,
     created_at: `${date}T12:00:00Z`,
     updated_at: `${date}T12:00:00Z`,
   };
@@ -53,14 +65,25 @@ beforeEach(() => {
       .sort((a, b) => b.date.localeCompare(a.date)),
   }));
   vi.mocked(addNote).mockImplementation(async (body) => {
-    const saved = note(body.date, body.body, stored.length + 1);
+    const saved = note(
+      body.date,
+      body.body,
+      stored.length + 1,
+      body.label?.trim() || null,
+    );
     stored.push(saved);
     return saved;
   });
   vi.mocked(editNote).mockImplementation(async (id, body) => {
     const found = stored.find((n) => n.id === id);
     if (!found) throw new ApiError(404);
-    const saved = { ...found, body: body.body };
+    // api と同じく、送った項目だけ直す。label の空は「ラベルなし」
+    const saved: NoteOut = {
+      ...found,
+      body: body.body ?? found.body,
+      label:
+        body.label === undefined ? found.label : body.label?.trim() || null,
+    };
     stored = stored.map((n) => (n.id === id ? saved : n));
     return saved;
   });
@@ -107,7 +130,7 @@ test("走らなかった日を選んで書くと、保存して一覧に足す",
 
   expect(await screen.findByRole("status")).toHaveTextContent("Saved");
   expect(addNote).toHaveBeenCalledWith(
-    { date: "2026-10-12", body: "Legs heavy." },
+    { date: "2026-10-12", body: "Legs heavy.", label: null },
     "token",
   );
   const items = screen.getAllByRole("listitem");
@@ -350,7 +373,7 @@ test("書いてある日の本文を直して保存すると、一覧も直り�
   expect(await screen.findByRole("status")).toHaveTextContent("Saved");
   expect(editNote).toHaveBeenCalledWith(
     7,
-    { body: "Rest day. Slept 9 hours." },
+    { body: "Rest day. Slept 9 hours.", label: null },
     "token",
   );
   expect(screen.getByRole("listitem")).toHaveTextContent(
@@ -555,4 +578,90 @@ test("保存に失敗したあとに一覧から別の日を開くと、エラ�
   fireEvent.click(screen.getByRole("button", { name: "2026-10-12" }));
 
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+test("ラベルを付けて書くと、一覧の本文の前に出し、親に一覧を渡す", async () => {
+  const onNotesChange = vi.fn();
+  render(
+    <Notes
+      user={user}
+      since="2026-09-01"
+      today="2026-10-18"
+      onNotesChange={onNotesChange}
+    />,
+  );
+  await screen.findByText("No notes in this period.");
+  expect(onNotesChange).toHaveBeenLastCalledWith([]);
+
+  fireEvent.change(screen.getByLabelText("Note"), {
+    target: { value: "Race day." },
+  });
+  fireEvent.change(screen.getByLabelText("Label (optional)"), {
+    target: { value: "  Race " },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save note" }));
+
+  expect(await screen.findByRole("status")).toHaveTextContent("Saved");
+  expect(addNote).toHaveBeenCalledWith(
+    { date: "2026-10-18", body: "Race day.", label: "Race" },
+    "token",
+  );
+  expect(screen.getByRole("listitem")).toHaveTextContent(
+    "2026-10-18 [Race] Race day.",
+  );
+  // 親はチャートの印に使う。保存の直後に新しい一覧が届く
+  expect(onNotesChange).toHaveBeenLastCalledWith([
+    expect.objectContaining({ date: "2026-10-18", label: "Race" }),
+  ]);
+});
+
+test("ラベルは幅で数え、全角 7 文字は保存できない", async () => {
+  renderNotes();
+  await screen.findByText("No notes in this period.");
+  fireEvent.change(screen.getByLabelText("Note"), {
+    target: { value: "x" },
+  });
+
+  fireEvent.change(screen.getByLabelText("Label (optional)"), {
+    target: { value: "あいうえおか" },
+  });
+  expect(screen.getByText("12 / 12")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Save note" })).toBeEnabled();
+
+  fireEvent.change(screen.getByLabelText("Label (optional)"), {
+    target: { value: "あいうえおかき" },
+  });
+  expect(screen.getByText(/14 \/ 12/)).toHaveTextContent("too long");
+  expect(screen.getByRole("button", { name: "Save note" })).toBeDisabled();
+});
+
+test("ラベルだけ直しても保存でき、空にするとラベルを消す", async () => {
+  stored = [note("2026-10-10", "Rest day.", 7, "Sick")];
+  renderNotes();
+  fireEvent.click(await screen.findByRole("button", { name: "2026-10-10" }));
+  const label = screen.getByLabelText("Label (optional)");
+  expect(label).toHaveValue("Sick");
+
+  fireEvent.change(label, { target: { value: "Cold" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  expect(await screen.findByRole("status")).toHaveTextContent("Saved");
+  expect(editNote).toHaveBeenLastCalledWith(
+    7,
+    { body: "Rest day.", label: "Cold" },
+    "token",
+  );
+  expect(screen.getByRole("listitem")).toHaveTextContent("[Cold] Rest day.");
+
+  fireEvent.change(screen.getByLabelText("Label (optional)"), {
+    target: { value: "  " },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  await waitFor(() =>
+    expect(screen.getByRole("listitem")).not.toHaveTextContent("["),
+  );
+  expect(editNote).toHaveBeenLastCalledWith(
+    7,
+    { body: "Rest day.", label: null },
+    "token",
+  );
 });
