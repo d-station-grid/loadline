@@ -18,40 +18,6 @@ const NOTE_MARK = "#c2410c";
 // 吹き出しは、その日の体力と疲労の高いほうの 1.1 倍に立てる。線にかぶらないように
 const NOTE_MARK_LIFT = 1.1;
 
-/** ツールチップは HTML で描くので、利用者が書いた文字はそのまま入れない */
-function escapeHtml(text: string): string {
-  return text
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-type AxisParam = { marker?: unknown; seriesName?: string; value?: unknown };
-
-/** 軸のツールチップ。いつもの行に、その日のメモ（ラベルと本文）を足す */
-function loadTooltip(notes: Map<string, NoteOut>) {
-  return (raw: unknown): string => {
-    const params = (Array.isArray(raw) ? raw : [raw]) as AxisParam[];
-    const day = String((params[0]?.value as unknown[] | undefined)?.[0] ?? "");
-    const lines = params
-      .filter((p) => Array.isArray(p.value) && p.value[1] !== null)
-      .map(
-        (p) =>
-          `${String(p.marker ?? "")}${escapeHtml(p.seriesName ?? "")}: ${String((p.value as unknown[])[1])}`,
-      );
-    const note = notes.get(day);
-    if (note) {
-      const label = note.label ? `<b>${escapeHtml(note.label)}</b> ` : "";
-      lines.push(
-        `<div style="max-width:240px;white-space:normal">${label}${escapeHtml(note.body)}</div>`,
-      );
-    }
-    return [escapeHtml(day), ...lines].join("<br/>");
-  };
-}
-
 /**
  * 体力・疲労の線と、日々の負荷の棒。負荷が null の日（心拍のないワークアウトを含む日）は
  * 棒を出さず、負荷 0 の高さに ▲ を置く。api はその日を負荷 0 として計算を続けるので、
@@ -64,7 +30,6 @@ export function loadOption(
   const missing = days.filter((d) => d.load === null);
   // ラベルのあるメモのうち、チャートにある日のもの。吹き出しの高さはその日の線で決める
   const byDay = new Map(days.map((d) => [d.day, d]));
-  const notesByDay = new Map(notes.map((n) => [n.date, n]));
   const marks = notes.flatMap((n) => {
     const d = byDay.get(n.date);
     if (!n.label || !d) return [];
@@ -75,7 +40,7 @@ export function loadOption(
   const legend = ["Fitness", "Fatigue", "Load"];
   if (missing.length > 0) legend.push(NO_HEART_RATE);
   return {
-    tooltip: { trigger: "axis", formatter: loadTooltip(notesByDay) },
+    tooltip: { trigger: "axis" },
     legend: { data: legend },
     xAxis: { type: "time" },
     yAxis: [
@@ -101,6 +66,8 @@ export function loadOption(
             symbol: "pin",
             symbolSize: 36,
             itemStyle: { color: NOTE_MARK },
+            // ラベルは吹き出しの上に出ていて、本文はチャートの下の一覧で読めるので出さない
+            tooltip: { show: false },
             // ラベルは吹き出しに重ねる。はみ出す長さでも読めるよう、同じ色の帯を敷く
             label: {
               show: true,

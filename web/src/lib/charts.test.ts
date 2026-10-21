@@ -208,36 +208,16 @@ test("印がある間は、吹き出しが切れないよう軸の上に余白�
   expect(axis.max({ max: 55 })).toBe(80);
 });
 
-test("ツールチップに、その日のラベルと本文を出す。書いた文字は HTML にしない", () => {
+test("吹き出しにはツールチップを出さず、軸のツールチップは標準の表示のまま", () => {
   const option = loadOption(
     [day("2026-10-01", 30, 50)],
-    [memo("2026-10-01", "<b>", "Legs <script>heavy</script>")],
+    [memo("2026-10-01", "Race", "Hill climb")],
   );
-  const { formatter } = option.tooltip as {
-    formatter: (params: unknown) => string;
-  };
 
-  const html = formatter([
-    { marker: "", seriesName: "Fitness", value: ["2026-10-01", 30] },
-  ]);
-
-  expect(html).toContain("2026-10-01");
-  expect(html).toContain("Fitness: 30");
-  expect(html).toContain("&lt;b&gt;");
-  expect(html).toContain("Legs &lt;script&gt;heavy&lt;/script&gt;");
-  expect(html).not.toContain("<script>");
-});
-
-test("メモのない日のツールチップは、いつもの行だけ", () => {
-  const option = loadOption([day("2026-10-01", 30, 50)]);
-  const { formatter } = option.tooltip as {
-    formatter: (params: unknown) => string;
-  };
-
-  const html = formatter([
-    { marker: "", seriesName: "Fitness", value: ["2026-10-01", 30] },
-    { marker: "", seriesName: "Load", value: ["2026-10-01", null] },
-  ]);
-
-  expect(html).toBe("2026-10-01<br/>Fitness: 30");
+  // ラベルは吹き出しの上に出ていて、本文はチャートの下の一覧で読める
+  const [fitness] = seriesOf(option) as (SeriesOption & {
+    markPoint?: { tooltip?: { show?: boolean } };
+  })[];
+  expect(fitness.markPoint?.tooltip?.show).toBe(false);
+  expect(option.tooltip).toEqual({ trigger: "axis" });
 });
