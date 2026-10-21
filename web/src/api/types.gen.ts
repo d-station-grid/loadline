@@ -244,6 +244,10 @@ export type NoteIn = {
    * Body
    */
   body: string;
+  /**
+   * Label
+   */
+  label?: string | null;
 };
 
 /**
@@ -290,12 +294,18 @@ export type NoteOut = {
  * NoteUpdate
  *
  * PATCH /notes/{id} の本文。日付は変えない。間違えたら消して書き直す。
+ *
+ * 送った項目だけを直す。label を送らなければ今のまま、null か空を送ると消す。
  */
 export type NoteUpdate = {
   /**
    * Body
    */
-  body: string;
+  body?: string | null;
+  /**
+   * Label
+   */
+  label?: string | null;
 };
 
 /**

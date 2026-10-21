@@ -282,3 +282,109 @@ async def test_delete_of_missing_note_is_not_found(client: AsyncClient) -> None:
     res = await client.delete("/notes/999999", headers=HEADERS)
 
     assert res.status_code == 404
+
+
+async def test_create_with_label(client: AsyncClient) -> None:
+    res = await client.post(
+        "/notes",
+        json={"date": "2026-09-13", "body": "Race day.", "label": "  Race  "},
+        headers=HEADERS,
+    )
+
+    assert res.status_code == 201
+    assert res.json()["label"] == "Race"  # 前後の空白は落とす
+
+
+@pytest.mark.parametrize("label", ["", "   ", None])
+async def test_create_with_blank_label_has_no_label(client: AsyncClient, label: str | None) -> None:
+    res = await client.post(
+        "/notes", json={"date": "2026-09-13", "body": "x", "label": label}, headers=HEADERS
+    )
+
+    assert res.status_code == 201
+    assert res.json()["label"] is None
+
+
+@pytest.mark.parametrize("label", ["x" * 12, "あ" * 6, "5km走のあと"])
+async def test_label_up_to_width_12_is_accepted(client: AsyncClient, label: str) -> None:
+    """半角は 1、全角は 2 と数えて 12 まで。"""
+    res = await client.post(
+        "/notes", json={"date": "2026-09-13", "body": "x", "label": label}, headers=HEADERS
+    )
+
+    assert res.status_code == 201
+    assert res.json()["label"] == label
+
+
+@pytest.mark.parametrize("label", ["x" * 13, "あ" * 7, "5km走のあとで"])
+async def test_label_wider_than_12_is_rejected(client: AsyncClient, label: str) -> None:
+    res = await client.post(
+        "/notes", json={"date": "2026-09-13", "body": "x", "label": label}, headers=HEADERS
+    )
+
+    assert res.status_code == 422
+    assert res.json()["detail"][0]["loc"] == ["body", "label"]
+
+
+async def test_edit_label_only_keeps_the_body(client: AsyncClient) -> None:
+    me = await _me()
+    note = await NoteFactory.create_async(user_id=me.id, body="Before.")
+
+    res = await client.patch(f"/notes/{note.id}", json={"label": "Sick"}, headers=HEADERS)
+
+    assert res.status_code == 200
+    assert res.json()["label"] == "Sick"
+    assert res.json()["body"] == "Before."
+
+
+async def test_edit_without_label_keeps_the_label(client: AsyncClient) -> None:
+    me = await _me()
+    note = await NoteFactory.create_async(user_id=me.id, label="Race")
+
+    res = await client.patch(f"/notes/{note.id}", json={"body": "After."}, headers=HEADERS)
+
+    assert res.json()["label"] == "Race"
+    assert res.json()["body"] == "After."
+
+
+@pytest.mark.parametrize("label", [None, "", "  "])
+async def test_edit_with_null_or_blank_label_clears_it(
+    client: AsyncClient, label: str | None
+) -> None:
+    me = await _me()
+    note = await NoteFactory.create_async(user_id=me.id, label="Race")
+
+    res = await client.patch(f"/notes/{note.id}", json={"label": label}, headers=HEADERS)
+
+    assert res.status_code == 200
+    assert res.json()["label"] is None
+
+
+async def test_edit_with_null_body_is_rejected(client: AsyncClient, session: AsyncSession) -> None:
+    me = await _me()
+    note = await NoteFactory.create_async(user_id=me.id, body="Before.")
+
+    res = await client.patch(f"/notes/{note.id}", json={"body": None}, headers=HEADERS)
+
+    assert res.status_code == 422
+    assert await session.scalar(select(Note.body).where(Note.id == note.id)) == "Before."
+
+
+async def test_edit_with_nothing_returns_the_note_unchanged(client: AsyncClient) -> None:
+    me = await _me()
+    note = await NoteFactory.create_async(user_id=me.id, body="Same.", label="Race")
+
+    res = await client.patch(f"/notes/{note.id}", json={}, headers=HEADERS)
+
+    assert res.status_code == 200
+    assert (res.json()["body"], res.json()["label"]) == ("Same.", "Race")
+
+
+async def test_edit_with_nothing_on_another_users_note_is_not_found(client: AsyncClient) -> None:
+    await _me()
+    other = await UserFactory.create_async()
+    note = await NoteFactory.create_async(user_id=other.id)
+
+    res = await client.patch(f"/notes/{note.id}", json={}, headers=HEADERS)
+
+    assert res.status_code == 404

@@ -60,7 +60,13 @@ beforeEach(() => {
   vi.mocked(editNote).mockImplementation(async (id, body) => {
     const found = stored.find((n) => n.id === id);
     if (!found) throw new ApiError(404);
-    const saved = { ...found, body: body.body };
+    // api と同じく、送った項目だけ直す。label の空は「ラベルなし」
+    const saved: NoteOut = {
+      ...found,
+      body: body.body ?? found.body,
+      label:
+        body.label === undefined ? found.label : body.label?.trim() || null,
+    };
     stored = stored.map((n) => (n.id === id ? saved : n));
     return saved;
   });
