@@ -45,13 +45,15 @@ test("既定は直近 4 週で、期間を変えると読み直す", async () =>
   await screen.findByText("No workouts in this period.");
 
   const first = vi.mocked(getWorkouts).mock.calls[0][0];
-  expect(first.since).toBeDefined();
+  // 始まりの日は api が決める。画面は週の数だけ渡す
+  expect(first.weeks).toBe(4);
+  expect(first.since).toBeUndefined();
 
   fireEvent.click(screen.getByRole("button", { name: "All" }));
 
   await vi.waitFor(() => expect(getWorkouts).toHaveBeenCalledTimes(2));
   const second = vi.mocked(getWorkouts).mock.calls[1][0];
-  expect(second.since).toBeUndefined();
+  expect(second.weeks).toBeUndefined();
   expect(screen.getByRole("button", { name: "All" })).toHaveAttribute(
     "aria-pressed",
     "true",
@@ -88,7 +90,7 @@ test("100 件返ってきたら Load more を出し、押すと一番古い記�
   const second = vi.mocked(getWorkouts).mock.calls[1][0];
   expect(second.until).toBe(firstPage[99].started_at);
   expect(second.before_id).toBe(firstPage[99].id);
-  expect(second.since).toBe(vi.mocked(getWorkouts).mock.calls[0][0].since);
+  expect(second.weeks).toBe(4);
   await vi.waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(104));
   expect(
     screen.queryByRole("button", { name: "Load more" }),
@@ -219,9 +221,7 @@ test("api が失敗したらエラーを出し、Retry で同じ期間を取り�
 
   await screen.findByRole("button", { name: "Ride" });
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-  expect(vi.mocked(getWorkouts).mock.calls[1][0].since).toBe(
-    vi.mocked(getWorkouts).mock.calls[0][0].since,
-  );
+  expect(vi.mocked(getWorkouts).mock.calls[1][0].weeks).toBe(4);
 });
 
 test("失敗のあと別の期間が取れたら、エラーは消える", async () => {

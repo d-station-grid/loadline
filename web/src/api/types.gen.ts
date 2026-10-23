@@ -954,6 +954,10 @@ export type ReadWorkoutsWorkoutsGetData = {
      * Limit
      */
     limit?: number;
+    /**
+     * Weeks
+     */
+    weeks?: number | null;
   };
   url: "/workouts";
 };

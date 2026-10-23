@@ -81,12 +81,14 @@ export function issueIngestToken(idToken: string): Promise<IngestTokenOut> {
 
 export type WorkoutQuery = {
   since?: string;
+  weeks?: number;
   until?: string;
   before_id?: number;
   limit?: number;
 };
 
 /** 本人のワークアウトを新しい順に。since 以上、until 未満（ISO 8601）。
+ * 「直近 N 週」は weeks で渡し、始まりは api が設定のタイムゾーンの今日から決める。
  * 続きは前のページの最後の 1 件の started_at を until に、id を before_id に渡す。 */
 export function getWorkouts(
   query: WorkoutQuery,
@@ -94,6 +96,7 @@ export function getWorkouts(
 ): Promise<WorkoutList> {
   const params = new URLSearchParams();
   if (query.since) params.set("since", query.since);
+  if (query.weeks) params.set("weeks", String(query.weeks));
   if (query.until) params.set("until", query.until);
   if (query.before_id !== undefined)
     params.set("before_id", String(query.before_id));

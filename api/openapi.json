@@ -516,7 +516,7 @@
           "workouts"
         ],
         "summary": "Read Workouts",
-        "description": "本人のワークアウトを新しい順に。since 以上、until 未満。\n\n続きを取るときは、前のページの最後の 1 件の started_at を until に、id を before_id に\n渡す。開始時刻が同じ記録がページの境目にあっても抜けない。before_id は until と一緒に使う。",
+        "description": "本人のワークアウトを新しい順に。since 以上、until 未満。\n\nweeks は「直近 N 週」。since は利用者のタイムゾーンの今日から N 週前の日の 0 時になる\n（ダッシュボードの weeks と同じ日）。since とは一緒に渡せない。\n\n続きを取るときは、前のページの最後の 1 件の started_at を until に、id を before_id に\n渡す。開始時刻が同じ記録がページの境目にあっても抜けない。before_id は until と一緒に使う。",
         "operationId": "read_workouts_workouts_get",
         "security": [
           {
@@ -584,6 +584,24 @@
               "minimum": 1,
               "default": 100,
               "title": "Limit"
+            }
+          },
+          {
+            "name": "weeks",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 520,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weeks"
             }
           }
         ],

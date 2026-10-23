@@ -1,6 +1,7 @@
 from dataclasses import asdict
 from datetime import datetime
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.exceptions import RequestValidationError
@@ -14,7 +15,7 @@ from app.schemas.workouts import (
     WorkoutSummary,
     ZoneSeconds,
 )
-from app.services.workouts import get_workout, heart_rates, list_workouts
+from app.services.workouts import get_workout, heart_rates, list_workouts, since_for_weeks
 
 router = APIRouter(prefix="/workouts", tags=["workouts"])
 
@@ -27,12 +28,27 @@ async def read_workouts(
     until: Annotated[datetime | None, Query()] = None,
     before_id: Annotated[int | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    weeks: Annotated[int | None, Query(ge=1, le=520)] = None,
 ) -> WorkoutList:
     """本人のワークアウトを新しい順に。since 以上、until 未満。
+
+    weeks は「直近 N 週」。since は利用者のタイムゾーンの今日から N 週前の日の 0 時になる
+    （ダッシュボードの weeks と同じ日）。since とは一緒に渡せない。
 
     続きを取るときは、前のページの最後の 1 件の started_at を until に、id を before_id に
     渡す。開始時刻が同じ記録がページの境目にあっても抜けない。before_id は until と一緒に使う。
     """
+    if weeks is not None and since is not None:
+        raise RequestValidationError(
+            [
+                {
+                    "type": "value_error",
+                    "loc": ("query", "weeks"),
+                    "msg": "weeks and since cannot be used together",
+                    "input": weeks,
+                }
+            ]
+        )
     if before_id is not None and until is None:
         raise RequestValidationError(
             [
@@ -44,6 +60,8 @@ async def read_workouts(
                 }
             ]
         )
+    if weeks is not None:
+        since = since_for_weeks(weeks, ZoneInfo(user.timezone))
     rows = await list_workouts(
         session, user.id, since=since, until=until, before_id=before_id, limit=limit
     )

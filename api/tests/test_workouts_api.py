@@ -3,6 +3,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from httpx import AsyncClient
@@ -14,6 +15,7 @@ from app.main import app
 from app.models import User, Workout
 from app.schemas.ingest import IngestPayload
 from app.services.ingest import ingest
+from app.services.workouts import since_for_weeks
 from tests.factories import UserFactory, WorkoutFactory
 
 HEADERS = {"Authorization": "Bearer good"}
@@ -103,6 +105,45 @@ async def test_before_id_without_until_is_422(client: AsyncClient, session: Asyn
 
     assert res.status_code == 422
     assert res.json()["detail"][0]["loc"] == ["query", "before_id"]
+
+
+async def test_weeks_starts_at_midnight_in_user_timezone(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """「直近 1 週」の境目は、利用者のタイムゾーンでの 1 週前の 0 時。UTC+14 で確かめる。"""
+    tz = ZoneInfo("Pacific/Kiritimati")
+    user = await UserFactory.create_async(firebase_uid="uid-1", timezone=tz.key)
+    today = datetime.now(tz).date()
+    start = datetime.combine(today - timedelta(weeks=1), datetime.min.time(), tzinfo=tz)
+    inside = await WorkoutFactory.create_async(user_id=user.id, started_at=start)
+    await WorkoutFactory.create_async(user_id=user.id, started_at=start - timedelta(seconds=1))
+
+    res = await client.get("/workouts", params={"weeks": 1}, headers=HEADERS)
+
+    assert res.status_code == 200
+    assert [w["id"] for w in res.json()["items"]] == [inside.id]
+
+
+def test_since_for_weeks_uses_the_date_in_user_timezone() -> None:
+    """UTC では 10/22 でも、UTC+14 では 10/23。始まりは 10/23 から数える。"""
+    tz = ZoneInfo("Pacific/Kiritimati")
+    now = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
+
+    assert since_for_weeks(4, tz, now) == datetime(2026, 9, 25, 0, 0, tzinfo=tz)
+
+
+@pytest.mark.parametrize(
+    "params", [{"weeks": 1, "since": "2026-09-13T00:00:00+09:00"}, {"weeks": 0}, {"weeks": 521}]
+)
+async def test_invalid_weeks_is_422(
+    client: AsyncClient, session: AsyncSession, params: dict[str, Any]
+) -> None:
+    await UserFactory.create_async(firebase_uid="uid-1")
+
+    res = await client.get("/workouts", params=params, headers=HEADERS)
+
+    assert res.status_code == 422
+    assert res.json()["detail"][0]["loc"] == ["query", "weeks"]
 
 
 async def test_detail_has_heart_rates_and_zones(client: AsyncClient, session: AsyncSession) -> None:
