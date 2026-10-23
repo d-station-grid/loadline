@@ -516,7 +516,7 @@
           "workouts"
         ],
         "summary": "Read Workouts",
-        "description": "本人のワークアウトを新しい順に。since 以上、until 未満。",
+        "description": "本人のワークアウトを新しい順に。since 以上、until 未満。\n\n続きを取るときは、前のページの最後の 1 件の started_at を until に、id を before_id に\n渡す。開始時刻が同じ記録がページの境目にあっても抜けない。before_id は until と一緒に使う。",
         "operationId": "read_workouts_workouts_get",
         "security": [
           {
@@ -556,6 +556,22 @@
                 }
               ],
               "title": "Until"
+            }
+          },
+          {
+            "name": "before_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Id"
             }
           },
           {

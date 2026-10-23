@@ -943,6 +943,10 @@ export type ReadWorkoutsWorkoutsGetData = {
      */
     until?: string | null;
     /**
+     * Before Id
+     */
+    before_id?: number | null;
+    /**
      * Limit
      */
     limit?: number;

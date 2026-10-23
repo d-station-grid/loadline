@@ -87,6 +87,7 @@ test("100 件返ってきたら Load more を出し、押すと一番古い記�
   await vi.waitFor(() => expect(getWorkouts).toHaveBeenCalledTimes(2));
   const second = vi.mocked(getWorkouts).mock.calls[1][0];
   expect(second.until).toBe(firstPage[99].started_at);
+  expect(second.before_id).toBe(firstPage[99].id);
   expect(second.since).toBe(vi.mocked(getWorkouts).mock.calls[0][0].since);
   await vi.waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(104));
   expect(

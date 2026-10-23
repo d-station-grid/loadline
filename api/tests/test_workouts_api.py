@@ -1,5 +1,6 @@
 import json
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +14,7 @@ from app.main import app
 from app.models import User, Workout
 from app.schemas.ingest import IngestPayload
 from app.services.ingest import ingest
-from tests.factories import UserFactory
+from tests.factories import UserFactory, WorkoutFactory
 
 HEADERS = {"Authorization": "Bearer good"}
 SAMPLE = Path(__file__).parent / "fixtures" / "sample_health-auto-export_workouts-v2.json"
@@ -66,6 +67,42 @@ async def test_list_filters_by_period(client: AsyncClient, session: AsyncSession
 
     assert len(inside.json()["items"]) == 1
     assert len(outside.json()["items"]) == 0
+
+
+async def test_next_page_keeps_workouts_with_the_same_start(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """開始時刻がそろった記録がページの境目にあっても、続きの取得から抜けない。"""
+    user = await UserFactory.create_async(firebase_uid="uid-1")
+    same = datetime(2026, 9, 13, 5, 0, tzinfo=UTC)
+    await WorkoutFactory.create_batch_async(3, user_id=user.id, started_at=same)
+    await WorkoutFactory.create_async(user_id=user.id, started_at=same - timedelta(days=1))
+
+    first = (await client.get("/workouts", params={"limit": 2}, headers=HEADERS)).json()["items"]
+    last = first[-1]
+    rest = (
+        await client.get(
+            "/workouts",
+            params={"until": last["started_at"], "before_id": last["id"], "limit": 2},
+            headers=HEADERS,
+        )
+    ).json()["items"]
+
+    ids = [w["id"] for w in first + rest]
+    all_ids = list(await session.scalars(select(Workout.id).where(Workout.user_id == user.id)))
+    assert sorted(ids) == sorted(all_ids)
+    assert len(set(ids)) == 4
+    # 同じ開始時刻の中は id の大きい順
+    assert [w["id"] for w in first] == sorted([w["id"] for w in first], reverse=True)
+
+
+async def test_before_id_without_until_is_422(client: AsyncClient, session: AsyncSession) -> None:
+    await UserFactory.create_async(firebase_uid="uid-1")
+
+    res = await client.get("/workouts", params={"before_id": 1}, headers=HEADERS)
+
+    assert res.status_code == 422
+    assert res.json()["detail"][0]["loc"] == ["query", "before_id"]
 
 
 async def test_detail_has_heart_rates_and_zones(client: AsyncClient, session: AsyncSession) -> None:
