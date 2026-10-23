@@ -27,6 +27,20 @@ function toInt(value: string): number | null {
   return value === "" ? null : Number(value);
 }
 
+/** 送る前に確かめる、項目どうしの大小。api の検査と同じ決まりで、
+ * 破っていれば画面に出す文言を返す。送ると 422 としか出ないため。 */
+function settingsProblem(form: SettingsIn): string | null {
+  const { zone_boundary_1: low, zone_boundary_2: high } = form;
+  if (low != null && high != null && !(low < high)) {
+    return "Low / Mid boundary must be lower than Mid / High boundary.";
+  }
+  const { resting_heart_rate: resting, max_heart_rate: max } = form;
+  if (resting != null && max != null && !(resting < max)) {
+    return "Resting heart rate must be lower than max heart rate.";
+  }
+  return null;
+}
+
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Something went wrong";
 }
@@ -78,6 +92,11 @@ export default function SettingsPage({ user }: Props) {
     if (!form) return;
     setError(null);
     setStatus(null);
+    const problem = settingsProblem(form);
+    if (problem) {
+      setError(problem);
+      return;
+    }
     try {
       applySettings(await putSettings(form, await user.getIdToken()));
       setStatus("Saved");

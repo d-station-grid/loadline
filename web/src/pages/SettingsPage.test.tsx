@@ -121,3 +121,47 @@ test("api が失敗したらエラーを出す", async () => {
     "API returned 500",
   );
 });
+
+test.each([
+  {
+    name: "境目が逆",
+    fields: { zone_boundary_1: 150, zone_boundary_2: 140 },
+    message: "Low / Mid boundary must be lower than Mid / High boundary.",
+  },
+  {
+    name: "境目が同じ",
+    fields: { zone_boundary_1: 150, zone_boundary_2: 150 },
+    message: "Low / Mid boundary must be lower than Mid / High boundary.",
+  },
+  {
+    name: "安静時が最大以上",
+    fields: { max_heart_rate: 120, resting_heart_rate: 130 },
+    message: "Resting heart rate must be lower than max heart rate.",
+  },
+])("$name なら送らずに分かる文言を出す", async ({ fields, message }) => {
+  vi.mocked(getSettings).mockResolvedValue({ ...defaults, ...fields });
+  render(<SettingsPage user={user} />);
+  await screen.findByLabelText("Max heart rate");
+
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(message);
+  expect(putSettings).not.toHaveBeenCalled();
+});
+
+test("片方だけ入っているなら比べずに送る", async () => {
+  vi.mocked(getSettings).mockResolvedValue({
+    ...defaults,
+    zone_boundary_1: 150,
+  });
+  vi.mocked(putSettings).mockImplementation(async (body) => ({
+    ...body,
+    ingest_token_last_four: null,
+  }));
+  render(<SettingsPage user={user} />);
+  await screen.findByLabelText("Max heart rate");
+
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+  expect(await screen.findByRole("status")).toHaveTextContent("Saved");
+});
