@@ -27,9 +27,40 @@ function toInt(value: string): number | null {
   return value === "" ? null : Number(value);
 }
 
-/** 送る前に確かめる、項目どうしの大小。api の検査と同じ決まりで、
+type HeartRateField =
+  | "max_heart_rate"
+  | "resting_heart_rate"
+  | "zone_boundary_1"
+  | "zone_boundary_2";
+
+/** 心拍の項目の名前と受け付ける範囲。範囲は api の schemas/settings.py と同じにする。 */
+const HEART_RATE_FIELDS: {
+  field: HeartRateField;
+  label: string;
+  min: number;
+  max: number;
+}[] = [
+  { field: "max_heart_rate", label: "Max heart rate", min: 100, max: 250 },
+  {
+    field: "resting_heart_rate",
+    label: "Resting heart rate",
+    min: 30,
+    max: 120,
+  },
+  { field: "zone_boundary_1", label: "Low / Mid boundary", min: 60, max: 250 },
+  { field: "zone_boundary_2", label: "Mid / High boundary", min: 60, max: 250 },
+];
+
+/** 送る前に確かめる、各項目の範囲と、項目どうしの大小。api の検査と同じ決まりで、
  * 破っていれば画面に出す文言を返す。送ると 422 としか出ないため。 */
 function settingsProblem(form: SettingsIn): string | null {
+  for (const { field, label, min, max } of HEART_RATE_FIELDS) {
+    const value = form[field];
+    if (value == null) continue;
+    if (!Number.isInteger(value) || value < min || value > max) {
+      return `${label} must be a whole number from ${min} to ${max}.`;
+    }
+  }
   const { zone_boundary_1: low, zone_boundary_2: high } = form;
   if (low != null && high != null && !(low < high)) {
     return "Low / Mid boundary must be lower than Mid / High boundary.";
@@ -131,43 +162,24 @@ export default function SettingsPage({ user }: Props) {
   return (
     <section>
       <h2>Settings</h2>
-      <form onSubmit={handleSave}>
+      {/* 確かめるのは settingsProblem に任せる。ブラウザの吹き出しで止めると、文言が
+          ブラウザごとに違い、テストでも確かめられないため。min と max は矢印の範囲の目安 */}
+      <form onSubmit={handleSave} noValidate>
         <fieldset>
           <legend>Heart rate</legend>
-          <label>
-            Max heart rate
-            <input
-              type="number"
-              value={form.max_heart_rate ?? ""}
-              onChange={(e) => update("max_heart_rate", toInt(e.target.value))}
-            />
-          </label>
-          <label>
-            Resting heart rate
-            <input
-              type="number"
-              value={form.resting_heart_rate ?? ""}
-              onChange={(e) =>
-                update("resting_heart_rate", toInt(e.target.value))
-              }
-            />
-          </label>
-          <label>
-            Low / Mid boundary
-            <input
-              type="number"
-              value={form.zone_boundary_1 ?? ""}
-              onChange={(e) => update("zone_boundary_1", toInt(e.target.value))}
-            />
-          </label>
-          <label>
-            Mid / High boundary
-            <input
-              type="number"
-              value={form.zone_boundary_2 ?? ""}
-              onChange={(e) => update("zone_boundary_2", toInt(e.target.value))}
-            />
-          </label>
+          {HEART_RATE_FIELDS.map(({ field, label, min, max }) => (
+            <label key={field}>
+              {label}
+              <input
+                type="number"
+                min={min}
+                max={max}
+                step={1}
+                value={form[field] ?? ""}
+                onChange={(e) => update(field, toInt(e.target.value))}
+              />
+            </label>
+          ))}
         </fieldset>
 
         <fieldset>
