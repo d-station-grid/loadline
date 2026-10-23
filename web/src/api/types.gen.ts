@@ -542,6 +542,10 @@ export type WorkoutList = {
    * Items
    */
   items: Array<WorkoutSummary>;
+  /**
+   * Since
+   */
+  since: string | null;
 };
 
 /**

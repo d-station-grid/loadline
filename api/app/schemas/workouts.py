@@ -19,6 +19,9 @@ class WorkoutSummary(BaseModel):
 
 class WorkoutList(BaseModel):
     items: list[WorkoutSummary]
+    # 絞り込みに使った始まり。weeks で取ったときは api が決めた時刻。続きを取るときは
+    # weeks ではなくこれを渡す。日付をまたいで決め直すと、始まりが 1 日進むため
+    since: datetime | None
 
 
 class HeartRateSample(BaseModel):

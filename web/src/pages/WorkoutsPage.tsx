@@ -26,6 +26,9 @@ type Props = { user: User; onSelect: (id: number) => void };
  * 今の期間と違えば表示に使わない。 */
 type Page = {
   weeks: number | null;
+  /** 1 ページ目で api が決めた始まり。続きはこれで取る。weeks を渡し直すと、日付を
+   * またいだときに始まりが 1 日進み、境目の日の記録が続きから抜けるため */
+  since: string | null;
   items: WorkoutSummary[];
   hasMore: boolean;
   loadingMore: boolean;
@@ -52,6 +55,7 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
   const items = current?.items ?? null;
   const hasMore = current?.hasMore ?? false;
   const loadingMore = current?.loadingMore ?? false;
+  const since = current?.since ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -66,6 +70,7 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
         setError(null);
         setPage({
           weeks,
+          since: list.since,
           items: list.items,
           hasMore: list.items.length === PAGE_SIZE,
           loadingMore: false,
@@ -96,7 +101,7 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
     try {
       const list = await getWorkouts(
         {
-          weeks: weeks ?? undefined,
+          since: since ?? undefined,
           until: last.started_at,
           before_id: last.id,
           limit: PAGE_SIZE,
@@ -107,7 +112,7 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
       setPage((prev) =>
         prev
           ? {
-              weeks,
+              ...prev,
               items: [...prev.items, ...list.items],
               hasMore: list.items.length === PAGE_SIZE,
               loadingMore: false,

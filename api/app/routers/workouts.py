@@ -37,6 +37,8 @@ async def read_workouts(
 
     続きを取るときは、前のページの最後の 1 件の started_at を until に、id を before_id に
     渡す。開始時刻が同じ記録がページの境目にあっても抜けない。before_id は until と一緒に使う。
+    since は 1 ページ目の応答の since を渡す。weeks を渡し直すと、日付をまたいだときに
+    始まりが 1 日進み、境目の日の記録が続きから抜けるため。
     """
     if weeks is not None and since is not None:
         raise RequestValidationError(
@@ -65,7 +67,7 @@ async def read_workouts(
     rows = await list_workouts(
         session, user.id, since=since, until=until, before_id=before_id, limit=limit
     )
-    return WorkoutList(items=[WorkoutSummary.model_validate(r) for r in rows])
+    return WorkoutList(items=[WorkoutSummary.model_validate(r) for r in rows], since=since)
 
 
 @router.get("/{workout_id}", response_model=WorkoutDetail)

@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { User } from "firebase/auth";
 import { beforeEach, expect, test, vi } from "vitest";
 
-import type { WorkoutSummary } from "../api";
+import type { WorkoutList, WorkoutSummary } from "../api";
 import { getWorkouts } from "../lib/api";
 import WorkoutsPage from "./WorkoutsPage";
 
@@ -25,7 +25,7 @@ beforeEach(() => {
 });
 
 test("一覧に種目、時間、心拍が出て、押すと id を知らせる", async () => {
-  vi.mocked(getWorkouts).mockResolvedValue({ items: [ride] });
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [ride] });
   const onSelect = vi.fn();
   render(<WorkoutsPage user={user} onSelect={onSelect} />);
 
@@ -40,7 +40,7 @@ test("一覧に種目、時間、心拍が出て、押すと id を知らせる"
 });
 
 test("既定は直近 4 週で、期間を変えると読み直す", async () => {
-  vi.mocked(getWorkouts).mockResolvedValue({ items: [] });
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
   render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
   await screen.findByText("No workouts in this period.");
 
@@ -60,6 +60,9 @@ test("既定は直近 4 週で、期間を変えると読み直す", async () =>
   );
 });
 
+/** api が 4 週の 1 ページ目で決めた始まり。 */
+const START = "2026-09-01T00:00:00+09:00";
+
 /** id と started_at だけ変えた ride を n 件。新しい順に並べる。 */
 function rides(n: number, from = 0): WorkoutSummary[] {
   return Array.from({ length: n }, (_, i) => {
@@ -77,8 +80,8 @@ test("100 件返ってきたら Load more を出し、押すと一番古い記�
   const firstPage = rides(100);
   const secondPage = rides(3, 100);
   vi.mocked(getWorkouts)
-    .mockResolvedValueOnce({ items: firstPage })
-    .mockResolvedValueOnce({ items: secondPage });
+    .mockResolvedValueOnce({ since: START, items: firstPage })
+    .mockResolvedValueOnce({ since: START, items: secondPage });
   render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
 
   const more = await screen.findByRole("button", { name: "Load more" });
@@ -90,7 +93,10 @@ test("100 件返ってきたら Load more を出し、押すと一番古い記�
   const second = vi.mocked(getWorkouts).mock.calls[1][0];
   expect(second.until).toBe(firstPage[99].started_at);
   expect(second.before_id).toBe(firstPage[99].id);
-  expect(second.weeks).toBe(4);
+  // 続きは 1 ページ目で api が決めた始まりで取る。weeks を渡し直すと、日付を
+  // またいだときに始まりが 1 日進み、境目の日の記録が抜けるため
+  expect(second.since).toBe(START);
+  expect(second.weeks).toBeUndefined();
   await vi.waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(104));
   expect(
     screen.queryByRole("button", { name: "Load more" }),
@@ -98,7 +104,7 @@ test("100 件返ってきたら Load more を出し、押すと一番古い記�
 });
 
 test("100 件未満なら Load more は出ない", async () => {
-  vi.mocked(getWorkouts).mockResolvedValue({ items: [ride] });
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [ride] });
   render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
   await screen.findByRole("button", { name: "Ride" });
 
@@ -108,7 +114,7 @@ test("100 件未満なら Load more は出ない", async () => {
 });
 
 test("選択中の期間をもう一度押しても、一覧は消えず読み直さない", async () => {
-  vi.mocked(getWorkouts).mockResolvedValue({ items: [ride] });
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [ride] });
   render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
   await screen.findByRole("button", { name: "Ride" });
 
@@ -120,14 +126,14 @@ test("選択中の期間をもう一度押しても、一覧は消えず読み�
 });
 
 test("Load more を待つ間に期間を変えたら、遅れて届いた応答は捨てる", async () => {
-  let resolveMore: (list: { items: WorkoutSummary[] }) => void = () => {};
-  const more = new Promise<{ items: WorkoutSummary[] }>((resolve) => {
+  let resolveMore: (list: WorkoutList) => void = () => {};
+  const more = new Promise<WorkoutList>((resolve) => {
     resolveMore = resolve;
   });
   vi.mocked(getWorkouts)
-    .mockResolvedValueOnce({ items: rides(100) }) // 4 週の 1 ページ目
+    .mockResolvedValueOnce({ since: null, items: rides(100) }) // 4 週の 1 ページ目
     .mockReturnValueOnce(more) // 4 週の Load more（遅い）
-    .mockResolvedValueOnce({ items: [ride] }); // All の 1 ページ目
+    .mockResolvedValueOnce({ since: null, items: [ride] }); // All の 1 ページ目
   render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
 
   fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
@@ -136,7 +142,7 @@ test("Load more を待つ間に期間を変えたら、遅れて届いた応答�
   await vi.waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(2));
 
   await act(async () => {
-    resolveMore({ items: rides(3, 100) });
+    resolveMore({ since: null, items: rides(3, 100) });
     await more;
   });
 
@@ -148,16 +154,16 @@ test("Load more を待つ間に期間を変えたら、遅れて届いた応答�
 });
 
 test("別の期間に行って同じ期間に戻ったあと、遅れて届いた古い Load more の応答は捨てる", async () => {
-  let resolveThird: (list: { items: WorkoutSummary[] }) => void = () => {};
-  const third = new Promise<{ items: WorkoutSummary[] }>((resolve) => {
+  let resolveThird: (list: WorkoutList) => void = () => {};
+  const third = new Promise<WorkoutList>((resolve) => {
     resolveThird = resolve;
   });
   vi.mocked(getWorkouts)
-    .mockResolvedValueOnce({ items: rides(100) }) // 4 週の 1 ページ目
-    .mockResolvedValueOnce({ items: rides(100, 100) }) // 4 週の 2 ページ目
+    .mockResolvedValueOnce({ since: null, items: rides(100) }) // 4 週の 1 ページ目
+    .mockResolvedValueOnce({ since: null, items: rides(100, 100) }) // 4 週の 2 ページ目
     .mockReturnValueOnce(third) // 4 週の 3 ページ目（遅い）
-    .mockResolvedValueOnce({ items: [ride] }) // All の 1 ページ目
-    .mockResolvedValueOnce({ items: rides(100) }); // 4 週に戻った 1 ページ目
+    .mockResolvedValueOnce({ since: null, items: [ride] }) // All の 1 ページ目
+    .mockResolvedValueOnce({ since: null, items: rides(100) }); // 4 週に戻った 1 ページ目
   render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
 
   fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
@@ -172,7 +178,7 @@ test("別の期間に行って同じ期間に戻ったあと、遅れて届い�
   await vi.waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(101));
 
   await act(async () => {
-    resolveThird({ items: rides(3, 200) });
+    resolveThird({ since: null, items: rides(3, 200) });
     await third;
   });
 
@@ -182,12 +188,12 @@ test("別の期間に行って同じ期間に戻ったあと、遅れて届い�
 });
 
 test("Load more を連打しても、同じページは一度しか足さない", async () => {
-  let resolveMore: (list: { items: WorkoutSummary[] }) => void = () => {};
-  const more = new Promise<{ items: WorkoutSummary[] }>((resolve) => {
+  let resolveMore: (list: WorkoutList) => void = () => {};
+  const more = new Promise<WorkoutList>((resolve) => {
     resolveMore = resolve;
   });
   vi.mocked(getWorkouts)
-    .mockResolvedValueOnce({ items: rides(100) })
+    .mockResolvedValueOnce({ since: null, items: rides(100) })
     .mockReturnValue(more);
   render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
 
@@ -199,7 +205,7 @@ test("Load more を連打しても、同じページは一度しか足さない"
   });
 
   await act(async () => {
-    resolveMore({ items: rides(3, 100) });
+    resolveMore({ since: null, items: rides(3, 100) });
     await more;
   });
 
@@ -210,7 +216,7 @@ test("Load more を連打しても、同じページは一度しか足さない"
 test("api が失敗したらエラーを出し、Retry で同じ期間を取り直す", async () => {
   vi.mocked(getWorkouts)
     .mockRejectedValueOnce(new Error("API returned 500"))
-    .mockResolvedValueOnce({ items: [ride] });
+    .mockResolvedValueOnce({ since: null, items: [ride] });
   render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
 
   expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -227,7 +233,7 @@ test("api が失敗したらエラーを出し、Retry で同じ期間を取り�
 test("失敗のあと別の期間が取れたら、エラーは消える", async () => {
   vi.mocked(getWorkouts)
     .mockRejectedValueOnce(new Error("API returned 500"))
-    .mockResolvedValueOnce({ items: [ride] });
+    .mockResolvedValueOnce({ since: null, items: [ride] });
   render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
   await screen.findByRole("alert");
 

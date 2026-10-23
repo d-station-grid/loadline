@@ -122,6 +122,19 @@ async def test_weeks_starts_at_midnight_in_user_timezone(
 
     assert res.status_code == 200
     assert [w["id"] for w in res.json()["items"]] == [inside.id]
+    # 続きはこの since で取る。weeks を渡し直すと、日付をまたいだときに始まりがずれる
+    assert datetime.fromisoformat(res.json()["since"]) == start
+
+
+async def test_list_returns_the_since_it_used(client: AsyncClient, session: AsyncSession) -> None:
+    await UserFactory.create_async(firebase_uid="uid-1")
+    given = "2026-09-13T00:00:00+09:00"
+
+    with_since = await client.get("/workouts", params={"since": given}, headers=HEADERS)
+    without = await client.get("/workouts", headers=HEADERS)
+
+    assert datetime.fromisoformat(with_since.json()["since"]) == datetime.fromisoformat(given)
+    assert without.json()["since"] is None
 
 
 def test_since_for_weeks_uses_the_date_in_user_timezone() -> None:
