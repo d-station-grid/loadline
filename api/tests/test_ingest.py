@@ -124,6 +124,31 @@ async def test_vo2max_takes_apple_watch_and_skips_duplicates(session: AsyncSessi
     assert list(values) == [Decimal("46.5"), Decimal("46.7")]
 
 
+async def test_vo2max_resent_with_a_new_value_is_updated(session: AsyncSession) -> None:
+    user = await UserFactory.create_async()
+    at = "2026-07-05 21:21:11 +0900"
+    await ingest(session, user.id, _vo2max_payload((at, 46.5, "Apple\xa0Watch")))
+
+    result = await ingest(session, user.id, _vo2max_payload((at, 47.04, "Apple\xa0Watch")))
+
+    assert (result.vo2max_added, result.vo2max_updated, result.vo2max_skipped) == (0, 1, 0)
+    assert list(await session.scalars(select(Vo2maxReading.value))) == [Decimal("47.0")]
+
+
+async def test_vo2max_later_point_wins_within_one_payload(session: AsyncSession) -> None:
+    user = await UserFactory.create_async()
+    at = "2026-07-05 21:21:11 +0900"
+
+    result = await ingest(
+        session,
+        user.id,
+        _vo2max_payload((at, 46.5, "Apple\xa0Watch"), (at, 47.0, "Apple\xa0Watch")),
+    )
+
+    assert (result.vo2max_added, result.vo2max_updated, result.vo2max_skipped) == (1, 1, 0)
+    assert list(await session.scalars(select(Vo2maxReading.value))) == [Decimal("47.0")]
+
+
 @pytest.mark.parametrize(
     ("name", "sport"),
     [

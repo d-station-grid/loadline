@@ -1,11 +1,13 @@
 import hashlib
 
+import pytest
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import IngestToken
 from app.services.ingest_tokens import current_token, find_user_id_by_token, issue_token
-from tests.factories import UserFactory
+from tests.factories import IngestTokenFactory, UserFactory
 
 
 async def test_issue_stores_only_digest(session: AsyncSession) -> None:
@@ -49,3 +51,13 @@ async def test_unknown_token_is_none(session: AsyncSession) -> None:
 
     assert await find_user_id_by_token(session, "not-a-token") is None
     assert await session.scalar(select(func.count()).select_from(IngestToken)) == 1
+
+
+async def test_db_refuses_a_second_active_token(session: AsyncSession) -> None:
+    """発行の直列化を通らずに 2 本目を入れても、DB が止める。無効にしたものは何本あってもよい。"""
+    user = await UserFactory.create_async()
+    await issue_token(session, user.id)
+    await issue_token(session, user.id)
+
+    with pytest.raises(IntegrityError):
+        await IngestTokenFactory.create_async(user_id=user.id)

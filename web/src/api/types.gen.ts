@@ -177,6 +177,10 @@ export type IngestResult = {
    */
   vo2max_added?: number;
   /**
+   * Vo2Max Updated
+   */
+  vo2max_updated?: number;
+  /**
    * Vo2Max Skipped
    */
   vo2max_skipped?: number;
@@ -942,6 +946,10 @@ export type ReadWorkoutsWorkoutsGetData = {
      * Until
      */
     until?: string | null;
+    /**
+     * Before Id
+     */
+    before_id?: number | null;
     /**
      * Limit
      */

@@ -92,15 +92,22 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
     setAttempt((n) => n + 1);
   }
 
-  /** 表示中の一番古い記録より前を、同じ期間の中でもう 1 ページ取って末尾に足す。 */
+  /** 表示中の一番古い記録より前を、同じ期間の中でもう 1 ページ取って末尾に足す。
+   * 開始時刻と id の両方を渡し、開始時刻が同じ記録がページの境目にあっても抜けないようにする。 */
   async function loadMore() {
     if (!items || items.length === 0 || loadingMoreNow.current) return;
     loadingMoreNow.current = true;
     const started = generation.current;
+    const last = items[items.length - 1];
     setPage((prev) => (prev ? { ...prev, loadingMore: true } : prev));
     try {
       const list = await getWorkouts(
-        { since, until: items[items.length - 1].started_at, limit: PAGE_SIZE },
+        {
+          since,
+          until: last.started_at,
+          before_id: last.id,
+          limit: PAGE_SIZE,
+        },
         await user.getIdToken(),
       );
       if (started !== generation.current) return;

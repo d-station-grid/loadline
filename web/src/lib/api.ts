@@ -79,9 +79,15 @@ export function issueIngestToken(idToken: string): Promise<IngestTokenOut> {
   );
 }
 
-export type WorkoutQuery = { since?: string; until?: string; limit?: number };
+export type WorkoutQuery = {
+  since?: string;
+  until?: string;
+  before_id?: number;
+  limit?: number;
+};
 
-/** 本人のワークアウトを新しい順に。since 以上、until 未満（ISO 8601）。 */
+/** 本人のワークアウトを新しい順に。since 以上、until 未満（ISO 8601）。
+ * 続きは前のページの最後の 1 件の started_at を until に、id を before_id に渡す。 */
 export function getWorkouts(
   query: WorkoutQuery,
   idToken: string,
@@ -89,6 +95,8 @@ export function getWorkouts(
   const params = new URLSearchParams();
   if (query.since) params.set("since", query.since);
   if (query.until) params.set("until", query.until);
+  if (query.before_id !== undefined)
+    params.set("before_id", String(query.before_id));
   if (query.limit) params.set("limit", String(query.limit));
   const qs = params.size > 0 ? `?${params}` : "";
   return request<WorkoutList>(`/workouts${qs}`, { method: "GET" }, idToken);

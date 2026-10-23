@@ -149,35 +149,59 @@ async def _upsert_workouts(
         await session.execute(insert(WorkoutHeartRate), samples)
 
 
-async def _insert_vo2max(
+async def _upsert_vo2max(
     session: AsyncSession, user_id: int, metric: MetricIn, result: IngestResult
 ) -> None:
-    """VO2max をまとめて入れる。同じ日時の測定は、既にあっても、1 回の中で重なっても飛ばす。"""
-    points: list[tuple[datetime, float]] = []
+    """VO2max をまとめて取り込む。同じ日時の測定が届き直したら、値が違うときだけ上書きする。
+
+    同じ日時が 1 回の中に 2 度あれば、後のものが勝つ（ワークアウトと同じ扱い）。
+    値が同じ届き直しは何も送らず、skipped に数える。
+    """
+    points: list[tuple[datetime, Decimal]] = []
     for p in metric.data:
         if is_apple_watch(p.source):
-            points.append((parse_time(p.date), p.qty))
+            value = Decimal(str(p.qty)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+            points.append((parse_time(p.date), value))
         else:
             result.vo2max_skipped += 1
     if not points:
         return
 
-    seen = set(
-        await session.scalars(
-            select(Vo2maxReading.measured_at).where(
-                Vo2maxReading.user_id == user_id,
-                Vo2maxReading.measured_at.in_({at for at, _ in points}),
-            )
+    stored = await session.execute(
+        select(Vo2maxReading.measured_at, Vo2maxReading.id, Vo2maxReading.value).where(
+            Vo2maxReading.user_id == user_id,
+            Vo2maxReading.measured_at.in_({at for at, _ in points}),
         )
     )
-    for measured_at, qty in points:
-        if measured_at in seen:
-            result.vo2max_skipped += 1
-            continue
-        seen.add(measured_at)
-        value = Decimal(str(qty)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
-        session.add(Vo2maxReading(user_id=user_id, measured_at=measured_at, value=value))
-        result.vo2max_added += 1
+    existing: dict[datetime, tuple[int, Decimal]] = {
+        at: (reading_id, value) for at, reading_id, value in stored
+    }
+    added: dict[datetime, Vo2maxReading] = {}
+    updates: dict[int, dict[str, Any]] = {}
+    for measured_at, value in points:
+        if measured_at in added:
+            row = added[measured_at]
+            if row.value == value:
+                result.vo2max_skipped += 1
+            else:
+                row.value = value
+                result.vo2max_updated += 1
+        elif measured_at in existing:
+            reading_id, before = existing[measured_at]
+            if before == value:
+                result.vo2max_skipped += 1
+            else:
+                updates[reading_id] = {"id": reading_id, "value": value}
+                existing[measured_at] = (reading_id, value)
+                result.vo2max_updated += 1
+        else:
+            added[measured_at] = Vo2maxReading(
+                user_id=user_id, measured_at=measured_at, value=value
+            )
+            session.add(added[measured_at])
+            result.vo2max_added += 1
+    if updates:
+        await session.execute(update(Vo2maxReading), list(updates.values()))
 
 
 async def ingest(session: AsyncSession, user_id: int, payload: IngestPayload) -> IngestResult:
@@ -189,6 +213,6 @@ async def ingest(session: AsyncSession, user_id: int, payload: IngestPayload) ->
     await _upsert_workouts(session, user_id, payload.data.workouts, result)
     for metric in payload.data.metrics:
         if metric.name == "vo2_max":
-            await _insert_vo2max(session, user_id, metric, result)
+            await _upsert_vo2max(session, user_id, metric, result)
     await session.commit()
     return result
