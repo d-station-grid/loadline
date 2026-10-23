@@ -542,6 +542,10 @@ export type WorkoutList = {
    * Items
    */
   items: Array<WorkoutSummary>;
+  /**
+   * Since
+   */
+  since: string | null;
 };
 
 /**
@@ -954,6 +958,10 @@ export type ReadWorkoutsWorkoutsGetData = {
      * Limit
      */
     limit?: number;
+    /**
+     * Weeks
+     */
+    weeks?: number | null;
   };
   url: "/workouts";
 };

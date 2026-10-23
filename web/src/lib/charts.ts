@@ -24,6 +24,9 @@ export const NOTE_PIN_SIZE = 36;
 export const LOAD_CHART_HEIGHT = 280;
 // グリッドの上下の余白（px）。上は軸の名前、下は日付と凡例の分
 const LOAD_GRID = { top: 60, bottom: 70 };
+/** 時間の軸。ECharts は月の頭に「Oct」を置き、近くの日付の目盛りと重なることがあるので、
+ * 重なった文字は間引く。 */
+const TIME_AXIS = { type: "time", axisLabel: { hideOverlap: true } } as const;
 const LOAD_GRID_HEIGHT = LOAD_CHART_HEIGHT - LOAD_GRID.top - LOAD_GRID.bottom;
 // 吹き出しの頭の上に残す余白（px）
 const NOTE_PIN_ROOM = NOTE_PIN_SIZE + 6;
@@ -66,7 +69,7 @@ export function loadOption(
     tooltip: { trigger: "axis" },
     legend: { data: legend },
     grid: LOAD_GRID,
-    xAxis: { type: "time" },
+    xAxis: TIME_AXIS,
     yAxis: [
       {
         type: "value",
@@ -135,7 +138,7 @@ export function vo2maxOption(points: Vo2MaxPoint[]): EChartsOption {
   return {
     tooltip: { trigger: "axis" },
     legend: { data: ["VO2max", "30-day average"] },
-    xAxis: { type: "time" },
+    xAxis: TIME_AXIS,
     yAxis: { type: "value", name: "ml/kg/min", scale: true },
     series: [
       {

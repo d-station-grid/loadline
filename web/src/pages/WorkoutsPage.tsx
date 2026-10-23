@@ -1,5 +1,5 @@
 import type { User } from "firebase/auth";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { WorkoutSummary } from "../api";
 import { getWorkouts } from "../lib/api";
@@ -16,24 +16,19 @@ const RANGES: { key: Range; label: string; weeks: number | null }[] = [
   { key: "all", label: "All", weeks: null },
 ];
 
-/** 期間の始まり。「直近 N 週」は今日から N 週前の 0 時（端末のタイムゾーン）。 */
-function sinceOf(weeks: number | null, now = new Date()): string | undefined {
-  if (weeks === null) return undefined;
-  const d = new Date(now);
-  d.setDate(d.getDate() - weeks * 7);
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
-}
-
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Something went wrong";
 }
 
 type Props = { user: User; onSelect: (id: number) => void };
 
-/** 取ってきた一覧。どの期間（since）の結果かを一緒に持ち、今の期間と違えば表示に使わない。 */
+/** 取ってきた一覧。どの期間（weeks、All は null）の結果かを一緒に持ち、
+ * 今の期間と違えば表示に使わない。 */
 type Page = {
-  since: string | undefined;
+  weeks: number | null;
+  /** 1 ページ目で api が決めた始まり。続きはこれで取る。weeks を渡し直すと、日付を
+   * またいだときに始まりが 1 日進み、境目の日の記録が続きから抜けるため */
+  since: string | null;
   items: WorkoutSummary[];
   hasMore: boolean;
   loadingMore: boolean;
@@ -43,22 +38,24 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
   const [range, setRange] = useState<Range>("4w");
   const [page, setPage] = useState<Page | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Retry で進める。since が同じでも effect を走らせ直すため
+  // Retry で進める。期間が同じでも effect を走らせ直すため
   const [attempt, setAttempt] = useState(0);
   // 1 ページ目を取り直すたびに進める。Load more の応答は、始めたときと世代が違えば捨てる。
-  // since の比較だけだと、別の期間に行って同じ期間に戻ったときに古い応答を見分けられない
+  // 期間の比較だけだと、別の期間に行って同じ期間に戻ったときに古い応答を見分けられない
   const generation = useRef(0);
   // Load more の連打よけ。disabled は描画のあとにしか効かないので、クリック直後にここで止める
   const loadingMoreNow = useRef(false);
 
+  // 「直近 N 週」の始まりは api が設定のタイムゾーンで決める。端末の日付で決めると、
+  // 端末と設定のタイムゾーンがずれたときに境目の 1 日がずれる（ダッシュボードと同じ）
   const weeks = RANGES.find((r) => r.key === range)?.weeks ?? null;
-  const since = useMemo(() => sinceOf(weeks), [weeks]);
 
   // 今の期間の結果だけを表示する。期間を変えた直後は古い結果が残っていても Loading になる
-  const current = page && page.since === since ? page : null;
+  const current = page && page.weeks === weeks ? page : null;
   const items = current?.items ?? null;
   const hasMore = current?.hasMore ?? false;
   const loadingMore = current?.loadingMore ?? false;
+  const since = current?.since ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -66,13 +63,14 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
     (async () => {
       try {
         const list = await getWorkouts(
-          { since, limit: PAGE_SIZE },
+          { weeks: weeks ?? undefined, limit: PAGE_SIZE },
           await user.getIdToken(),
         );
         if (cancelled) return;
         setError(null);
         setPage({
-          since,
+          weeks,
+          since: list.since,
           items: list.items,
           hasMore: list.items.length === PAGE_SIZE,
           loadingMore: false,
@@ -84,7 +82,7 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [user, since, attempt]);
+  }, [user, weeks, attempt]);
 
   /** 失敗したあと、同じ期間の 1 ページ目を取り直す。 */
   function retry() {
@@ -103,7 +101,7 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
     try {
       const list = await getWorkouts(
         {
-          since,
+          since: since ?? undefined,
           until: last.started_at,
           before_id: last.id,
           limit: PAGE_SIZE,
@@ -114,7 +112,7 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
       setPage((prev) =>
         prev
           ? {
-              since,
+              ...prev,
               items: [...prev.items, ...list.items],
               hasMore: list.items.length === PAGE_SIZE,
               loadingMore: false,

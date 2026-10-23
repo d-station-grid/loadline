@@ -229,3 +229,13 @@ test("吹き出しにはツールチップを出さず、軸のツールチッ�
   expect(fitness.markPoint?.tooltip?.show).toBe(false);
   expect(option.tooltip).toEqual({ trigger: "axis" });
 });
+
+test("時間の軸は、重なった日付の文字を間引く", () => {
+  // 月の頭の「Oct」と近くの日付の目盛りが重なって「29Oct」のように読めるため
+  for (const option of [loadOption([], []), vo2maxOption([])]) {
+    expect(option.xAxis).toMatchObject({
+      type: "time",
+      axisLabel: { hideOverlap: true },
+    });
+  }
+});
