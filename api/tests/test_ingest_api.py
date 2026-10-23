@@ -53,6 +53,7 @@ async def test_valid_token_ingests_and_marks_last_used(
         "workouts_updated": 0,
         "workouts_skipped": 1,
         "vo2max_added": 0,
+        "vo2max_updated": 0,
         "vo2max_skipped": 0,
     }
     row = await current_token(session, user.id)

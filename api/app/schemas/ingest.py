@@ -60,4 +60,5 @@ class IngestResult(BaseModel):
     workouts_updated: int = 0
     workouts_skipped: int = 0
     vo2max_added: int = 0
+    vo2max_updated: int = 0
     vo2max_skipped: int = 0

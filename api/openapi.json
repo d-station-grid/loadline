@@ -923,6 +923,11 @@
             "title": "Vo2Max Added",
             "default": 0
           },
+          "vo2max_updated": {
+            "type": "integer",
+            "title": "Vo2Max Updated",
+            "default": 0
+          },
           "vo2max_skipped": {
             "type": "integer",
             "title": "Vo2Max Skipped",
