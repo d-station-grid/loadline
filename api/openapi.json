@@ -418,7 +418,7 @@
           "reviews"
         ],
         "summary": "Add Review",
-        "description": "今の振り返りの週の振り返りを作る。週は、今日以前でいちばん近い振り返りの曜日の\n前日までの 7 日間（利用者のタイムゾーン）。\n\nその週の振り返りがもうあれば、作り直さずにそれを 200 で返す。今は定型のセリフで作る。",
+        "description": "今の振り返りの週の振り返りを作る。週は、今日以前でいちばん近い振り返りの曜日の\n前日までの 7 日間（利用者のタイムゾーン）。\n\nその週の振り返りがもうあれば、作り直さずにそれを 200 で返す。後から届いた記録も\n入れない。今は定型のセリフで作る。",
         "operationId": "add_review_reviews_post",
         "responses": {
           "201": {
@@ -455,14 +455,14 @@
         ]
       }
     },
-    "/reviews/latest": {
+    "/reviews/current": {
       "get": {
         "tags": [
           "reviews"
         ],
-        "summary": "Read Latest Review",
-        "description": "本人のいちばん新しい期間の振り返り。",
-        "operationId": "read_latest_review_reviews_latest_get",
+        "summary": "Read Current Review",
+        "description": "今の振り返りの週の振り返り。週の決め方は POST /reviews と同じ。",
+        "operationId": "read_current_review_reviews_current_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -475,7 +475,7 @@
             }
           },
           "404": {
-            "description": "振り返りがまだない"
+            "description": "今の週の振り返りはまだない"
           }
         },
         "security": [

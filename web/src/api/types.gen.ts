@@ -998,29 +998,29 @@ export type AddReviewReviewsPostResponses = {
 export type AddReviewReviewsPostResponse =
   AddReviewReviewsPostResponses[keyof AddReviewReviewsPostResponses];
 
-export type ReadLatestReviewReviewsLatestGetData = {
+export type ReadCurrentReviewReviewsCurrentGetData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/reviews/latest";
+  url: "/reviews/current";
 };
 
-export type ReadLatestReviewReviewsLatestGetErrors = {
+export type ReadCurrentReviewReviewsCurrentGetErrors = {
   /**
-   * 振り返りがまだない
+   * 今の週の振り返りはまだない
    */
   404: unknown;
 };
 
-export type ReadLatestReviewReviewsLatestGetResponses = {
+export type ReadCurrentReviewReviewsCurrentGetResponses = {
   /**
    * Successful Response
    */
   200: WeeklyReviewOut;
 };
 
-export type ReadLatestReviewReviewsLatestGetResponse =
-  ReadLatestReviewReviewsLatestGetResponses[keyof ReadLatestReviewReviewsLatestGetResponses];
+export type ReadCurrentReviewReviewsCurrentGetResponse =
+  ReadCurrentReviewReviewsCurrentGetResponses[keyof ReadCurrentReviewReviewsCurrentGetResponses];
 
 export type ReadSettingsSettingsGetData = {
   body?: never;

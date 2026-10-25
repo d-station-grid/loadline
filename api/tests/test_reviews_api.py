@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -87,35 +87,49 @@ async def test_guest_cannot_create_a_review(client: AsyncClient) -> None:
     assert res.status_code == 403
 
 
-async def test_latest_is_404_before_the_first_review(client: AsyncClient) -> None:
+async def test_current_is_404_before_the_first_review(client: AsyncClient) -> None:
     await _me()
 
-    res = await client.get("/reviews/latest", headers=HEADERS)
+    res = await client.get("/reviews/current", headers=HEADERS)
 
     assert res.status_code == 404
 
 
-async def test_latest_returns_the_created_review(client: AsyncClient) -> None:
+async def test_current_returns_the_created_review(client: AsyncClient) -> None:
     await _me()
     created = (await client.post("/reviews", headers=HEADERS)).json()
 
-    res = await client.get("/reviews/latest", headers=HEADERS)
+    res = await client.get("/reviews/current", headers=HEADERS)
 
     assert res.status_code == 200
     assert res.json() == created
 
 
-async def test_latest_does_not_show_someone_elses_review(client: AsyncClient) -> None:
-    await _me()
-    other = await UserFactory.create_async()
-    await WeeklyReviewFactory.create_async(user_id=other.id)
+async def test_current_does_not_show_an_older_week(client: AsyncClient) -> None:
+    """前の週の振り返りがあっても、今の週のものがなければ 404。"""
+    me = await _me()
+    start, _ = _current_period("Asia/Tokyo", 0)
+    await WeeklyReviewFactory.create_async(
+        user_id=me.id, period_start=date.fromisoformat(start) - timedelta(weeks=1)
+    )
 
-    res = await client.get("/reviews/latest", headers=HEADERS)
+    res = await client.get("/reviews/current", headers=HEADERS)
 
     assert res.status_code == 404
 
 
-@pytest.mark.parametrize(("method", "path"), [("post", "/reviews"), ("get", "/reviews/latest")])
+async def test_current_does_not_show_someone_elses_review(client: AsyncClient) -> None:
+    await _me()
+    other = await UserFactory.create_async(review_weekday=0, timezone="Asia/Tokyo")
+    start, _ = _current_period("Asia/Tokyo", 0)
+    await WeeklyReviewFactory.create_async(user_id=other.id, period_start=date.fromisoformat(start))
+
+    res = await client.get("/reviews/current", headers=HEADERS)
+
+    assert res.status_code == 404
+
+
+@pytest.mark.parametrize(("method", "path"), [("post", "/reviews"), ("get", "/reviews/current")])
 async def test_reviews_need_login(client: AsyncClient, method: str, path: str) -> None:
     res = await client.request(method.upper(), path)
 

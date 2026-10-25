@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Response, status
 
 from app.routers.deps import CurrentUser, DbSession
 from app.schemas.reviews import WeeklyReviewOut
-from app.services.reviews import HeartRateSettingsMissingError, create_review, latest_review
+from app.services.reviews import HeartRateSettingsMissingError, create_review, current_review
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 
@@ -21,7 +21,8 @@ async def add_review(user: CurrentUser, session: DbSession, response: Response) 
     """今の振り返りの週の振り返りを作る。週は、今日以前でいちばん近い振り返りの曜日の
     前日までの 7 日間（利用者のタイムゾーン）。
 
-    その週の振り返りがもうあれば、作り直さずにそれを 200 で返す。今は定型のセリフで作る。
+    その週の振り返りがもうあれば、作り直さずにそれを 200 で返す。後から届いた記録も
+    入れない。今は定型のセリフで作る。
     """
     if user.is_demo:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "guests cannot create reviews")
@@ -35,13 +36,13 @@ async def add_review(user: CurrentUser, session: DbSession, response: Response) 
 
 
 @router.get(
-    "/latest",
+    "/current",
     response_model=WeeklyReviewOut,
-    responses={status.HTTP_404_NOT_FOUND: {"description": "振り返りがまだない"}},
+    responses={status.HTTP_404_NOT_FOUND: {"description": "今の週の振り返りはまだない"}},
 )
-async def read_latest_review(user: CurrentUser, session: DbSession) -> WeeklyReviewOut:
-    """本人のいちばん新しい期間の振り返り。"""
-    review = await latest_review(session, user.id)
+async def read_current_review(user: CurrentUser, session: DbSession) -> WeeklyReviewOut:
+    """今の振り返りの週の振り返り。週の決め方は POST /reviews と同じ。"""
+    review = await current_review(session, user)
     if review is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     return review
