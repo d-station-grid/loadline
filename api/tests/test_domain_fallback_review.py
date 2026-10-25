@@ -4,7 +4,8 @@ from datetime import date, timedelta
 import pytest
 
 from app.domain.fallback_review import fallback_review
-from app.domain.situation import Situation, WeekSituation
+from app.domain.load import FitnessPoint
+from app.domain.situation import Situation, WeekInput, WeekSituation, judge_week
 
 MONDAY = date(2026, 9, 28)
 
@@ -33,6 +34,27 @@ def week(situation: Situation, **changes: object) -> WeekSituation:
 
 def words(text: str) -> int:
     return len(text.split())
+
+
+# 判定が「疲労」より先に当てる状況と「疲労」。どれも疲労が高いことがある
+MAY_BE_TIRED = [
+    Situation.NOT_ENOUGH_DATA,
+    Situation.NO_TRAINING,
+    Situation.RETURNING,
+    Situation.FATIGUED,
+]
+ADDS_LOAD = ("add", "more time", "harder", "push", "extra", "one more")
+
+# 記録が足りない週の 3 つの言い方: 記録がない、心拍のない日がある、記録が短いか体力が 0
+NOT_ENOUGH_DATA_WEEKS = [
+    pytest.param({"workouts": 0}, id="no_sessions"),
+    pytest.param({"unknown_load_days": 1}, id="missing_heart_rate"),
+    pytest.param({}, id="short_history"),
+]
+
+
+def adds_load(review_text: str) -> list[str]:
+    return [w for w in ADDS_LOAD if w in review_text.lower()]
 
 
 @pytest.mark.parametrize("situation", list(Situation))
@@ -83,13 +105,43 @@ def test_every_situation_offers_a_gentle_option(situation: Situation) -> None:
     assert labels & gentle
 
 
-def test_fatigued_week_offers_nothing_that_adds_load() -> None:
-    """疲労が溜まっている週には、強度や量を上げる選択肢を出さない。"""
-    options = fallback_review(week(Situation.FATIGUED)).options
-    text = " ".join(f"{o.label} {o.description}" for o in options).lower()
+@pytest.mark.parametrize("situation", MAY_BE_TIRED)
+def test_tired_weeks_offer_nothing_that_adds_load(situation: Situation) -> None:
+    """疲労が高い週には、強度や量を上げる選択肢を出さない。余力 ÷ 体力 が −75% の週で見る。"""
+    tired = week(
+        situation,
+        fitness=20.0,
+        fatigue=35.0,
+        headroom=-15.0,
+        headroom_ratio=-0.75,
+        rest_days_before=14,
+    )
+    options = fallback_review(tired).options
 
-    for word in ("add", "more time", "harder", "push", "extra"):
-        assert word not in text
+    assert adds_load(" ".join(f"{o.label} {o.description}" for o in options)) == []
+
+
+def test_returning_after_a_break_with_high_fatigue_offers_nothing_that_adds_load() -> None:
+    """14 日休んで再開し、週末に体力 20・疲労 35。判定は疲労より中断明けを先に当てる。"""
+    sunday = MONDAY + timedelta(days=6)
+    situation = judge_week(
+        WeekInput(
+            start=MONDAY,
+            first_workout_day=date(2026, 6, 1),
+            last_workout_day_before=MONDAY - timedelta(days=15),
+            workout_days=[MONDAY, MONDAY + timedelta(days=2), MONDAY + timedelta(days=4)],
+            total_sec=10800,
+            unknown_load_days=0,
+            end=FitnessPoint(day=sunday, load=0.0, fitness=20.0, fatigue=35.0, headroom=-15.0),
+            previous=None,
+        )
+    )
+    assert situation.situation == Situation.RETURNING
+    assert situation.rest_days_before == 14
+
+    options = fallback_review(situation).options
+
+    assert adds_load(" ".join(f"{o.label} {o.description}" for o in options)) == []
 
 
 def test_steady_week_says_the_count_and_minutes() -> None:
@@ -112,20 +164,52 @@ def test_returning_week_says_how_many_days_off() -> None:
 
 
 def test_returning_week_without_rest_days_is_a_bug() -> None:
-    """中断明けなのに休んだ日数がないのは、判定と材料の食い違い。黙って話さない。"""
-    with pytest.raises(AssertionError):
+    """中断明けなのに休んだ日数がないのは、判定と材料の食い違い。「None days」とは話さない。"""
+    with pytest.raises(ValueError, match="rest_days_before"):
         fallback_review(week(Situation.RETURNING, rest_days_before=None))
 
 
-def test_not_enough_data_with_sessions_says_the_count() -> None:
-    script = fallback_review(week(Situation.NOT_ENOUGH_DATA, workouts=2)).script
+@pytest.mark.parametrize("changes", NOT_ENOUGH_DATA_WEEKS)
+def test_not_enough_data_scripts_are_about_15_seconds(changes: dict[str, int]) -> None:
+    script = fallback_review(week(Situation.NOT_ENOUGH_DATA, **changes)).script
 
-    assert "This week you did 2 sessions. Keep going," in script
+    assert 28 <= words(script) <= 40
 
 
-def test_not_enough_data_before_the_first_session_does_not_say_zero() -> None:
+def test_not_enough_data_before_the_first_session() -> None:
     """まだ 1 件も記録がないときに「0 sessions」とは言わない。"""
     script = fallback_review(week(Situation.NOT_ENOUGH_DATA, workouts=0)).script
 
-    assert "0 session" not in script
-    assert "There are no sessions in yet." in script
+    assert script == (
+        "I'm still getting to know your training. "
+        "Fitness takes about six weeks of records to read well. "
+        "There are no sessions in yet. Once you start, I'll have more to tell you soon."
+    )
+
+
+def test_not_enough_data_with_missing_heart_rate_says_so() -> None:
+    """心拍のない日がある週に「まだ 6 週間分ない」とは言わない。"""
+    script = fallback_review(
+        week(Situation.NOT_ENOUGH_DATA, workouts=2, unknown_load_days=1)
+    ).script
+
+    assert script.startswith("This week you did 2 sessions, but some of them have no heart rate")
+    assert "six weeks" not in script
+
+
+def test_not_enough_data_with_a_short_history_says_the_count() -> None:
+    """記録が短いか体力が 0。判定の結果からはどちらか分からないので、どちらでも本当の言い方。"""
+    script = fallback_review(week(Situation.NOT_ENOUGH_DATA, workouts=2)).script
+
+    assert script.startswith("This week you did 2 sessions. I can't read your fitness")
+    assert "six weeks" not in script
+    assert "no heart rate" not in script
+
+
+def test_scripts_do_not_overstate_what_the_numbers_show() -> None:
+    """休んだ週に回復したとは、休めている週に疲労が下がったとは、言い切らない。"""
+    no_training = fallback_review(week(Situation.NO_TRAINING, workouts=0)).script
+    fresh = fallback_review(week(Situation.FRESH)).script
+
+    assert "recover" not in no_training
+    assert "dropped" not in fresh

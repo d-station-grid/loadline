@@ -4,8 +4,10 @@ LLM が使えないときや、作ったセリフを確かめられなかった�
 埋める数字は、その週の回数、合計の分、休んだ日数の 3 つだけ。体力と疲労の値は入れない。
 今の計算の単位では体力が 20 前後になり、一般的な目安の数字と比べると誤解を招くため。
 
-選択肢には必ず軽いもの（休む、軽く流す）を入れる。疲労が溜まっている週には、強度や量を
-上げる選択肢を出さない。
+選択肢には必ず軽いもの（休む、軽く流す）を入れる。疲労が高い週には、強度や量を上げる
+選択肢を出さない。判定は「疲労」より先に「記録が足りない」「走れなかった週」「中断明け」を
+当てるので、この 3 つも疲労が高いことがある。増やす選択肢を置くのは「休めている」と
+「順調」だけにする。
 """
 
 from dataclasses import dataclass
@@ -41,7 +43,8 @@ _OPTIONS: dict[Situation, tuple[ReviewOption, ...]] = {
     ),
     Situation.RETURNING: (
         ReviewOption("Keep it easy", "Short, easy sessions while your body readjusts."),
-        ReviewOption("Add one session", "One more easy session than last week."),
+        # 中断明けは疲労の判定より先に当たり、疲労が高い週もここに来るので、増やす選択肢は置かない
+        ReviewOption("Same as this week", "Keep the same amount as this week."),
         ReviewOption("Rest when needed", "Take a day off whenever your legs feel heavy."),
     ),
     Situation.FATIGUED: (
@@ -71,25 +74,19 @@ def _script(week: WeekSituation) -> str:
     sessions = _count(week.workouts, "session")
     match week.situation:
         case Situation.NOT_ENOUGH_DATA:
-            this_week = (
-                f"This week you did {sessions}. Keep going,"
-                if week.workouts
-                else "There are no sessions in yet. Once you start,"
-            )
-            return (
-                "I'm still getting to know your training. "
-                "Fitness takes about six weeks of records to read well. "
-                f"{this_week} and I'll have more to tell you soon."
-            )
+            return _not_enough_data_script(week, sessions)
         case Situation.NO_TRAINING:
+            # 走れなかった週は負荷を見ずに判定するので、回復したとは言い切らない
             return (
-                "No sessions this week, and that's okay. Life gets busy, and rest counts too. "
-                "Your legs have had time to recover, so whenever you're ready, "
-                "an easy start is a good way back in."
+                "No sessions this week, and that's okay. "
+                "Life gets busy, and rest is part of training too. "
+                "Whenever you're ready, an easy session is a gentle way to get moving again."
             )
         case Situation.RETURNING:
-            # 中断明けは、その週の最初のワークアウトの前の休みから判定するので必ずある
-            assert week.rest_days_before is not None
+            # 中断明けは、その週の最初のワークアウトの前の休みから判定するので必ずある。
+            # ないのは判定と材料の食い違い。assert は最適化の実行で消えるので使わない
+            if week.rest_days_before is None:
+                raise ValueError("rest_days_before is required for a returning week")
             return (
                 "Welcome back! "
                 f"You started training again after {_count(week.rest_days_before, 'day')} off. "
@@ -104,7 +101,8 @@ def _script(week: WeekSituation) -> str:
             )
         case Situation.FRESH:
             return (
-                "You're well rested. Your fatigue has dropped below your fitness, "
+                # 判定は今の疲労と体力の比べだけなので、下がったとは言わない
+                "You're well rested. Your fatigue is below your fitness right now, "
                 "so you have room to train this week. "
                 "If you feel good, this is a nice time to add a little more."
             )
@@ -116,6 +114,34 @@ def _script(week: WeekSituation) -> str:
                 "and your fitness and fatigue are in good balance. "
                 "Keeping this rhythm is how fitness builds over time."
             )
+
+
+def _not_enough_data_script(week: WeekSituation, sessions: str) -> str:
+    """記録が足りない週。理由が違えば、事実と食い違わないように言い方を変える。
+
+    判定の結果からは、記録の短さと体力が 0 のどちらだったかまでは分からない。
+    どちらでも本当になる言い方にする。
+    """
+    if week.workouts == 0:
+        # まだ 1 件も記録がない
+        return (
+            "I'm still getting to know your training. "
+            "Fitness takes about six weeks of records to read well. "
+            "There are no sessions in yet. Once you start, I'll have more to tell you soon."
+        )
+    if week.unknown_load_days > 0:
+        return (
+            f"This week you did {sessions}, but some of them have no heart rate, "
+            "so I can't read your fitness and fatigue clearly. "
+            "With heart rate on every session, I'll have more to tell you."
+        )
+    # 記録が短いか、体力が 0
+    return (
+        f"This week you did {sessions}. "
+        "I can't read your fitness and fatigue clearly yet, "
+        "because that takes a few weeks of sessions with heart rate. "
+        "Keep going, and I'll have more to tell you soon."
+    )
 
 
 def _count(n: int, unit: str) -> str:
