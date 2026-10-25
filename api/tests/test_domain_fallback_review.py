@@ -48,6 +48,7 @@ ADDS_LOAD = ("add", "more time", "harder", "push", "extra", "one more")
 # 記録が足りない週の 3 つの言い方: 記録がない、心拍のない日がある、記録が短いか体力が 0
 NOT_ENOUGH_DATA_WEEKS = [
     pytest.param({"workouts": 0}, id="no_sessions"),
+    pytest.param({"workouts": 1, "unknown_load_days": 1}, id="one_session_missing_heart_rate"),
     pytest.param({"unknown_load_days": 1}, id="missing_heart_rate"),
     pytest.param({}, id="short_history"),
 ]
@@ -187,14 +188,30 @@ def test_not_enough_data_before_the_first_session() -> None:
     )
 
 
-def test_not_enough_data_with_missing_heart_rate_says_so() -> None:
-    """心拍のない日がある週に「まだ 6 週間分ない」とは言わない。"""
+def test_not_enough_data_with_one_session_missing_heart_rate() -> None:
+    """心拍のない 1 回だけの週。「some of them」とは言わず、「6 週間分ない」とも言わない。"""
+    script = fallback_review(
+        week(Situation.NOT_ENOUGH_DATA, workouts=1, unknown_load_days=1)
+    ).script
+
+    assert script == (
+        "This week you did 1 session, but it has no heart rate, "
+        "so I can't read your fitness and fatigue clearly. "
+        "With heart rate on every session, I'll have more to tell you."
+    )
+
+
+def test_not_enough_data_with_sessions_missing_heart_rate() -> None:
+    """心拍のない日がある 2 回以上の週。「6 週間分ない」とは言わない。"""
     script = fallback_review(
         week(Situation.NOT_ENOUGH_DATA, workouts=2, unknown_load_days=1)
     ).script
 
-    assert script.startswith("This week you did 2 sessions, but some of them have no heart rate")
-    assert "six weeks" not in script
+    assert script == (
+        "This week you did 2 sessions, but some of them have no heart rate, "
+        "so I can't read your fitness and fatigue clearly. "
+        "With heart rate on every session, I'll have more to tell you."
+    )
 
 
 def test_not_enough_data_with_a_short_history_says_the_count() -> None:

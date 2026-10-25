@@ -129,6 +129,12 @@ def _not_enough_data_script(week: WeekSituation, sessions: str) -> str:
             "Fitness takes about six weeks of records to read well. "
             "There are no sessions in yet. Once you start, I'll have more to tell you soon."
         )
+    if week.unknown_load_days > 0 and week.workouts == 1:
+        return (
+            "This week you did 1 session, but it has no heart rate, "
+            "so I can't read your fitness and fatigue clearly. "
+            "With heart rate on every session, I'll have more to tell you."
+        )
     if week.unknown_load_days > 0:
         return (
             f"This week you did {sessions}, but some of them have no heart rate, "
