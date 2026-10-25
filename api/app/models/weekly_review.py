@@ -7,11 +7,13 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     SmallInteger,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -61,8 +63,17 @@ class WeeklyReviewOption(Base):
     """振り返りのあとに並べる、その週の過ごし方の選択肢。1 つの振り返りに 2〜3 個。"""
 
     __tablename__ = "weekly_review_options"
-    # 並びの位置は、1 つの振り返りの中で重ねない
-    __table_args__ = (UniqueConstraint("weekly_review_id", "position"),)
+    __table_args__ = (
+        # 並びの位置は、1 つの振り返りの中で重ねない
+        UniqueConstraint("weekly_review_id", "position"),
+        # 1 つの振り返りで選べるのは 1 つだけ
+        Index(
+            "uq_weekly_review_options_selected",
+            "weekly_review_id",
+            unique=True,
+            postgresql_where=text("selected_at IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     weekly_review_id: Mapped[int] = mapped_column(

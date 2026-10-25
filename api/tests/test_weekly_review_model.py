@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
@@ -34,6 +36,37 @@ async def test_same_position_in_one_review_is_not_saved_twice(session: AsyncSess
 
     with pytest.raises(IntegrityError):
         await WeeklyReviewOptionFactory.create_async(weekly_review_id=review.id, position=0)
+
+
+async def test_only_one_option_per_review_can_be_selected(session: AsyncSession) -> None:
+    """1 つの振り返りで選べるのは 1 つ。2 つ目を選ぼうとしたら DB が止める。"""
+    user = await UserFactory.create_async()
+    review = await WeeklyReviewFactory.create_async(user_id=user.id)
+    chosen_at = datetime(2026, 9, 21, 8, 0, tzinfo=UTC)
+    await WeeklyReviewOptionFactory.create_async(weekly_review_id=review.id, selected_at=chosen_at)
+
+    with pytest.raises(IntegrityError):
+        await WeeklyReviewOptionFactory.create_async(
+            weekly_review_id=review.id, selected_at=chosen_at
+        )
+
+
+async def test_options_of_different_reviews_can_each_be_selected(session: AsyncSession) -> None:
+    """選んでいない選択肢はいくつあってもよく、別の週ならそれぞれ 1 つずつ選べる。"""
+    user = await UserFactory.create_async()
+    first, second = await WeeklyReviewFactory.create_batch_async(2, user_id=user.id)
+    chosen_at = datetime(2026, 9, 21, 8, 0, tzinfo=UTC)
+
+    await WeeklyReviewOptionFactory.create_batch_async(2, weekly_review_id=first.id)
+    await WeeklyReviewOptionFactory.create_async(weekly_review_id=first.id, selected_at=chosen_at)
+    await WeeklyReviewOptionFactory.create_async(weekly_review_id=second.id, selected_at=chosen_at)
+
+    count = await session.scalar(
+        select(func.count())
+        .select_from(WeeklyReviewOption)
+        .where(WeeklyReviewOption.selected_at.is_not(None))
+    )
+    assert count == 2
 
 
 async def test_deleting_a_user_deletes_reviews_and_options(session: AsyncSession) -> None:
