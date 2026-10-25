@@ -9,12 +9,12 @@ from typing import Any
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import Identity, InvalidTokenError, get_token_verifier
 from app.main import app
-from app.models import User, Workout
+from app.models import User, WeeklyReview, Workout
 from app.services.ingest_tokens import issue_token
 from tests.conftest import QueryCounter
 from tests.factories import (
@@ -81,6 +81,26 @@ async def test_list_and_dashboard(
 
     await _add_workouts(me, range(1, MANY))
     many = await _count_get(client, queries, url)
+
+    assert len(many) == len(one), many
+
+
+async def test_create_review(
+    client: AsyncClient, session: AsyncSession, queries: QueryCounter
+) -> None:
+    """振り返りを作るときも、判定の材料をワークアウトの件数によらず決まった回数で読む。"""
+    me = await _me()
+    await _add_workouts(me, range(1))
+    queries.reset()
+    assert (await client.post("/reviews", headers=HEADERS)).status_code == 201
+    one = list(queries.statements)
+
+    # 同じ週はもう作らないので、消してから作り直す
+    await session.execute(delete(WeeklyReview))
+    await _add_workouts(me, range(1, MANY))
+    queries.reset()
+    assert (await client.post("/reviews", headers=HEADERS)).status_code == 201
+    many = list(queries.statements)
 
     assert len(many) == len(one), many
 

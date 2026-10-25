@@ -323,6 +323,41 @@ export type Quantity = {
 };
 
 /**
+ * ReviewOptionOut
+ *
+ * その週の過ごし方の選択肢。label はボタンの文字、description はその下の 1 文。
+ */
+export type ReviewOptionOut = {
+  /**
+   * Id
+   */
+  id: number;
+  /**
+   * Position
+   */
+  position: number;
+  /**
+   * Label
+   */
+  label: string;
+  /**
+   * Description
+   */
+  description: string;
+  /**
+   * Selected At
+   */
+  selected_at: string | null;
+};
+
+/**
+ * ReviewStatus
+ *
+ * 振り返りを作る処理の状態。
+ */
+export type ReviewStatus = "generating" | "completed" | "failed";
+
+/**
  * SettingsIn
  *
  * PUT /settings の本文。
@@ -399,6 +434,19 @@ export type SettingsOut = {
 };
 
 /**
+ * Situation
+ *
+ * その週の状況。
+ */
+export type Situation =
+  | "not_enough_data"
+  | "no_training"
+  | "returning"
+  | "fatigued"
+  | "fresh"
+  | "steady";
+
+/**
  * UserOut
  *
  * ログインした本人に返す情報。
@@ -460,6 +508,47 @@ export type Vo2MaxPoint = {
    * Average
    */
   average: number;
+};
+
+/**
+ * WeeklyReviewOut
+ *
+ * 週に 1 回の振り返り。期間は利用者のタイムゾーンでの日付で、両端を含む。
+ *
+ * script はアバターのセリフで、字幕にも使う。is_fallback が true なら人が書いた定型。
+ * options は position の順。音声は声にする機能で足す。
+ */
+export type WeeklyReviewOut = {
+  /**
+   * Id
+   */
+  id: number;
+  /**
+   * Period Start
+   */
+  period_start: string;
+  /**
+   * Period End
+   */
+  period_end: string;
+  situation: Situation;
+  /**
+   * Script
+   */
+  script: string;
+  status: ReviewStatus;
+  /**
+   * Is Fallback
+   */
+  is_fallback: boolean;
+  /**
+   * Created At
+   */
+  created_at: string;
+  /**
+   * Options
+   */
+  options: Array<ReviewOptionOut>;
 };
 
 /**
@@ -876,6 +965,62 @@ export type EditNoteNotesNoteIdPatchResponses = {
 
 export type EditNoteNotesNoteIdPatchResponse =
   EditNoteNotesNoteIdPatchResponses[keyof EditNoteNotesNoteIdPatchResponses];
+
+export type AddReviewReviewsPostData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/reviews";
+};
+
+export type AddReviewReviewsPostErrors = {
+  /**
+   * ゲスト（デモの利用者）は作れない
+   */
+  403: unknown;
+  /**
+   * 最大心拍か安静時心拍が未設定
+   */
+  409: unknown;
+};
+
+export type AddReviewReviewsPostResponses = {
+  /**
+   * その週の振り返りはもうある
+   */
+  200: WeeklyReviewOut;
+  /**
+   * Successful Response
+   */
+  201: WeeklyReviewOut;
+};
+
+export type AddReviewReviewsPostResponse =
+  AddReviewReviewsPostResponses[keyof AddReviewReviewsPostResponses];
+
+export type ReadCurrentReviewReviewsCurrentGetData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/reviews/current";
+};
+
+export type ReadCurrentReviewReviewsCurrentGetErrors = {
+  /**
+   * 今の週の振り返りはまだない
+   */
+  404: unknown;
+};
+
+export type ReadCurrentReviewReviewsCurrentGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: WeeklyReviewOut;
+};
+
+export type ReadCurrentReviewReviewsCurrentGetResponse =
+  ReadCurrentReviewReviewsCurrentGetResponses[keyof ReadCurrentReviewReviewsCurrentGetResponses];
 
 export type ReadSettingsSettingsGetData = {
   body?: never;
