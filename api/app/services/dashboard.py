@@ -108,6 +108,7 @@ async def build_dashboard(
     until: date | None,
     sport: Sport,
     weeks: int | None = None,
+    today: date | None = None,
 ) -> Dashboard:
     """期間（両端を含む）のダッシュボード。since がなければ最初のワークアウトの日から、
     until がなければ今日まで。保存はせず、呼ばれるたびに計算する。
@@ -119,9 +120,12 @@ async def build_dashboard(
     until は今日で切る。未来の日を負荷 0 で埋めると、体力と疲労が先まで減っていく線が
     予測のように見えるため。期間の検査は既定値を決めて切った後にする。until を省いて
     since に未来の日を渡すと、決める前の検査では逆転を見逃すため。
+
+    today は利用者のタイムゾーンでの今日。省けば今の時刻から決める。振り返りの service が
+    自分の決めた今日と同じ日で切るために渡す。
     """
     tz = ZoneInfo(user.timezone)
-    today = datetime.now(tz).date()
+    today = today or datetime.now(tz).date()
     until = min(until or today, today)
     if weeks is not None:
         since = until - timedelta(weeks=weeks)

@@ -43,12 +43,20 @@ def _point(p: DayPoint) -> FitnessPoint:
     )
 
 
-async def judge_review_week(session: AsyncSession, user: User, start: date) -> WeekSituation:
-    """start から 7 日間の状況を判定する。前の週の数字も一緒に読む。"""
+async def judge_review_week(
+    session: AsyncSession, user: User, start: date, today: date
+) -> WeekSituation:
+    """start から 7 日間の状況を判定する。前の週の数字も一緒に読む。
+
+    today は利用者のタイムゾーンでの今日。週は今日より前に終わっていなければならない。
+    ダッシュボードの計算は今日で切るので、終わっていない週では最終日の値がない。
+    """
     if user.max_heart_rate is None or user.resting_heart_rate is None:
         raise HeartRateSettingsMissingError
     tz = ZoneInfo(user.timezone)
     end = start + timedelta(days=DAYS_IN_WEEK - 1)
+    if end >= today:
+        raise ValueError(f"the week must end before today ({today}), got {end}")
     previous_start = start - timedelta(days=DAYS_IN_WEEK)
 
     first_at, last_before_at = (
@@ -71,7 +79,9 @@ async def judge_review_week(session: AsyncSession, user: User, start: date) -> W
     this_week = [(day, sec) for day, sec in sessions if day >= start]
     last_week = [(day, sec) for day, sec in sessions if day < start]
 
-    dashboard = await build_dashboard(session, user, since=previous_start, until=end, sport="all")
+    dashboard = await build_dashboard(
+        session, user, since=previous_start, until=end, sport="all", today=today
+    )
     days = {p.day: p for p in dashboard.days}
     last_before = None if last_before_at is None else last_before_at.astimezone(tz).date()
 
@@ -127,6 +137,9 @@ async def create_review(
     """今の振り返りの週の振り返りを、定型で作る。作ったら True、もうあればそれと False。
 
     週は、今日以前でいちばん近い振り返りの曜日の前日までの 7 日間（利用者のタイムゾーン）。
+    一度作った週は作り直さない。作った時点の記録で書いた、その週の 1 通にする。選択肢を
+    選んだ後にセリフが変わると選んだ理由とずれ、LLM で作るようになれば作り直すたびに
+    費用もかかるため。遅れて届く記録は、自動で作る時刻を遅らせて拾う。
     同時に 2 回呼ばれても 1 件だけ入る（ON CONFLICT DO NOTHING）。振り返りと選択肢は
     同じトランザクションで入れるので、後から来た側には選択肢までそろって見える。
     """
@@ -136,7 +149,7 @@ async def create_review(
     if existing is not None:
         return await _out(session, existing), False
 
-    week = await judge_review_week(session, user, start)
+    week = await judge_review_week(session, user, start, today)
     content = fallback_review(week)
     review = await session.scalar(
         insert(WeeklyReview)
@@ -180,12 +193,15 @@ async def _find(session: AsyncSession, user_id: int, start: date) -> WeeklyRevie
     )
 
 
-async def latest_review(session: AsyncSession, user_id: int) -> WeeklyReviewOut | None:
-    """本人のいちばん新しい期間の振り返り。まだなければ None。"""
-    review = await session.scalar(
-        select(WeeklyReview)
-        .where(WeeklyReview.user_id == user_id)
-        .order_by(WeeklyReview.period_start.desc())
-        .limit(1)
-    )
+async def current_review(
+    session: AsyncSession, user: User, today: date | None = None
+) -> WeeklyReviewOut | None:
+    """今の振り返りの週の振り返り。週の決め方は create_review と同じ。まだなければ None。
+
+    いちばん新しい期間の行ではなく、今の週で探す。振り返りの曜日を変えた直後は、
+    いちばん新しい行が今の週より古い回のことがあるため。
+    """
+    today = today or datetime.now(ZoneInfo(user.timezone)).date()
+    start, _ = review_period(today, user.review_weekday)
+    review = await _find(session, user.id, start)
     return None if review is None else await _out(session, review)

@@ -13,8 +13,8 @@ from app.services.dashboard import build_dashboard
 from app.services.reviews import (
     HeartRateSettingsMissingError,
     create_review,
+    current_review,
     judge_review_week,
-    latest_review,
 )
 from tests.factories import (
     UserFactory,
@@ -73,7 +73,7 @@ async def test_week_material_is_counted_in_the_users_timezone(session: AsyncSess
     await _ride(user, "2026-10-15T07:00", minutes=30, bpm=None)
     await _ride(user, "2026-10-19T00:30")  # 次の週（UTC では 10-18 だが、日本時間では 10-19）
 
-    week = await judge_review_week(session, user, MONDAY)
+    week = await judge_review_week(session, user, MONDAY, TODAY)
 
     assert (week.start, week.end) == (MONDAY, SUNDAY)
     assert week.workouts == 2
@@ -92,7 +92,7 @@ async def test_week_boundary_follows_the_users_midnight(session: AsyncSession) -
     await _ride(user, "2026-10-11T23:30")
     await _ride(user, "2026-10-12T00:30")
 
-    week = await judge_review_week(session, user, MONDAY)
+    week = await judge_review_week(session, user, MONDAY, TODAY)
 
     assert week.workouts == 1
     assert week.rest_days_before == 0
@@ -104,7 +104,7 @@ async def test_fitness_and_fatigue_match_the_dashboard(session: AsyncSession) ->
     user = await _user()
     await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
 
-    week = await judge_review_week(session, user, MONDAY)
+    week = await judge_review_week(session, user, MONDAY, TODAY)
     dashboard = await build_dashboard(session, user, since=SUNDAY, until=SUNDAY, sport="all")
     previous = await build_dashboard(
         session,
@@ -128,7 +128,7 @@ async def test_without_heart_rate_settings_the_week_cannot_be_judged(
     user = await _user(max_heart_rate=None)
 
     with pytest.raises(HeartRateSettingsMissingError):
-        await judge_review_week(session, user, MONDAY)
+        await judge_review_week(session, user, MONDAY, TODAY)
 
 
 async def test_first_week_has_nothing_to_compare(session: AsyncSession) -> None:
@@ -136,7 +136,7 @@ async def test_first_week_has_nothing_to_compare(session: AsyncSession) -> None:
     user = await _user()
     await _ride(user, "2026-10-13T07:00")
 
-    week = await judge_review_week(session, user, MONDAY)
+    week = await judge_review_week(session, user, MONDAY, TODAY)
 
     assert week.rest_days_before is None
     assert week.workouts_change is None
@@ -149,7 +149,7 @@ async def test_create_review_saves_the_fallback_script_and_options(session: Asyn
 
     review, created = await create_review(session, user, today=TODAY)
 
-    expected = fallback_review(await judge_review_week(session, user, MONDAY))
+    expected = fallback_review(await judge_review_week(session, user, MONDAY, TODAY))
     assert created
     assert (review.period_start, review.period_end) == (MONDAY, SUNDAY)
     assert review.script == expected.script
@@ -196,15 +196,37 @@ async def test_review_weekday_and_timezone_decide_the_week(session: AsyncSession
     assert (review.period_start, review.period_end) == (date(2026, 10, 7), date(2026, 10, 13))
 
 
-async def test_latest_review_is_the_newest_period_of_the_user(session: AsyncSession) -> None:
-    me, other = await UserFactory.create_batch_async(2)
-    older = await WeeklyReviewFactory.create_async(user_id=me.id, period_start=date(2026, 10, 5))
-    newer = await WeeklyReviewFactory.create_async(user_id=me.id, period_start=date(2026, 10, 12))
-    await WeeklyReviewFactory.create_async(user_id=other.id, period_start=date(2026, 10, 19))
+async def test_a_week_that_has_not_ended_cannot_be_judged(session: AsyncSession) -> None:
+    """週の最終日の値は、今日より前に終わった週にしかない。"""
+    user = await _user()
 
-    latest = await latest_review(session, me.id)
+    with pytest.raises(ValueError, match="before today"):
+        await judge_review_week(session, user, MONDAY, today=SUNDAY)
 
-    assert latest is not None
-    assert latest.id == newer.id != older.id
-    assert await latest_review(session, other.id) is not None
-    assert await latest_review(session, 0) is None
+
+async def test_review_can_be_created_for_a_today_after_the_machine_clock(
+    session: AsyncSession,
+) -> None:
+    """渡した今日で週を決め、ダッシュボードの計算も同じ今日で切る。マシンの日付には頼らない。"""
+    user = await _user()
+    await _ride(user, "2030-01-02T07:00")
+
+    review, created = await create_review(session, user, today=date(2030, 1, 8))
+
+    assert created
+    assert (review.period_start, review.period_end) == (date(2029, 12, 31), date(2030, 1, 6))
+
+
+async def test_current_review_is_the_review_of_the_current_week(session: AsyncSession) -> None:
+    """今の週で探す。いちばん新しい期間の行でも、今の週でなければ返さない。"""
+    me = await _user()
+    other = await _user()
+    current = await WeeklyReviewFactory.create_async(user_id=me.id, period_start=MONDAY)
+    # 振り返りの曜日を変える前に作った、今の週より後に始まる回
+    await WeeklyReviewFactory.create_async(user_id=me.id, period_start=date(2026, 10, 14))
+
+    found = await current_review(session, me, today=TODAY)
+
+    assert found is not None
+    assert found.id == current.id
+    assert await current_review(session, other, today=TODAY) is None
