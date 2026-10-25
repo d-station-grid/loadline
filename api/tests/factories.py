@@ -18,7 +18,17 @@ from polyfactory.factories.sqlalchemy_factory import (
     SQLAlchemyPersistenceMethod,
 )
 
-from app.models import IngestToken, Note, User, Vo2maxReading, Workout, WorkoutHeartRate
+from app.models import (
+    IngestToken,
+    Note,
+    ReviewStatus,
+    User,
+    Vo2maxReading,
+    WeeklyReview,
+    WeeklyReviewOption,
+    Workout,
+    WorkoutHeartRate,
+)
 
 T = TypeVar("T")
 
@@ -31,10 +41,10 @@ def _serial_time(start: datetime, step: timedelta) -> Use[Any, datetime]:
     return Use(lambda: start + step * next(numbers))
 
 
-def _serial_day(start: date) -> Use[Any, date]:
-    """呼ぶたびに 1 日ずつ進む日付。"""
+def _serial_day(start: date, step: timedelta = timedelta(days=1)) -> Use[Any, date]:
+    """呼ぶたびに step（既定は 1 日）ずつ進む日付。"""
     numbers = count()
-    return Use(lambda: start + timedelta(days=next(numbers)))
+    return Use(lambda: start + step * next(numbers))
 
 
 class BaseFactory(SQLAlchemyFactory[T]):
@@ -127,3 +137,35 @@ class NoteFactory(BaseFactory[Note]):
     body = "Legs felt heavy."
     created_at = Ignore()
     updated_at = Ignore()
+
+
+class WeeklyReviewFactory(BaseFactory[WeeklyReview]):
+    """定型で作り、まだ声にしていない振り返り 1 件。"""
+
+    __model__ = WeeklyReview
+
+    # 同じ期間は 1 件なので、呼ぶたびに 1 週ずつ進める。2026-09-14 は月曜
+    period_start = _serial_day(date(2026, 9, 14), step=timedelta(weeks=1))
+    period_end = PostGenerated(lambda _name, values: values["period_start"] + timedelta(days=6))
+    situation = "steady"
+    script = "A steady week. Keeping this rhythm is how fitness builds over time."
+    audio_path = None
+    status = ReviewStatus.COMPLETED.value
+    is_fallback = True
+    created_at = Ignore()
+    updated_at = Ignore()
+
+
+_positions = count()
+
+
+class WeeklyReviewOptionFactory(BaseFactory[WeeklyReviewOption]):
+    """まだ選ばれていない選択肢 1 件。"""
+
+    __model__ = WeeklyReviewOption
+
+    # 1 つの振り返りの中で位置を重ねないよう、呼ぶたびに 1 ずつ進める
+    position = Use(lambda: next(_positions))
+    label = "Go easy"
+    description = "Only easy sessions this week."
+    selected_at = None

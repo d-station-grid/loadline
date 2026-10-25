@@ -104,6 +104,8 @@ erDiagram
 | vo2max_readings | user_id, measured_at | 同じ測定が何度届いても、二重に数えない |
 | notes | user_id, date | メモは1日1件 |
 | weekly_reviews | user_id, period_start | 同じ期間の振り返りを、二重に作らない |
+| weekly_review_options | weekly_review_id, position | 1つの振り返りの中で、並びの位置を重ねない |
+| weekly_review_options | weekly_review_id（selected_at があるものだけ） | 1つの振り返りで選べるのは、1つだけ |
 
 ## 保存しない値
 
