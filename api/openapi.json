@@ -412,6 +412,79 @@
         }
       }
     },
+    "/reviews": {
+      "post": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Add Review",
+        "description": "今の振り返りの週の振り返りを作る。週は、今日以前でいちばん近い振り返りの曜日の\n前日までの 7 日間（利用者のタイムゾーン）。\n\nその週の振り返りがもうあれば、作り直さずにそれを 200 で返す。今は定型のセリフで作る。",
+        "operationId": "add_review_reviews_post",
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeeklyReviewOut"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "その週の振り返りはもうある",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeeklyReviewOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ゲスト（デモの利用者）は作れない"
+          },
+          "409": {
+            "description": "最大心拍か安静時心拍が未設定"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/reviews/latest": {
+      "get": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Read Latest Review",
+        "description": "本人のいちばん新しい期間の振り返り。",
+        "operationId": "read_latest_review_reviews_latest_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeeklyReviewOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "振り返りがまだない"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/settings": {
       "get": {
         "tags": [
@@ -1165,6 +1238,58 @@
         ],
         "title": "Quantity"
       },
+      "ReviewOptionOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "selected_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "position",
+          "label",
+          "description",
+          "selected_at"
+        ],
+        "title": "ReviewOptionOut",
+        "description": "その週の過ごし方の選択肢。label はボタンの文字、description はその下の 1 文。"
+      },
+      "ReviewStatus": {
+        "type": "string",
+        "enum": [
+          "generating",
+          "completed",
+          "failed"
+        ],
+        "title": "ReviewStatus",
+        "description": "振り返りを作る処理の状態。"
+      },
       "SettingsIn": {
         "properties": {
           "max_heart_rate": {
@@ -1328,6 +1453,19 @@
         "title": "SettingsOut",
         "description": "GET /settings の返事。トークンは末尾 4 文字だけ。未発行なら None。"
       },
+      "Situation": {
+        "type": "string",
+        "enum": [
+          "not_enough_data",
+          "no_training",
+          "returning",
+          "fatigued",
+          "fresh",
+          "steady"
+        ],
+        "title": "Situation",
+        "description": "その週の状況。"
+      },
       "UserOut": {
         "properties": {
           "id": {
@@ -1411,6 +1549,64 @@
         ],
         "title": "Vo2maxPoint",
         "description": "1 回の測定と、その日を含む直近 30 日の平均。"
+      },
+      "WeeklyReviewOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "period_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Period Start"
+          },
+          "period_end": {
+            "type": "string",
+            "format": "date",
+            "title": "Period End"
+          },
+          "situation": {
+            "$ref": "#/components/schemas/Situation"
+          },
+          "script": {
+            "type": "string",
+            "title": "Script"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReviewStatus"
+          },
+          "is_fallback": {
+            "type": "boolean",
+            "title": "Is Fallback"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewOptionOut"
+            },
+            "type": "array",
+            "title": "Options"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "period_start",
+          "period_end",
+          "situation",
+          "script",
+          "status",
+          "is_fallback",
+          "created_at",
+          "options"
+        ],
+        "title": "WeeklyReviewOut",
+        "description": "週に 1 回の振り返り。期間は利用者のタイムゾーンでの日付で、両端を含む。\n\nscript はアバターのセリフで、字幕にも使う。is_fallback が true なら人が書いた定型。\noptions は position の順。音声は声にする機能で足す。"
       },
       "WorkoutDetail": {
         "properties": {
