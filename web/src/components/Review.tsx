@@ -154,7 +154,11 @@ export default function Review({ user, onOpenSettings }: Props) {
           {/* 字幕。アバターと声は後から重ねる */}
           <p>{review.script}</p>
           <h4 id="review-plan-heading">How will you spend the week ahead?</h4>
-          <div role="group" aria-labelledby="review-plan-heading">
+          <div
+            className="review-options"
+            role="group"
+            aria-labelledby="review-plan-heading"
+          >
             {review.options.map((o) => {
               const chosen = o.selected_at !== null;
               return (

@@ -116,3 +116,13 @@ code {
   padding-bottom: 24px;
   margin-bottom: 24px;
 }
+
+/* 選択肢のボタン。文字の下端でそろえると、✓ の付いたボタンだけ上下にずれるので、
+   高さをそろえて並べる。狭い画面では折り返す */
+.review-options {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch;
+  gap: 8px;
+}
