@@ -17,6 +17,9 @@ function errorMessage(e: unknown): string {
 type CreateError =
   { kind: "settings" } | { kind: "guest" } | { kind: "other"; message: string };
 
+/** 選べなかった理由。過ぎた週なら、今の週を読み直すボタンを出す */
+type SelectError = { kind: "closed" } | { kind: "other"; message: string };
+
 type Props = { user: User; onOpenSettings: () => void };
 
 /**
@@ -34,7 +37,7 @@ export default function Review({ user, onOpenSettings }: Props) {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<CreateError | null>(null);
   const [selecting, setSelecting] = useState(false);
-  const [selectError, setSelectError] = useState<string | null>(null);
+  const [selectError, setSelectError] = useState<SelectError | null>(null);
   // 連打よけ。disabled は描画のあとにしか効かないので、送った直後にここで止める
   const busy = useRef(false);
 
@@ -57,6 +60,7 @@ export default function Review({ user, onOpenSettings }: Props) {
 
   function retry() {
     setLoadError(null);
+    setSelectError(null);
     setReview(undefined);
     setAttempt((n) => n + 1);
   }
@@ -95,8 +99,8 @@ export default function Review({ user, onOpenSettings }: Props) {
       // 409 は、開いている間に振り返りの週が替わったとき。読み直せば今の週が出る
       setSelectError(
         e instanceof ApiError && e.status === 409
-          ? "This review is from a past week. Reload to see the current one."
-          : errorMessage(e),
+          ? { kind: "closed" }
+          : { kind: "other", message: errorMessage(e) },
       );
     } finally {
       busy.current = false;
@@ -143,12 +147,14 @@ export default function Review({ user, onOpenSettings }: Props) {
 
       {review && (
         <>
+          {/* 期間は振り返った週。下の質問はこれから過ごす週なので、取り違えないようラベルを付ける */}
           <p>
-            {review.period_start} – {review.period_end}
+            Week reviewed: {review.period_start} – {review.period_end}
           </p>
           {/* 字幕。アバターと声は後から重ねる */}
-          <p aria-label="Subtitle">{review.script}</p>
-          <div role="group" aria-label="How will you spend this week?">
+          <p>{review.script}</p>
+          <h4 id="review-plan-heading">How will you spend the week ahead?</h4>
+          <div role="group" aria-labelledby="review-plan-heading">
             {review.options.map((o) => {
               const chosen = o.selected_at !== null;
               return (
@@ -171,7 +177,17 @@ export default function Review({ user, onOpenSettings }: Props) {
               );
             })}
           </div>
-          {selectError && <p role="alert">{selectError}</p>}
+          {selectError?.kind === "closed" && (
+            <p role="alert">
+              This review is from a past week.{" "}
+              <button type="button" onClick={retry}>
+                Load this week's review
+              </button>
+            </p>
+          )}
+          {selectError?.kind === "other" && (
+            <p role="alert">{selectError.message}</p>
+          )}
         </>
       )}
     </section>

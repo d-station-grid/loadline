@@ -63,7 +63,7 @@ function renderReview() {
 
 function option(name: string) {
   const group = screen.getByRole("group", {
-    name: "How will you spend this week?",
+    name: "How will you spend the week ahead?",
   });
   return within(group).getByRole("button", { name: new RegExp(name) });
 }
@@ -76,12 +76,19 @@ test("今の週の振り返りがあれば、期間とセリフと選択肢を�
   vi.mocked(getCurrentReview).mockResolvedValue(review());
   renderReview();
 
+  // 字幕は本文のまま読み上げる。aria-label で置き換えない
   expect(
     await screen.findByText(
       "A heavy week. Your fatigue is well above your fitness.",
     ),
+  ).not.toHaveAttribute("aria-label");
+  // 期間は振り返った週、質問はこれから過ごす週。どちらもラベルで分かる
+  expect(
+    screen.getByText("Week reviewed: 2026-10-19 – 2026-10-25"),
   ).toBeInTheDocument();
-  expect(screen.getByText("2026-10-19 – 2026-10-25")).toBeInTheDocument();
+  expect(
+    screen.getByRole("heading", { name: "How will you spend the week ahead?" }),
+  ).toBeInTheDocument();
   for (const name of ["Rest fully", "Go easy", "Short and light"]) {
     expect(option(name)).toHaveAttribute("aria-pressed", "false");
   }
@@ -146,8 +153,17 @@ test("保存中はボタンを止め、連打しても 1 回だけ送る", async
   await vi.waitFor(() => expect(option("Rest fully")).toBeEnabled());
 });
 
-test("過ぎた週の振り返りを選ぼうとしたら、読み直すよう案内する", async () => {
-  vi.mocked(getCurrentReview).mockResolvedValue(review());
+test("過ぎた週の振り返りを選ぼうとしたら、その場で今の週を読み直せる", async () => {
+  const next: WeeklyReviewOut = {
+    ...review(),
+    id: 8,
+    period_start: "2026-10-26",
+    period_end: "2026-11-01",
+    script: "A steady week. Keeping this rhythm is how fitness builds.",
+  };
+  vi.mocked(getCurrentReview)
+    .mockResolvedValueOnce(review())
+    .mockResolvedValueOnce(next);
   vi.mocked(selectReviewOption).mockRejectedValue(new ApiError(409));
   renderReview();
   await screen.findByText(/A heavy week/);
@@ -158,6 +174,17 @@ test("過ぎた週の振り返りを選ぼうとしたら、読み直すよう�
     "This review is from a past week.",
   );
   expect(option("Go easy")).toHaveAttribute("aria-pressed", "false");
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Load this week's review" }),
+  );
+
+  expect(await screen.findByText(/A steady week/)).toBeInTheDocument();
+  expect(
+    screen.getByText("Week reviewed: 2026-10-26 – 2026-11-01"),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(getCurrentReview).toHaveBeenCalledTimes(2);
 });
 
 test("まだない週は作るボタンを出し、押すとその場に出す", async () => {
