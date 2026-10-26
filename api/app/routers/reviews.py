@@ -1,8 +1,15 @@
 from fastapi import APIRouter, HTTPException, Response, status
 
 from app.routers.deps import CurrentUser, DbSession
-from app.schemas.reviews import WeeklyReviewOut
-from app.services.reviews import HeartRateSettingsMissingError, create_review, current_review
+from app.schemas.reviews import SelectionIn, WeeklyReviewOut
+from app.services.reviews import (
+    HeartRateSettingsMissingError,
+    ReviewClosedError,
+    ReviewNotFoundError,
+    create_review,
+    current_review,
+    select_option,
+)
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 
@@ -46,3 +53,30 @@ async def read_current_review(user: CurrentUser, session: DbSession) -> WeeklyRe
     if review is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     return review
+
+
+@router.put(
+    "/{review_id}/selection",
+    response_model=WeeklyReviewOut,
+    responses={
+        status.HTTP_403_FORBIDDEN: {"description": "ゲスト（デモの利用者）は選べない"},
+        status.HTTP_404_NOT_FOUND: {"description": "振り返りか、その振り返りの選択肢がない"},
+        status.HTTP_409_CONFLICT: {"description": "今の週の振り返りではない"},
+    },
+)
+async def put_selection(
+    review_id: int, body: SelectionIn, user: CurrentUser, session: DbSession
+) -> WeeklyReviewOut:
+    """振り返りの選択肢を 1 つ選ぶ。選び直すと、前に選んだものは外れる。
+
+    選び直せるのは今の週の振り返りだけ。過ぎた週の選択は、次の週の振り返りの材料に
+    使うので変えない。
+    """
+    if user.is_demo:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "guests cannot select options")
+    try:
+        return await select_option(session, user, review_id, body.option_id)
+    except ReviewNotFoundError as e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND) from e
+    except ReviewClosedError as e:
+        raise HTTPException(status.HTTP_409_CONFLICT, "only the current review can change") from e
