@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Dashboard, NoteOut } from "../api";
 import Chart from "../components/Chart";
 import Notes from "../components/Notes";
+import Review from "../components/Review";
 import { getDashboard, type DashboardQuery } from "../lib/api";
 import {
   LOAD_CHART_HEIGHT,
@@ -104,6 +105,8 @@ export default function DashboardPage({ user, onOpenSettings }: Props) {
   return (
     <section>
       <h2>Dashboard</h2>
+      {/* 振り返りは期間と種目の切り替えに左右されないので、その前に置く */}
+      <Review user={user} onOpenSettings={onOpenSettings} />
       <div role="group" aria-label="Period">
         {RANGES.map((r) => (
           <button

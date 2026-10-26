@@ -109,3 +109,20 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* 振り返りの欄。下に並ぶチャートの期間と種目のボタンが、選択肢の続きに見えないよう区切る */
+.review {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 24px;
+  margin-bottom: 24px;
+}
+
+/* 選択肢のボタン。文字の下端でそろえると、✓ の付いたボタンだけ上下にずれるので、
+   高さをそろえて並べる。狭い画面では折り返す */
+.review-options {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch;
+  gap: 8px;
+}
