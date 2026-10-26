@@ -109,7 +109,7 @@ export default function Review({ user, onOpenSettings }: Props) {
   }
 
   return (
-    <section aria-labelledby="review-heading">
+    <section className="review" aria-labelledby="review-heading">
       <h3 id="review-heading">This week's review</h3>
 
       {loadError && (
