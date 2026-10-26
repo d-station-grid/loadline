@@ -3,8 +3,8 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.domain.fallback_review import ReviewOption, fallback_review
 from app.domain.situation import Situation
@@ -291,6 +291,64 @@ async def test_select_the_same_option_keeps_the_first_time(session: AsyncSession
     again = await select_option(session, user, review_id, option_ids[1], today=TODAY)
 
     assert again.options[1].selected_at == first.options[1].selected_at
+
+
+async def test_select_option_answers_its_own_choice_when_another_follows(
+    engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """コミットの直後に別のリクエストが選び直しても、応答の選択済みは自分の 1 つだけ。
+
+    session fixture は 1 本の接続を巻き戻す作りで同時実行を再現できないので、
+    ここだけ接続を 2 本張って本当に commit し、終わりに利用者ごと消す。
+    """
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as s:
+        user = UserFactory.build(
+            max_heart_rate=177, resting_heart_rate=75, timezone="Asia/Tokyo", review_weekday=0
+        )
+        s.add(user)
+        await s.flush()
+        review = WeeklyReviewFactory.build(user_id=user.id, period_start=MONDAY)
+        s.add(review)
+        await s.flush()
+        options = [
+            WeeklyReviewOptionFactory.build(weekly_review_id=review.id, position=i)
+            for i in range(2)
+        ]
+        s.add_all(options)
+        await s.commit()
+        user_id, review_id = user.id, review.id
+        first, second = (o.id for o in options)
+
+    try:
+        async with factory() as a:
+            real_commit = a.commit
+
+            async def commit_then_another_selects() -> None:
+                await real_commit()
+                async with factory() as b:
+                    other = await b.get(User, user_id)
+                    assert other is not None
+                    await select_option(b, other, review_id, second, today=TODAY)
+
+            monkeypatch.setattr(a, "commit", commit_then_another_selects)
+            me = await a.get(User, user_id)
+            assert me is not None
+            out = await select_option(a, me, review_id, first, today=TODAY)
+
+        assert [o.id for o in out.options if o.selected_at is not None] == [first]
+        async with factory() as s:
+            saved = await s.scalars(
+                select(WeeklyReviewOption.id).where(
+                    WeeklyReviewOption.weekly_review_id == review_id,
+                    WeeklyReviewOption.selected_at.is_not(None),
+                )
+            )
+            assert list(saved) == [second]
+    finally:
+        async with factory() as s:
+            await s.execute(delete(User).where(User.id == user_id))
+            await s.commit()
 
 
 async def test_select_option_of_a_past_week_is_closed(session: AsyncSession) -> None:

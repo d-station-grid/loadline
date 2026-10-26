@@ -250,6 +250,7 @@ async def select_option(
 
     選び直せるのは今の週の振り返りだけ。同じものをもう一度選んだときは、最初に選んだ
     時刻のまま返す。振り返りの行を FOR UPDATE で押さえ、同時に 2 つ選ばれても 1 つだけ残す。
+    応答は、そのリクエストで選んだ時点の状態。
     """
     review = await session.scalar(
         select(WeeklyReview)
@@ -287,5 +288,8 @@ async def select_option(
             .where(WeeklyReviewOption.id == option.id)
             .values(selected_at=datetime.now(UTC))
         )
+    # 応答はロックを持ったまま組み立てる。commit の後に読むと、その間に別のリクエストが
+    # 選び直した行だけが新しく、自分の行は古いまま残り、選択済みが 2 つに見える
+    out = await _out(session, review)
     await session.commit()
-    return await _out(session, review)
+    return out
