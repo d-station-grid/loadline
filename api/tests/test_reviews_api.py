@@ -10,7 +10,7 @@ from app.core.auth import Identity, InvalidTokenError, get_token_verifier
 from app.domain.review_week import review_period
 from app.main import app
 from app.models import User
-from tests.factories import UserFactory, WeeklyReviewFactory
+from tests.factories import UserFactory, WeeklyReviewFactory, WeeklyReviewOptionFactory
 
 HEADERS = {"Authorization": "Bearer good"}
 
@@ -129,8 +129,93 @@ async def test_current_does_not_show_someone_elses_review(client: AsyncClient) -
     assert res.status_code == 404
 
 
-@pytest.mark.parametrize(("method", "path"), [("post", "/reviews"), ("get", "/reviews/current")])
+async def test_put_selection_selects_and_reselects(client: AsyncClient) -> None:
+    await _me()
+    review = (await client.post("/reviews", headers=HEADERS)).json()
+    first, second = review["options"][0]["id"], review["options"][1]["id"]
+
+    res = await client.put(
+        f"/reviews/{review['id']}/selection", json={"option_id": first}, headers=HEADERS
+    )
+    assert res.status_code == 200
+    assert [o["selected_at"] is not None for o in res.json()["options"]][:2] == [True, False]
+
+    res = await client.put(
+        f"/reviews/{review['id']}/selection", json={"option_id": second}, headers=HEADERS
+    )
+    assert res.status_code == 200
+    assert [o["selected_at"] is not None for o in res.json()["options"]][:2] == [False, True]
+    current = (await client.get("/reviews/current", headers=HEADERS)).json()
+    assert current == res.json()
+
+
+async def test_put_selection_of_a_past_week_is_409(client: AsyncClient) -> None:
+    me = await _me()
+    start, _ = _current_period("Asia/Tokyo", 0)
+    past = await WeeklyReviewFactory.create_async(
+        user_id=me.id, period_start=date.fromisoformat(start) - timedelta(weeks=1)
+    )
+    option = await WeeklyReviewOptionFactory.create_async(weekly_review_id=past.id)
+
+    res = await client.put(
+        f"/reviews/{past.id}/selection", json={"option_id": option.id}, headers=HEADERS
+    )
+
+    assert res.status_code == 409
+
+
+async def test_put_selection_of_someone_elses_review_is_404(client: AsyncClient) -> None:
+    await _me()
+    other = await UserFactory.create_async(review_weekday=0, timezone="Asia/Tokyo")
+    start, _ = _current_period("Asia/Tokyo", 0)
+    theirs = await WeeklyReviewFactory.create_async(
+        user_id=other.id, period_start=date.fromisoformat(start)
+    )
+    option = await WeeklyReviewOptionFactory.create_async(weekly_review_id=theirs.id)
+
+    res = await client.put(
+        f"/reviews/{theirs.id}/selection", json={"option_id": option.id}, headers=HEADERS
+    )
+
+    assert res.status_code == 404
+
+
+async def test_put_selection_with_an_option_of_another_review_is_404(client: AsyncClient) -> None:
+    me = await _me()
+    review = (await client.post("/reviews", headers=HEADERS)).json()
+    start, _ = _current_period("Asia/Tokyo", 0)
+    past = await WeeklyReviewFactory.create_async(
+        user_id=me.id, period_start=date.fromisoformat(start) - timedelta(weeks=1)
+    )
+    option = await WeeklyReviewOptionFactory.create_async(weekly_review_id=past.id)
+
+    res = await client.put(
+        f"/reviews/{review['id']}/selection", json={"option_id": option.id}, headers=HEADERS
+    )
+
+    assert res.status_code == 404
+
+
+async def test_guest_cannot_select_an_option(client: AsyncClient) -> None:
+    me = await _me(is_demo=True)
+    start, _ = _current_period("Asia/Tokyo", 0)
+    review = await WeeklyReviewFactory.create_async(
+        user_id=me.id, period_start=date.fromisoformat(start)
+    )
+    option = await WeeklyReviewOptionFactory.create_async(weekly_review_id=review.id)
+
+    res = await client.put(
+        f"/reviews/{review.id}/selection", json={"option_id": option.id}, headers=HEADERS
+    )
+
+    assert res.status_code == 403
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [("post", "/reviews"), ("get", "/reviews/current"), ("put", "/reviews/1/selection")],
+)
 async def test_reviews_need_login(client: AsyncClient, method: str, path: str) -> None:
-    res = await client.request(method.upper(), path)
+    res = await client.request(method.upper(), path, json={"option_id": 1})
 
     assert res.status_code == 401

@@ -485,6 +485,73 @@
         ]
       }
     },
+    "/reviews/{review_id}/selection": {
+      "put": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Put Selection",
+        "description": "振り返りの選択肢を 1 つ選ぶ。選び直すと、前に選んだものは外れる。\n\n選び直せるのは今の週の振り返りだけ。過ぎた週の選択は、次の週の振り返りの材料に\n使うので変えない。",
+        "operationId": "put_selection_reviews__review_id__selection_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "review_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Review Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectionIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeeklyReviewOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ゲスト（デモの利用者）は選べない"
+          },
+          "404": {
+            "description": "振り返りか、その振り返りの選択肢がない"
+          },
+          "409": {
+            "description": "今の週の振り返りではない"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/settings": {
       "get": {
         "tags": [
@@ -1289,6 +1356,20 @@
         ],
         "title": "ReviewStatus",
         "description": "振り返りを作る処理の状態。"
+      },
+      "SelectionIn": {
+        "properties": {
+          "option_id": {
+            "type": "integer",
+            "title": "Option Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "option_id"
+        ],
+        "title": "SelectionIn",
+        "description": "選ぶ選択肢。その振り返りの options の id。"
       },
       "SettingsIn": {
         "properties": {

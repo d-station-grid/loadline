@@ -358,6 +358,18 @@ export type ReviewOptionOut = {
 export type ReviewStatus = "generating" | "completed" | "failed";
 
 /**
+ * SelectionIn
+ *
+ * 選ぶ選択肢。その振り返りの options の id。
+ */
+export type SelectionIn = {
+  /**
+   * Option Id
+   */
+  option_id: number;
+};
+
+/**
  * SettingsIn
  *
  * PUT /settings の本文。
@@ -1021,6 +1033,50 @@ export type ReadCurrentReviewReviewsCurrentGetResponses = {
 
 export type ReadCurrentReviewReviewsCurrentGetResponse =
   ReadCurrentReviewReviewsCurrentGetResponses[keyof ReadCurrentReviewReviewsCurrentGetResponses];
+
+export type PutSelectionReviewsReviewIdSelectionPutData = {
+  body: SelectionIn;
+  path: {
+    /**
+     * Review Id
+     */
+    review_id: number;
+  };
+  query?: never;
+  url: "/reviews/{review_id}/selection";
+};
+
+export type PutSelectionReviewsReviewIdSelectionPutErrors = {
+  /**
+   * ゲスト（デモの利用者）は選べない
+   */
+  403: unknown;
+  /**
+   * 振り返りか、その振り返りの選択肢がない
+   */
+  404: unknown;
+  /**
+   * 今の週の振り返りではない
+   */
+  409: unknown;
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type PutSelectionReviewsReviewIdSelectionPutError =
+  PutSelectionReviewsReviewIdSelectionPutErrors[keyof PutSelectionReviewsReviewIdSelectionPutErrors];
+
+export type PutSelectionReviewsReviewIdSelectionPutResponses = {
+  /**
+   * Successful Response
+   */
+  200: WeeklyReviewOut;
+};
+
+export type PutSelectionReviewsReviewIdSelectionPutResponse =
+  PutSelectionReviewsReviewIdSelectionPutResponses[keyof PutSelectionReviewsReviewIdSelectionPutResponses];
 
 export type ReadSettingsSettingsGetData = {
   body?: never;

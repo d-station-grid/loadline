@@ -34,3 +34,9 @@ class WeeklyReviewOut(BaseModel):
     is_fallback: bool
     created_at: datetime
     options: list[ReviewOptionOut]
+
+
+class SelectionIn(BaseModel):
+    """選ぶ選択肢。その振り返りの options の id。"""
+
+    option_id: int

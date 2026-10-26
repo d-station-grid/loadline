@@ -3,22 +3,27 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from app.domain.fallback_review import fallback_review
+from app.domain.fallback_review import ReviewOption, fallback_review
 from app.domain.situation import Situation
 from app.models import User, WeeklyReview, WeeklyReviewOption, Workout
 from app.services.dashboard import build_dashboard
 from app.services.reviews import (
     HeartRateSettingsMissingError,
+    ReviewClosedError,
+    ReviewNotFoundError,
     create_review,
     current_review,
     judge_review_week,
+    review_material,
+    select_option,
 )
 from tests.factories import (
     UserFactory,
     WeeklyReviewFactory,
+    WeeklyReviewOptionFactory,
     WorkoutFactory,
     WorkoutHeartRateFactory,
 )
@@ -230,3 +235,193 @@ async def test_current_review_is_the_review_of_the_current_week(session: AsyncSe
     assert found is not None
     assert found.id == current.id
     assert await current_review(session, other, today=TODAY) is None
+
+
+async def _review_with_options(
+    user: User, start: date, chosen: int | None = None
+) -> tuple[int, list[int]]:
+    """start に始まる振り返りと 3 つの選択肢の id。chosen を渡すと、その位置を選んだことにする。"""
+    review = await WeeklyReviewFactory.create_async(user_id=user.id, period_start=start)
+    option_ids = []
+    for i, label in enumerate(["Rest fully", "Go easy", "Short and light"]):
+        option = await WeeklyReviewOptionFactory.create_async(
+            weekly_review_id=review.id,
+            position=i,
+            label=label,
+            description=f"{label}.",
+            selected_at=datetime(2026, 10, 1, tzinfo=JST) if i == chosen else None,
+        )
+        option_ids.append(option.id)
+    return review.id, option_ids
+
+
+def _selected(review_options: list[Any]) -> list[str]:
+    return [o.label for o in review_options if o.selected_at is not None]
+
+
+async def test_select_option_saves_the_choice(session: AsyncSession) -> None:
+    user = await _user()
+    review_id, option_ids = await _review_with_options(user, MONDAY)
+
+    out = await select_option(session, user, review_id, option_ids[1], today=TODAY)
+
+    assert _selected(out.options) == ["Go easy"]
+    assert out.options[1].selected_at is not None
+
+
+async def test_select_option_again_replaces_the_previous_choice(session: AsyncSession) -> None:
+    user = await _user()
+    review_id, option_ids = await _review_with_options(user, MONDAY)
+    await select_option(session, user, review_id, option_ids[0], today=TODAY)
+
+    out = await select_option(session, user, review_id, option_ids[2], today=TODAY)
+
+    assert _selected(out.options) == ["Short and light"]
+    saved = await session.scalars(
+        select(WeeklyReviewOption.label).where(WeeklyReviewOption.selected_at.is_not(None))
+    )
+    assert list(saved) == ["Short and light"]
+
+
+async def test_select_the_same_option_keeps_the_first_time(session: AsyncSession) -> None:
+    user = await _user()
+    review_id, option_ids = await _review_with_options(user, MONDAY)
+    first = await select_option(session, user, review_id, option_ids[1], today=TODAY)
+
+    again = await select_option(session, user, review_id, option_ids[1], today=TODAY)
+
+    assert again.options[1].selected_at == first.options[1].selected_at
+
+
+async def test_select_option_answers_its_own_choice_when_another_follows(
+    engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """コミットの直後に別のリクエストが選び直しても、応答の選択済みは自分の 1 つだけ。
+
+    session fixture は 1 本の接続を巻き戻す作りで同時実行を再現できないので、
+    ここだけ接続を 2 本張って本当に commit し、終わりに利用者ごと消す。
+    """
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as s:
+        user = UserFactory.build(
+            max_heart_rate=177, resting_heart_rate=75, timezone="Asia/Tokyo", review_weekday=0
+        )
+        s.add(user)
+        await s.flush()
+        review = WeeklyReviewFactory.build(user_id=user.id, period_start=MONDAY)
+        s.add(review)
+        await s.flush()
+        options = [
+            WeeklyReviewOptionFactory.build(weekly_review_id=review.id, position=i)
+            for i in range(2)
+        ]
+        s.add_all(options)
+        await s.commit()
+        user_id, review_id = user.id, review.id
+        first, second = (o.id for o in options)
+
+    try:
+        async with factory() as a:
+            real_commit = a.commit
+
+            async def commit_then_another_selects() -> None:
+                await real_commit()
+                async with factory() as b:
+                    other = await b.get(User, user_id)
+                    assert other is not None
+                    await select_option(b, other, review_id, second, today=TODAY)
+
+            monkeypatch.setattr(a, "commit", commit_then_another_selects)
+            me = await a.get(User, user_id)
+            assert me is not None
+            out = await select_option(a, me, review_id, first, today=TODAY)
+
+        assert [o.id for o in out.options if o.selected_at is not None] == [first]
+        async with factory() as s:
+            saved = await s.scalars(
+                select(WeeklyReviewOption.id).where(
+                    WeeklyReviewOption.weekly_review_id == review_id,
+                    WeeklyReviewOption.selected_at.is_not(None),
+                )
+            )
+            assert list(saved) == [second]
+    finally:
+        async with factory() as s:
+            await s.execute(delete(User).where(User.id == user_id))
+            await s.commit()
+
+
+async def test_select_option_of_a_past_week_is_closed(session: AsyncSession) -> None:
+    """過ぎた週の選択は、次の週の材料に使った後なので変えない。"""
+    user = await _user()
+    past_id, option_ids = await _review_with_options(user, MONDAY - timedelta(weeks=1), chosen=0)
+
+    with pytest.raises(ReviewClosedError):
+        await select_option(session, user, past_id, option_ids[1], today=TODAY)
+
+
+async def test_select_option_of_someone_else_is_not_found(session: AsyncSession) -> None:
+    me = await _user()
+    other = await _user()
+    their_review, their_options = await _review_with_options(other, MONDAY)
+    my_review, _ = await _review_with_options(me, MONDAY)
+
+    # 他人の振り返り
+    with pytest.raises(ReviewNotFoundError):
+        await select_option(session, me, their_review, their_options[0], today=TODAY)
+    # 自分の振り返りに、他人の振り返りの選択肢
+    with pytest.raises(ReviewNotFoundError):
+        await select_option(session, me, my_review, their_options[0], today=TODAY)
+
+
+async def test_material_has_the_choice_of_the_week_before(session: AsyncSession) -> None:
+    user = await _user()
+    await _review_with_options(user, MONDAY - timedelta(weeks=1), chosen=1)
+
+    material = await review_material(session, user, MONDAY, TODAY)
+
+    assert material.previous_choice == ReviewOption("Go easy", "Go easy.")
+    assert material.week == await judge_review_week(session, user, MONDAY, TODAY)
+
+
+@pytest.mark.parametrize(
+    ("weeks_before", "chosen"),
+    [
+        (1, None),  # 前の週に選んでいない
+        (2, 1),  # 選んだのは 2 週前。間が空いた回の選択は渡さない
+    ],
+)
+async def test_material_without_a_choice_of_the_week_before(
+    session: AsyncSession, weeks_before: int, chosen: int | None
+) -> None:
+    user = await _user()
+    await _review_with_options(user, MONDAY - timedelta(weeks=weeks_before), chosen=chosen)
+
+    material = await review_material(session, user, MONDAY, TODAY)
+
+    assert material.previous_choice is None
+
+
+async def test_material_does_not_read_someone_elses_choice(session: AsyncSession) -> None:
+    me = await _user()
+    other = await _user()
+    await _review_with_options(other, MONDAY - timedelta(weeks=1), chosen=0)
+
+    material = await review_material(session, me, MONDAY, TODAY)
+
+    assert material.previous_choice is None
+
+
+async def test_create_review_does_not_change_the_script_by_the_previous_choice(
+    session: AsyncSession,
+) -> None:
+    """定型のセリフは前の週の選択を読まない。"""
+    user = await _user()
+    await _review_with_options(user, MONDAY - timedelta(weeks=1), chosen=2)
+
+    review, _ = await create_review(session, user, today=TODAY)
+
+    assert (
+        review.script
+        == fallback_review(await judge_review_week(session, user, MONDAY, TODAY)).script
+    )

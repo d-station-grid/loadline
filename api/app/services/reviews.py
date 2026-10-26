@@ -4,15 +4,16 @@
 数字とアバターの話す数字を食い違わせないため。
 """
 
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.fallback_review import fallback_review
+from app.domain.fallback_review import ReviewOption, fallback_review
 from app.domain.load import FitnessPoint
+from app.domain.review_material import ReviewMaterial
 from app.domain.review_week import review_period
 from app.domain.situation import (
     DAYS_IN_WEEK,
@@ -30,6 +31,14 @@ from app.services.dashboard import build_dashboard
 
 class HeartRateSettingsMissingError(Exception):
     """最大心拍か安静時心拍が未設定。負荷が出ないので、状況を判定できない。"""
+
+
+class ReviewNotFoundError(Exception):
+    """その利用者の振り返りに、その id がない。選択肢がその振り返りのものでない場合も含む。"""
+
+
+class ReviewClosedError(Exception):
+    """今の週の振り返りではない。過ぎた週の選択は、次の週の材料に使った後なので変えない。"""
 
 
 def _start_of(day: date, tz: ZoneInfo) -> datetime:
@@ -107,6 +116,32 @@ async def judge_review_week(
     )
 
 
+async def review_material(
+    session: AsyncSession, user: User, start: date, today: date
+) -> ReviewMaterial:
+    """start から 7 日間の振り返りを作る材料。判定と、ちょうど 1 週前の回で選んだ選択肢。
+
+    1 週前は start の 7 日前に始まる回だけを見る。間が空いた後や、振り返りの曜日を変えた
+    直後は、前の回の選択が今の週と離れているので渡さない。
+    """
+    week = await judge_review_week(session, user, start, today)
+    chosen = (
+        await session.execute(
+            select(WeeklyReviewOption.label, WeeklyReviewOption.description)
+            .join(WeeklyReview, WeeklyReview.id == WeeklyReviewOption.weekly_review_id)
+            .where(
+                WeeklyReview.user_id == user.id,
+                WeeklyReview.period_start == start - timedelta(days=DAYS_IN_WEEK),
+                WeeklyReviewOption.selected_at.is_not(None),
+            )
+        )
+    ).one_or_none()
+    return ReviewMaterial(
+        week=week,
+        previous_choice=None if chosen is None else ReviewOption(chosen.label, chosen.description),
+    )
+
+
 async def _options(session: AsyncSession, review_id: int) -> list[WeeklyReviewOption]:
     stmt = (
         select(WeeklyReviewOption)
@@ -149,15 +184,16 @@ async def create_review(
     if existing is not None:
         return await _out(session, existing), False
 
-    week = await judge_review_week(session, user, start, today)
-    content = fallback_review(week)
+    material = await review_material(session, user, start, today)
+    # 定型は前の週の選択を読まない。材料は LLM で作るときのためにそろえておく
+    content = fallback_review(material.week)
     review = await session.scalar(
         insert(WeeklyReview)
         .values(
             user_id=user.id,
             period_start=start,
             period_end=end,
-            situation=week.situation.value,
+            situation=material.week.situation.value,
             script=content.script,
             status=ReviewStatus.COMPLETED.value,
             is_fallback=True,
@@ -205,3 +241,55 @@ async def current_review(
     start, _ = review_period(today, user.review_weekday)
     review = await _find(session, user.id, start)
     return None if review is None else await _out(session, review)
+
+
+async def select_option(
+    session: AsyncSession, user: User, review_id: int, option_id: int, today: date | None = None
+) -> WeeklyReviewOut:
+    """振り返りの選択肢を 1 つ選ぶ。もう別のものを選んでいれば、そちらを外して選び直す。
+
+    選び直せるのは今の週の振り返りだけ。同じものをもう一度選んだときは、最初に選んだ
+    時刻のまま返す。振り返りの行を FOR UPDATE で押さえ、同時に 2 つ選ばれても 1 つだけ残す。
+    応答は、そのリクエストで選んだ時点の状態。
+    """
+    review = await session.scalar(
+        select(WeeklyReview)
+        .where(WeeklyReview.id == review_id, WeeklyReview.user_id == user.id)
+        .with_for_update()
+    )
+    if review is None:
+        raise ReviewNotFoundError
+    option = await session.scalar(
+        select(WeeklyReviewOption).where(
+            WeeklyReviewOption.id == option_id,
+            WeeklyReviewOption.weekly_review_id == review.id,
+        )
+    )
+    if option is None:
+        raise ReviewNotFoundError
+
+    today = today or datetime.now(ZoneInfo(user.timezone)).date()
+    start, _ = review_period(today, user.review_weekday)
+    if review.period_start != start:
+        raise ReviewClosedError
+
+    if option.selected_at is None:
+        # 1 つの振り返りで選べるのは 1 つだけ（部分ユニーク索引）。先に外してから入れる
+        await session.execute(
+            update(WeeklyReviewOption)
+            .where(
+                WeeklyReviewOption.weekly_review_id == review.id,
+                WeeklyReviewOption.selected_at.is_not(None),
+            )
+            .values(selected_at=None)
+        )
+        await session.execute(
+            update(WeeklyReviewOption)
+            .where(WeeklyReviewOption.id == option.id)
+            .values(selected_at=datetime.now(UTC))
+        )
+    # 応答はロックを持ったまま組み立てる。commit の後に読むと、その間に別のリクエストが
+    # 選び直した行だけが新しく、自分の行は古いまま残り、選択済みが 2 つに見える
+    out = await _out(session, review)
+    await session.commit()
+    return out
