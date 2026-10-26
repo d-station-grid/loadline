@@ -6,9 +6,11 @@ import type {
   NoteOut,
   NoteUpdate,
   ReadDashboardDashboardGetData,
+  SelectionIn,
   SettingsIn,
   SettingsOut,
   UserOut,
+  WeeklyReviewOut,
   WorkoutDetail,
   WorkoutList,
 } from "../api";
@@ -161,4 +163,39 @@ export function editNote(
 /** メモを消す。本人のメモでなければ 404。 */
 export function deleteNote(id: number, idToken: string): Promise<void> {
   return request<void>(`/notes/${id}`, { method: "DELETE" }, idToken);
+}
+
+/** 今の週の振り返り。まだなければ null（api は 404）。 */
+export async function getCurrentReview(
+  idToken: string,
+): Promise<WeeklyReviewOut | null> {
+  try {
+    return await request<WeeklyReviewOut>(
+      "/reviews/current",
+      { method: "GET" },
+      idToken,
+    );
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null;
+    throw e;
+  }
+}
+
+/** 今の週の振り返りを作る。もうあればそれを返す。心拍の設定がなければ 409、ゲストは 403。 */
+export function createReview(idToken: string): Promise<WeeklyReviewOut> {
+  return request<WeeklyReviewOut>("/reviews", { method: "POST" }, idToken);
+}
+
+/** 選択肢を 1 つ選ぶ。選び直せるのは今の週の振り返りだけで、過ぎた週は 409。 */
+export function selectReviewOption(
+  reviewId: number,
+  optionId: number,
+  idToken: string,
+): Promise<WeeklyReviewOut> {
+  const body: SelectionIn = { option_id: optionId };
+  return request<WeeklyReviewOut>(
+    `/reviews/${reviewId}/selection`,
+    sendJson("PUT", body),
+    idToken,
+  );
 }
