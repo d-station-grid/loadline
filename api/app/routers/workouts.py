@@ -1,21 +1,12 @@
-from dataclasses import asdict
 from datetime import datetime
 from typing import Annotated
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.exceptions import RequestValidationError
 
-from app.domain.load import zone_times
 from app.routers.deps import CurrentUser, DbSession
-from app.schemas.workouts import (
-    HeartRateSample,
-    WorkoutDetail,
-    WorkoutList,
-    WorkoutSummary,
-    ZoneSeconds,
-)
-from app.services.workouts import get_workout, heart_rates, list_workouts, since_for_weeks
+from app.schemas.workouts import WorkoutDetail, WorkoutList
+from app.services.workouts import workout_detail, workout_list
 
 router = APIRouter(prefix="/workouts", tags=["workouts"])
 
@@ -62,26 +53,15 @@ async def read_workouts(
                 }
             ]
         )
-    if weeks is not None:
-        since = since_for_weeks(weeks, ZoneInfo(user.timezone))
-    rows = await list_workouts(
-        session, user.id, since=since, until=until, before_id=before_id, limit=limit
+    return await workout_list(
+        session, user, since=since, until=until, before_id=before_id, limit=limit, weeks=weeks
     )
-    return WorkoutList(items=[WorkoutSummary.model_validate(r) for r in rows], since=since)
 
 
 @router.get("/{workout_id}", response_model=WorkoutDetail)
 async def read_workout(workout_id: int, user: CurrentUser, session: DbSession) -> WorkoutDetail:
     """1 件の詳細。心拍の推移と、設定の境目がそろっていれば強度ごとの時間。"""
-    row = await get_workout(session, user.id, workout_id)
-    if row is None:
+    detail = await workout_detail(session, user, workout_id)
+    if detail is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
-    samples = await heart_rates(session, row.id)
-    zones = zone_times(
-        [s.avg_bpm for s in samples], row.duration_sec, user.zone_boundary_1, user.zone_boundary_2
-    )
-    return WorkoutDetail(
-        **WorkoutSummary.model_validate(row).model_dump(),
-        heart_rates=[HeartRateSample.model_validate(s) for s in samples],
-        zones=None if zones is None else ZoneSeconds(**asdict(zones)),
-    )
+    return detail

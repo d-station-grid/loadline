@@ -4,17 +4,19 @@ from pathlib import Path
 
 import pytest
 
+from app.domain.apple_health import is_apple_watch
 from app.domain.load import (
     DailyLoad,
+    WorkoutLoad,
     ZoneTimes,
     daily_loads,
     fitness_fatigue,
     sample_seconds,
+    total_zones,
     trimp,
     workout_load,
     zone_times,
 )
-from app.services.ingest import is_apple_watch
 
 SAMPLE = Path(__file__).parent / "fixtures" / "sample_health-auto-export_workouts-v2.json"
 
@@ -119,6 +121,26 @@ def test_workout_load_keeps_what_settings_allow() -> None:
     point = workout_load([110], 60, max_hr=None, resting_hr=None, boundary_1=130, boundary_2=155)
     assert point.load is None
     assert point.zones == ZoneTimes(low=60, mid=0, high=0)
+
+
+def test_total_zones_sums_each_zone() -> None:
+    loads = [
+        WorkoutLoad(load=1.0, zones=ZoneTimes(low=60, mid=30, high=10)),
+        WorkoutLoad(load=2.0, zones=ZoneTimes(low=5, mid=0, high=20)),
+    ]
+    assert total_zones(loads) == ZoneTimes(low=65, mid=30, high=30)
+
+
+def test_total_zones_is_none_when_a_workout_has_no_heart_rate() -> None:
+    loads = [
+        WorkoutLoad(load=1.0, zones=ZoneTimes(low=60, mid=30, high=10)),
+        WorkoutLoad(load=None, zones=None),
+    ]
+    assert total_zones(loads) is None
+
+
+def test_total_zones_without_workouts_is_zero() -> None:
+    assert total_zones([]) == ZoneTimes(low=0, mid=0, high=0)
 
 
 # --- 日ごとの負荷 ---

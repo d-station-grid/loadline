@@ -1,33 +1,22 @@
 from fastapi import APIRouter
 
-from app.models import User
 from app.routers.deps import CurrentUser, DbSession
-from app.schemas.settings import IngestTokenOut, SettingsFields, SettingsIn, SettingsOut
-from app.services.ingest_tokens import current_token, issue_token
+from app.schemas.settings import IngestTokenOut, SettingsIn, SettingsOut
+from app.services import settings as settings_service
+from app.services.ingest_tokens import issue_token
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
-async def _settings_out(session: DbSession, user: User) -> SettingsOut:
-    token = await current_token(session, user.id)
-    fields = SettingsFields.model_validate(user)
-    return SettingsOut(
-        **fields.model_dump(), ingest_token_last_four=token.last_four if token else None
-    )
-
-
 @router.get("", response_model=SettingsOut)
 async def read_settings(user: CurrentUser, session: DbSession) -> SettingsOut:
-    return await _settings_out(session, user)
+    return await settings_service.read_settings(session, user)
 
 
 @router.put("", response_model=SettingsOut)
 async def update_settings(body: SettingsIn, user: CurrentUser, session: DbSession) -> SettingsOut:
     """設定をまとめて書き換える。検証は SettingsIn が済ませている。"""
-    for name, value in body.model_dump().items():
-        setattr(user, name, value)
-    await session.commit()
-    return await _settings_out(session, user)
+    return await settings_service.update_settings(session, user, body)
 
 
 @router.post("/ingest-token", response_model=IngestTokenOut)

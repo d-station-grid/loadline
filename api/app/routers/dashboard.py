@@ -4,9 +4,10 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 from fastapi.exceptions import RequestValidationError
 
+from app.domain.period import InvalidPeriodError
 from app.routers.deps import CurrentUser, DbSession
 from app.schemas.dashboard import Dashboard, Sport
-from app.services.dashboard import InvalidPeriodError, build_dashboard
+from app.services.dashboard import build_dashboard
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 

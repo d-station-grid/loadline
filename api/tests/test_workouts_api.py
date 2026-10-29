@@ -11,11 +11,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import Identity, InvalidTokenError, get_token_verifier
+from app.domain.calendar import since_for_weeks
 from app.main import app
 from app.models import User, Workout
 from app.schemas.ingest import IngestPayload
 from app.services.ingest import ingest
-from app.services.workouts import since_for_weeks
 from tests.factories import UserFactory, WorkoutFactory
 
 HEADERS = {"Authorization": "Bearer good"}

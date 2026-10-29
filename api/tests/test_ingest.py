@@ -8,9 +8,10 @@ import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from app.domain.apple_health import is_apple_watch, sport_of
 from app.models import User, Vo2maxReading, Workout, WorkoutHeartRate
 from app.schemas.ingest import IngestPayload
-from app.services.ingest import ingest, is_apple_watch, sport_of
+from app.services.ingest import ingest
 from tests.factories import UserFactory
 
 # Apple Watch と Google Health のサイクリングが 1 件ずつ入った、Health Auto Export の実データ

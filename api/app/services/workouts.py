@@ -1,20 +1,19 @@
-from datetime import datetime, time, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Workout, WorkoutHeartRate
-
-
-def since_for_weeks(weeks: int, tz: ZoneInfo, now: datetime | None = None) -> datetime:
-    """「直近 N 週」の始まり。利用者のタイムゾーンの今日から N 週前の日の 0 時。
-
-    端末の日付で決めると、端末と設定のタイムゾーンがずれたときに境目の 1 日がずれるため、
-    api で決める。ダッシュボードの weeks と同じ日から始まる。
-    """
-    today = (now or datetime.now(tz)).astimezone(tz).date()
-    return datetime.combine(today - timedelta(weeks=weeks), time.min, tzinfo=tz)
+from app.domain.calendar import since_for_weeks
+from app.domain.load import zone_times
+from app.models import User, Workout, WorkoutHeartRate
+from app.schemas.workouts import (
+    HeartRateSample,
+    WorkoutDetail,
+    WorkoutList,
+    WorkoutSummary,
+    zone_seconds,
+)
 
 
 async def list_workouts(
@@ -47,6 +46,29 @@ async def list_workouts(
     return list(await session.scalars(stmt))
 
 
+async def workout_list(
+    session: AsyncSession,
+    user: User,
+    *,
+    since: datetime | None,
+    until: datetime | None,
+    before_id: int | None,
+    limit: int,
+    weeks: int | None = None,
+) -> WorkoutList:
+    """一覧の 1 ページと、絞り込みに使った始まり。
+
+    weeks を渡すと、since は利用者のタイムゾーンの今日から weeks 週前の日の 0 時になる。
+    since と一緒には渡さない（router で落とす）。
+    """
+    if weeks is not None:
+        since = since_for_weeks(weeks, ZoneInfo(user.timezone))
+    rows = await list_workouts(
+        session, user.id, since=since, until=until, before_id=before_id, limit=limit
+    )
+    return WorkoutList(items=[WorkoutSummary.model_validate(r) for r in rows], since=since)
+
+
 async def get_workout(session: AsyncSession, user_id: int, workout_id: int) -> Workout | None:
     """本人のものだけ返す。他人の id は None。"""
     return await session.scalar(
@@ -61,3 +83,21 @@ async def heart_rates(session: AsyncSession, workout_id: int) -> list[WorkoutHea
         .order_by(WorkoutHeartRate.recorded_at)
     )
     return list(await session.scalars(stmt))
+
+
+async def workout_detail(
+    session: AsyncSession, user: User, workout_id: int
+) -> WorkoutDetail | None:
+    """1 件の詳細。心拍の推移と、設定の境目がそろっていれば強度ごとの時間。他人の id は None。"""
+    row = await get_workout(session, user.id, workout_id)
+    if row is None:
+        return None
+    samples = await heart_rates(session, row.id)
+    zones = zone_times(
+        [s.avg_bpm for s in samples], row.duration_sec, user.zone_boundary_1, user.zone_boundary_2
+    )
+    return WorkoutDetail(
+        **WorkoutSummary.model_validate(row).model_dump(),
+        heart_rates=[HeartRateSample.model_validate(s) for s in samples],
+        zones=zone_seconds(zones),
+    )

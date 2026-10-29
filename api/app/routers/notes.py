@@ -5,7 +5,13 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from app.routers.deps import CurrentUser, DbSession
 from app.schemas.notes import NoteIn, NoteList, NoteOut, NoteUpdate
-from app.services.notes import create_note, delete_note, list_notes, today_for, update_note
+from app.services.notes import (
+    FutureDateError,
+    create_note,
+    delete_note,
+    list_notes,
+    update_note,
+)
 
 router = APIRouter(prefix="/notes", tags=["notes"])
 
@@ -34,10 +40,10 @@ async def read_notes(
 )
 async def add_note(body: NoteIn, user: CurrentUser, session: DbSession) -> NoteOut:
     """メモを 1 件書く。走らなかった日にも書ける。1 日 1 件で、その日にもうあれば 409。"""
-    # 今日の判定は利用者のタイムゾーンで。日付の比較はここでやる
-    if body.date > today_for(user):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "date is in the future")
-    note = await create_note(session, user.id, body.date, body.body, body.label)
+    try:
+        note = await create_note(session, user, body.date, body.body, body.label)
+    except FutureDateError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "date is in the future") from e
     if note is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "a note for this date already exists")
     return NoteOut.model_validate(note)
