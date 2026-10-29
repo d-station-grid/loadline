@@ -11,7 +11,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.calendar import start_of_day, today_in
+from app.domain.calendar import start_of_day, today_for
 from app.domain.fallback_review import ReviewOption, fallback_review
 from app.domain.load import FitnessPoint
 from app.domain.review_material import ReviewMaterial
@@ -175,7 +175,7 @@ async def create_review(
     同時に 2 回呼ばれても 1 件だけ入る（ON CONFLICT DO NOTHING）。振り返りと選択肢は
     同じトランザクションで入れるので、後から来た側には選択肢までそろって見える。
     """
-    today = today or today_in(ZoneInfo(user.timezone))
+    today = today or today_for(user.timezone)
     start, end = review_period(today, user.review_weekday)
     existing = await _find(session, user.id, start)
     if existing is not None:
@@ -234,7 +234,7 @@ async def current_review(
     いちばん新しい期間の行ではなく、今の週で探す。振り返りの曜日を変えた直後は、
     いちばん新しい行が今の週より古い回のことがあるため。
     """
-    today = today or today_in(ZoneInfo(user.timezone))
+    today = today or today_for(user.timezone)
     start, _ = review_period(today, user.review_weekday)
     review = await _find(session, user.id, start)
     return None if review is None else await _out(session, review)
@@ -265,7 +265,7 @@ async def select_option(
     if option is None:
         raise ReviewNotFoundError
 
-    today = today or today_in(ZoneInfo(user.timezone))
+    today = today or today_for(user.timezone)
     start, _ = review_period(today, user.review_weekday)
     if review.period_start != start:
         raise ReviewClosedError

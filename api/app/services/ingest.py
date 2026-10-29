@@ -5,7 +5,14 @@ from typing import Any
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.apple_health import bpm, is_apple_watch, parse_time, sport_of, vo2max_value
+from app.domain.apple_health import (
+    bpm,
+    is_apple_watch,
+    parse_time,
+    seconds,
+    sport_of,
+    vo2max_value,
+)
 from app.models import User, Vo2maxReading, Workout, WorkoutHeartRate
 from app.schemas.ingest import IngestPayload, IngestResult, MetricIn, WorkoutIn
 
@@ -63,7 +70,7 @@ async def _upsert_workouts(
             "sport": sport,
             "started_at": parse_time(w.start),
             "ended_at": parse_time(w.end),
-            "duration_sec": round(w.duration),
+            "duration_sec": seconds(w.duration),
             "avg_heart_rate": bpm(w.avg_heart_rate.qty if w.avg_heart_rate else None),
             "max_heart_rate": bpm(w.max_heart_rate.qty if w.max_heart_rate else None),
         }
@@ -95,9 +102,9 @@ async def _upsert_workouts(
         {
             "workout_id": ids[external_id],
             "recorded_at": parse_time(p.date),
-            "min_bpm": round(p.min_bpm),
-            "avg_bpm": round(p.avg_bpm),
-            "max_bpm": round(p.max_bpm),
+            "min_bpm": bpm(p.min_bpm),
+            "avg_bpm": bpm(p.avg_bpm),
+            "max_bpm": bpm(p.max_bpm),
         }
         for external_id, w in heart_rates.items()
         for p in w.heart_rate_data

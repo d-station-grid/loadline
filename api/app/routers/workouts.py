@@ -1,14 +1,12 @@
 from datetime import datetime
 from typing import Annotated
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.exceptions import RequestValidationError
 
-from app.domain.calendar import since_for_weeks
 from app.routers.deps import CurrentUser, DbSession
-from app.schemas.workouts import WorkoutDetail, WorkoutList, WorkoutSummary
-from app.services.workouts import list_workouts, workout_detail
+from app.schemas.workouts import WorkoutDetail, WorkoutList
+from app.services.workouts import workout_detail, workout_list
 
 router = APIRouter(prefix="/workouts", tags=["workouts"])
 
@@ -55,12 +53,7 @@ async def read_workouts(
                 }
             ]
         )
-    if weeks is not None:
-        since = since_for_weeks(weeks, ZoneInfo(user.timezone))
-    rows = await list_workouts(
-        session, user.id, since=since, until=until, before_id=before_id, limit=limit
-    )
-    return WorkoutList(items=[WorkoutSummary.model_validate(r) for r in rows], since=since)
+    return await workout_list(session, user, since, until, before_id, limit, weeks)
 
 
 @router.get("/{workout_id}", response_model=WorkoutDetail)

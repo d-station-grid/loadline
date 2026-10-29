@@ -13,6 +13,11 @@ def today_in(tz: ZoneInfo, now: datetime | None = None) -> date:
     return (now or datetime.now(tz)).astimezone(tz).date()
 
 
+def today_for(timezone: str, now: datetime | None = None) -> date:
+    """利用者の設定のタイムゾーン（"Asia/Tokyo" など）での今日。"""
+    return today_in(ZoneInfo(timezone), now)
+
+
 def start_of_day(day: date, tz: ZoneInfo) -> datetime:
     """tz でのその日の 0 時。"""
     return datetime.combine(day, time.min, tzinfo=tz)

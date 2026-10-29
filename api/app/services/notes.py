@@ -1,11 +1,10 @@
 from datetime import date
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.calendar import today_in
+from app.domain.calendar import today_for
 from app.models import Note, User
 
 
@@ -23,7 +22,7 @@ async def create_note(
     先に探してから入れると、同時に 2 回届いたときに一意制約の例外になる。
     ON CONFLICT DO NOTHING なら、どちらの順でも 1 件だけ入る。
     """
-    if day > today_in(ZoneInfo(user.timezone)):
+    if day > today_for(user.timezone):
         raise FutureDateError(day.isoformat())
     stmt = (
         insert(Note)

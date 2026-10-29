@@ -1,6 +1,9 @@
+from dataclasses import asdict
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
+
+from app.domain.load import ZoneTimes
 
 
 class WorkoutSummary(BaseModel):
@@ -41,6 +44,11 @@ class ZoneSeconds(BaseModel):
     low: int
     mid: int
     high: int
+
+
+def zone_seconds(zones: ZoneTimes | None) -> ZoneSeconds | None:
+    """domain の強度ごとの時間を、API の形にする。"""
+    return None if zones is None else ZoneSeconds(**asdict(zones))
 
 
 class WorkoutDetail(WorkoutSummary):

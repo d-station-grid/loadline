@@ -237,7 +237,7 @@ export type MetricPoint = {
 /**
  * NoteIn
  *
- * POST /notes の本文。未来の日付かどうかは、利用者のタイムゾーンを知る router で確かめる。
+ * POST /notes の本文。未来の日付かどうかは、利用者のタイムゾーンを知る service で確かめる。
  */
 export type NoteIn = {
   /**

@@ -9,17 +9,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.calendar import start_of_day, today_in
 from app.domain.load import (
     FITNESS_DAYS,
-    ZoneTimes,
     daily_loads,
     fitness_fatigue,
     total_zones,
     workout_load,
 )
-from app.domain.period import dashboard_period
+from app.domain.period import dashboard_period, needs_first_day
 from app.domain.vo2max import AVERAGE_DAYS, vo2max_trend
 from app.models import User, Vo2maxReading, Workout, WorkoutHeartRate
 from app.schemas.dashboard import Dashboard, DayPoint, Sport, Vo2maxPoint, WorkoutPoint
-from app.schemas.workouts import ZoneSeconds
+from app.schemas.workouts import zone_seconds
 
 # 表示の期間より前から計算を始める日数。体力の時定数の 6 倍で、それより前の負荷は
 # e^(−6) ≈ 0.25% しか残らない。0 から立ち上がって期間の初日の体力が低く出るのを防ぐ
@@ -76,10 +75,6 @@ async def _vo2max(
     return [Vo2maxPoint(**asdict(p)) for p in vo2max_trend(readings) if p.day >= since]
 
 
-def _zone_seconds(zones: ZoneTimes | None) -> ZoneSeconds | None:
-    return None if zones is None else ZoneSeconds(**asdict(zones))
-
-
 async def build_dashboard(
     session: AsyncSession,
     user: User,
@@ -101,8 +96,7 @@ async def build_dashboard(
     """
     tz = ZoneInfo(user.timezone)
     today = today or today_in(tz)
-    # 最初のワークアウトの日は since を決めるときだけ要る。要らなければ読まない
-    first_day = await _first_day(session, user.id, tz) if since is None and weeks is None else None
+    first_day = await _first_day(session, user.id, tz) if needs_first_day(since, weeks) else None
     since, until = dashboard_period(today, since, until, weeks, first_day)
 
     warm_start = since - timedelta(days=WARMUP_DAYS)
@@ -145,7 +139,7 @@ async def build_dashboard(
         needs_heart_rate_settings=needs_settings,
         days=days,
         vo2max=await _vo2max(session, user.id, since, until, tz),
-        zones=_zone_seconds(total_zones([wl for _, _, wl in picked])) if has_boundaries else None,
+        zones=zone_seconds(total_zones([wl for _, _, wl in picked])) if has_boundaries else None,
         workouts=[
             WorkoutPoint(
                 id=w.id,

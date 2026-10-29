@@ -6,6 +6,7 @@ DB は持ち込まない。届いた文字列や数値を受け取り、取り�
 import re
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
+from typing import overload
 
 APPLE_WATCH = "Apple Watch"
 _SPACES = re.compile(r"\s+")
@@ -45,9 +46,20 @@ def sport_of(name: str) -> str | None:
     return None
 
 
+@overload
+def bpm(value: float) -> int: ...
+@overload
+def bpm(value: None) -> None: ...
+@overload
+def bpm(value: float | None) -> int | None: ...
 def bpm(value: float | None) -> int | None:
     """心拍を整数に丸める。記録がなければ None。"""
     return None if value is None else round(value)
+
+
+def seconds(value: float) -> int:
+    """時間（秒）を整数に丸める。"""
+    return round(value)
 
 
 def vo2max_value(qty: float) -> Decimal:

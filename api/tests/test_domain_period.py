@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from app.domain.period import EARLIEST_DAY, InvalidPeriodError, dashboard_period
+from app.domain.period import EARLIEST_DAY, InvalidPeriodError, dashboard_period, needs_first_day
 
 TODAY = date(2026, 10, 29)
 
@@ -43,3 +43,9 @@ def test_since_before_earliest_day_is_rejected() -> None:
     with pytest.raises(InvalidPeriodError):
         dashboard_period(TODAY, date(1999, 12, 31), None, None, None)
     assert dashboard_period(TODAY, EARLIEST_DAY, None, None, None)[0] == EARLIEST_DAY
+
+
+def test_first_day_is_needed_only_without_since_and_weeks() -> None:
+    assert needs_first_day(None, None) is True
+    assert needs_first_day(date(2026, 10, 1), None) is False
+    assert needs_first_day(None, 4) is False
