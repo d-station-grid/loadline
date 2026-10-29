@@ -122,7 +122,12 @@ async def test_reissue_does_not_revoke_another_users_token(
     other = await UserFactory.create_async()
     other_token, _ = await issue_token(session, other.id)
 
-    await client.post("/settings/ingest-token", headers=HEADERS)
-    await client.post("/settings/ingest-token", headers=HEADERS)
+    first = await client.post("/settings/ingest-token", headers=HEADERS)
+    second = await client.post("/settings/ingest-token", headers=HEADERS)
 
+    # 再発行が効いたうえで、他人のトークンが残っている
+    assert (first.status_code, second.status_code) == (200, 200)
+    settings = await client.get("/settings", headers=HEADERS)
+    assert settings.json()["ingest_token_last_four"] == second.json()["last_four"]
+    assert await find_user_id_by_token(session, first.json()["token"]) is None
     assert await find_user_id_by_token(session, other_token) == other.id
