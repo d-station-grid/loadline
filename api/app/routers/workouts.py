@@ -53,7 +53,9 @@ async def read_workouts(
                 }
             ]
         )
-    return await workout_list(session, user, since, until, before_id, limit, weeks)
+    return await workout_list(
+        session, user, since=since, until=until, before_id=before_id, limit=limit, weeks=weeks
+    )
 
 
 @router.get("/{workout_id}", response_model=WorkoutDetail)
