@@ -1,51 +1,13 @@
-import re
 from datetime import datetime
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.apple_health import bpm, is_apple_watch, parse_time, sport_of, vo2max_value
 from app.models import User, Vo2maxReading, Workout, WorkoutHeartRate
 from app.schemas.ingest import IngestPayload, IngestResult, MetricIn, WorkoutIn
-
-APPLE_WATCH = "Apple Watch"
-_SPACES = re.compile(r"\s+")
-
-# 種目名（日本語と英語）に含まれる語から loadline の sport へ。ここにない種目は取り込まない。
-# Health Auto Export の種目名は「屋外 ラン」「Outdoor Run」のように短いので、
-# 「ラン」「Run」で見る（「ランニング」「Running」もこれで当たる）
-_SPORTS = {
-    "サイクリング": "ride",
-    "Cycling": "ride",
-    "ラン": "run",
-    "Run": "run",
-}
-
-
-def is_apple_watch(source: str | None) -> bool:
-    """source が Apple Watch か。空白に \\xa0 が混ざるので、正規化してから比べる。
-
-    時計に名前を付けると「TaketoshiのApple Watch」、VO2max では
-    「Apple Watch | TaketoshiのApple Watch」のように届くので、含まれているかで見る。
-    """
-    if source is None:
-        return False
-    return APPLE_WATCH in _SPACES.sub(" ", source)
-
-
-def parse_time(value: str) -> datetime:
-    """ "2026-09-13 14:10:45 +0900" を tz 付きの datetime にする。"""
-    return datetime.strptime(value, "%Y-%m-%d %H:%M:%S %z")
-
-
-def sport_of(name: str) -> str | None:
-    """種目名に含まれる語から ride か run を決める。どちらでもなければ None。"""
-    for word, sport in _SPORTS.items():
-        if word in name:
-            return sport
-    return None
-
 
 # 届き直したときに上書きする列
 _COLUMNS = (
@@ -56,10 +18,6 @@ _COLUMNS = (
     "avg_heart_rate",
     "max_heart_rate",
 )
-
-
-def _bpm(value: float | None) -> int | None:
-    return None if value is None else round(value)
 
 
 async def _upsert_workouts(
@@ -106,8 +64,8 @@ async def _upsert_workouts(
             "started_at": parse_time(w.start),
             "ended_at": parse_time(w.end),
             "duration_sec": round(w.duration),
-            "avg_heart_rate": _bpm(w.avg_heart_rate.qty if w.avg_heart_rate else None),
-            "max_heart_rate": _bpm(w.max_heart_rate.qty if w.max_heart_rate else None),
+            "avg_heart_rate": bpm(w.avg_heart_rate.qty if w.avg_heart_rate else None),
+            "max_heart_rate": bpm(w.max_heart_rate.qty if w.max_heart_rate else None),
         }
         if w.id in existing:
             workout_id = existing[w.id]
@@ -160,8 +118,7 @@ async def _upsert_vo2max(
     points: list[tuple[datetime, Decimal]] = []
     for p in metric.data:
         if is_apple_watch(p.source):
-            value = Decimal(str(p.qty)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
-            points.append((parse_time(p.date), value))
+            points.append((parse_time(p.date), vo2max_value(p.qty)))
         else:
             result.vo2max_skipped += 1
     if not points:

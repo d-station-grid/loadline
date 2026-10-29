@@ -142,6 +142,22 @@ def workout_load(
     )
 
 
+def total_zones(loads: Sequence[WorkoutLoad]) -> ZoneTimes | None:
+    """期間の強度ごとの時間の合計。境目がそろっている前提で呼ぶ。
+
+    心拍のないワークアウトが 1 件でもあれば None（分からない）。外して足すと、全部が
+    心拍なしのとき 0 秒に見えるため。日ごとの負荷と同じ扱い。ワークアウトが 0 件なら 0 秒。
+    """
+    known = [w.zones for w in loads if w.zones is not None]
+    if len(known) < len(loads):
+        return None
+    return ZoneTimes(
+        low=sum(z.low for z in known),
+        mid=sum(z.mid for z in known),
+        high=sum(z.high for z in known),
+    )
+
+
 def daily_loads(
     loads: Iterable[tuple[date, float | None]], start: date, end: date
 ) -> list[DailyLoad]:

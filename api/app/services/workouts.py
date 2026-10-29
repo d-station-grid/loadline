@@ -1,6 +1,5 @@
 from dataclasses import asdict
-from datetime import datetime, time, timedelta
-from zoneinfo import ZoneInfo
+from datetime import datetime
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,16 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.load import zone_times
 from app.models import User, Workout, WorkoutHeartRate
 from app.schemas.workouts import HeartRateSample, WorkoutDetail, WorkoutSummary, ZoneSeconds
-
-
-def since_for_weeks(weeks: int, tz: ZoneInfo, now: datetime | None = None) -> datetime:
-    """「直近 N 週」の始まり。利用者のタイムゾーンの今日から N 週前の日の 0 時。
-
-    端末の日付で決めると、端末と設定のタイムゾーンがずれたときに境目の 1 日がずれるため、
-    api で決める。ダッシュボードの weeks と同じ日から始まる。
-    """
-    today = (now or datetime.now(tz)).astimezone(tz).date()
-    return datetime.combine(today - timedelta(weeks=weeks), time.min, tzinfo=tz)
 
 
 async def list_workouts(

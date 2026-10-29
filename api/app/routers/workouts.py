@@ -5,9 +5,10 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.exceptions import RequestValidationError
 
+from app.domain.calendar import since_for_weeks
 from app.routers.deps import CurrentUser, DbSession
 from app.schemas.workouts import WorkoutDetail, WorkoutList, WorkoutSummary
-from app.services.workouts import list_workouts, since_for_weeks, workout_detail
+from app.services.workouts import list_workouts, workout_detail
 
 router = APIRouter(prefix="/workouts", tags=["workouts"])
 

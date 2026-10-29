@@ -4,13 +4,14 @@
 数字とアバターの話す数字を食い違わせないため。
 """
 
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.calendar import start_of_day, today_in
 from app.domain.fallback_review import ReviewOption, fallback_review
 from app.domain.load import FitnessPoint
 from app.domain.review_material import ReviewMaterial
@@ -41,10 +42,6 @@ class ReviewClosedError(Exception):
     """今の週の振り返りではない。過ぎた週の選択は、次の週の材料に使った後なので変えない。"""
 
 
-def _start_of(day: date, tz: ZoneInfo) -> datetime:
-    return datetime.combine(day, time.min, tzinfo=tz)
-
-
 def _point(p: DayPoint) -> FitnessPoint:
     # 余力は判定の側で体力 − 疲労から計算し直すので、ここではそのまま写す
     return FitnessPoint(
@@ -72,15 +69,15 @@ async def judge_review_week(
         await session.execute(
             select(
                 func.min(Workout.started_at),
-                func.max(Workout.started_at).filter(Workout.started_at < _start_of(start, tz)),
+                func.max(Workout.started_at).filter(Workout.started_at < start_of_day(start, tz)),
             ).where(Workout.user_id == user.id)
         )
     ).one()
     durations = await session.execute(
         select(Workout.started_at, Workout.duration_sec).where(
             Workout.user_id == user.id,
-            Workout.started_at >= _start_of(previous_start, tz),
-            Workout.started_at < _start_of(end + timedelta(days=1), tz),
+            Workout.started_at >= start_of_day(previous_start, tz),
+            Workout.started_at < start_of_day(end + timedelta(days=1), tz),
         )
     )
     # その週と前の週の、ワークアウト 1 件に 1 つの日付と時間
@@ -178,7 +175,7 @@ async def create_review(
     同時に 2 回呼ばれても 1 件だけ入る（ON CONFLICT DO NOTHING）。振り返りと選択肢は
     同じトランザクションで入れるので、後から来た側には選択肢までそろって見える。
     """
-    today = today or datetime.now(ZoneInfo(user.timezone)).date()
+    today = today or today_in(ZoneInfo(user.timezone))
     start, end = review_period(today, user.review_weekday)
     existing = await _find(session, user.id, start)
     if existing is not None:
@@ -237,7 +234,7 @@ async def current_review(
     いちばん新しい期間の行ではなく、今の週で探す。振り返りの曜日を変えた直後は、
     いちばん新しい行が今の週より古い回のことがあるため。
     """
-    today = today or datetime.now(ZoneInfo(user.timezone)).date()
+    today = today or today_in(ZoneInfo(user.timezone))
     start, _ = review_period(today, user.review_weekday)
     review = await _find(session, user.id, start)
     return None if review is None else await _out(session, review)
@@ -268,7 +265,7 @@ async def select_option(
     if option is None:
         raise ReviewNotFoundError
 
-    today = today or datetime.now(ZoneInfo(user.timezone)).date()
+    today = today or today_in(ZoneInfo(user.timezone))
     start, _ = review_period(today, user.review_weekday)
     if review.period_start != start:
         raise ReviewClosedError
