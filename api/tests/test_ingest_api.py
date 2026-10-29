@@ -2,9 +2,10 @@ import json
 from pathlib import Path
 
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import User
+from app.models import User, Workout
 from app.services.ingest_tokens import current_token, issue_token
 from tests.factories import UserFactory
 
@@ -69,3 +70,28 @@ async def test_malformed_body_is_422(client: AsyncClient, session: AsyncSession)
     )
 
     assert res.status_code == 422
+
+
+async def test_each_token_writes_only_to_its_owner(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """同じファイルを 2 人が送っても、それぞれの行に入る。A がもう一度送っても B は変わらない。"""
+    a, token_a = await _user_with_token(session)
+    b, token_b = await _user_with_token(session)
+    body = json.loads(SAMPLE.read_text())
+
+    for token in (token_a, token_b):
+        res = await client.post("/ingest", json=body, headers={"Authorization": f"Bearer {token}"})
+        assert res.json()["workouts_added"] == 1
+    b_before = await session.scalar(select(Workout).where(Workout.user_id == b.id))
+    assert b_before is not None
+    b_updated_at = b_before.updated_at
+
+    again = await client.post("/ingest", json=body, headers={"Authorization": f"Bearer {token_a}"})
+
+    assert again.json()["workouts_updated"] == 1
+    owners = await session.scalars(select(Workout.user_id).order_by(Workout.user_id))
+    assert list(owners) == [a.id, b.id]
+    b_after = await session.scalar(select(Workout).where(Workout.user_id == b.id))
+    assert b_after is not None
+    assert b_after.updated_at == b_updated_at

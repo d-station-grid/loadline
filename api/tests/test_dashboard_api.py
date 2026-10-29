@@ -255,6 +255,21 @@ async def test_only_own_records(client: AsyncClient, session: AsyncSession) -> N
     assert body["days"][0]["load"] == 0
 
 
+async def test_does_not_show_someone_elses_vo2max(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    other = await _user(session, uid="uid-other")
+    await Vo2maxReadingFactory.create_async(
+        user_id=other.id,
+        measured_at=datetime.fromisoformat(f"{SAMPLE_DAY} 08:00").replace(tzinfo=JST),
+    )
+    await UserFactory.create_async(firebase_uid="uid-1", max_heart_rate=177, resting_heart_rate=75)
+
+    body = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY)
+
+    assert body["vo2max"] == []
+
+
 @pytest.mark.parametrize(
     "params",
     [
