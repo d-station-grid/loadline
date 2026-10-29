@@ -13,17 +13,25 @@ def today_for(user: User) -> date:
     return datetime.now(ZoneInfo(user.timezone)).date()
 
 
+class FutureDateError(ValueError):
+    """利用者のタイムゾーンで今日より後の日付。"""
+
+
 async def create_note(
-    session: AsyncSession, user_id: int, day: date, body: str, label: str | None = None
+    session: AsyncSession, user: User, day: date, body: str, label: str | None = None
 ) -> Note | None:
     """メモを 1 件作る。その日にもう書いてあれば何もせず None。
+
+    今日より後の日付は FutureDateError。今日の判定は利用者のタイムゾーンで。
 
     先に探してから入れると、同時に 2 回届いたときに一意制約の例外になる。
     ON CONFLICT DO NOTHING なら、どちらの順でも 1 件だけ入る。
     """
+    if day > today_for(user):
+        raise FutureDateError(day.isoformat())
     stmt = (
         insert(Note)
-        .values(user_id=user_id, date=day, body=body, label=label)
+        .values(user_id=user.id, date=day, body=body, label=label)
         .on_conflict_do_nothing(index_elements=[Note.user_id, Note.date])
         .returning(Note)
     )
