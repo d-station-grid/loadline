@@ -60,9 +60,16 @@ async def test_update_then_read_back(client: AsyncClient) -> None:
     assert get.json() == {**body, "ingest_token_last_four": None}
 
 
-async def test_invalid_settings_are_422(client: AsyncClient) -> None:
-    body = {"zone_boundary_1": 160, "zone_boundary_2": 150}
-
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"zone_boundary_1": 160, "zone_boundary_2": 150},
+        # 範囲の中で、安静時が最大と同じ（前後関係の検査で落ちる）
+        {"max_heart_rate": 110, "resting_heart_rate": 110},
+        {"timezone": "Mars/Olympus"},
+    ],
+)
+async def test_invalid_settings_are_422(client: AsyncClient, body: dict[str, object]) -> None:
     res = await client.put("/settings", json=body, headers=HEADERS)
 
     assert res.status_code == 422
