@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -10,7 +10,12 @@ from app.core.auth import Identity, InvalidTokenError, get_token_verifier
 from app.domain.review_week import review_period
 from app.main import app
 from app.models import User
-from tests.factories import UserFactory, WeeklyReviewFactory, WeeklyReviewOptionFactory
+from tests.factories import (
+    UserFactory,
+    WeeklyReviewFactory,
+    WeeklyReviewOptionFactory,
+    WorkoutFactory,
+)
 
 HEADERS = {"Authorization": "Bearer good"}
 
@@ -127,6 +132,24 @@ async def test_current_does_not_show_someone_elses_review(client: AsyncClient) -
     res = await client.get("/reviews/current", headers=HEADERS)
 
     assert res.status_code == 404
+
+
+async def test_post_does_not_count_someone_elses_workouts(client: AsyncClient) -> None:
+    """自分は 1 回、他人は同じ週に 2 回。振り返りの回数は自分の 1 回だけ。"""
+    me = await _me()
+    other = await UserFactory.create_async(max_heart_rate=177, resting_heart_rate=75)
+    start, _ = _current_period("Asia/Tokyo", 0)
+    day = datetime.combine(
+        date.fromisoformat(start) + timedelta(days=1), time(7), tzinfo=ZoneInfo("Asia/Tokyo")
+    )
+    await WorkoutFactory.create_async(user_id=me.id, started_at=day)
+    for hours in (0, 3):
+        await WorkoutFactory.create_async(user_id=other.id, started_at=day + timedelta(hours=hours))
+
+    res = await client.post("/reviews", headers=HEADERS)
+
+    assert res.status_code == 201
+    assert "This week you did 1 session" in res.json()["script"]
 
 
 async def test_put_selection_selects_and_reselects(client: AsyncClient) -> None:

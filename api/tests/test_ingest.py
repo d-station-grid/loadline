@@ -23,7 +23,7 @@ def _workouts_payload() -> IngestPayload:
     return IngestPayload.model_validate(json.loads(SAMPLE.read_text()))
 
 
-def _vo2max_payload(*points: tuple[str, float, str]) -> IngestPayload:
+def _vo2max_payload(*points: tuple[str, float, str | None]) -> IngestPayload:
     data = [{"date": date, "qty": qty, "source": source} for date, qty, source in points]
     return IngestPayload.model_validate(
         {"data": {"metrics": [{"name": "vo2_max", "units": "ml/(kg·min)", "data": data}]}}
@@ -123,6 +123,56 @@ async def test_vo2max_takes_apple_watch_and_skips_duplicates(session: AsyncSessi
     assert (second.vo2max_added, second.vo2max_skipped) == (0, 3)
     values = await session.scalars(select(Vo2maxReading.value).order_by(Vo2maxReading.measured_at))
     assert list(values) == [Decimal("46.5"), Decimal("46.7")]
+
+
+async def test_vo2max_from_other_sources_only_adds_nothing(session: AsyncSession) -> None:
+    user = await UserFactory.create_async()
+
+    result = await ingest(
+        session,
+        user.id,
+        _vo2max_payload(
+            ("2026-09-13 08:00:00 +0900", 45.0, "Google Health"),
+            ("2026-09-14 08:00:00 +0900", 46.0, None),
+        ),
+    )
+
+    assert (result.vo2max_added, result.vo2max_skipped) == (0, 2)
+    assert await _count(session, Vo2maxReading) == 0
+
+
+async def test_metrics_other_than_vo2max_are_ignored(session: AsyncSession) -> None:
+    user = await UserFactory.create_async()
+    payload = IngestPayload.model_validate(
+        {
+            "data": {
+                "metrics": [
+                    {
+                        "name": "resting_heart_rate",
+                        "data": [
+                            {
+                                "date": "2026-09-13 08:00:00 +0900",
+                                "qty": 52,
+                                "source": "Apple Watch",
+                            }
+                        ],
+                    }
+                ]
+            }
+        }
+    )
+
+    result = await ingest(session, user.id, payload)
+
+    assert result.model_dump() == {
+        "workouts_added": 0,
+        "workouts_updated": 0,
+        "workouts_skipped": 0,
+        "vo2max_added": 0,
+        "vo2max_updated": 0,
+        "vo2max_skipped": 0,
+    }
+    assert await _count(session, Vo2maxReading) == 0
 
 
 async def test_vo2max_resent_with_a_new_value_is_updated(session: AsyncSession) -> None:
