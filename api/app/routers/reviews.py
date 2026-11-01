@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Response, status
 
-from app.routers.deps import CurrentUser, DbSession
+from app.routers.deps import CurrentUser, DbSession, ReviewWriterDep
 from app.schemas.reviews import SelectionIn, WeeklyReviewOut
 from app.services.reviews import (
     HeartRateSettingsMissingError,
@@ -24,17 +24,20 @@ router = APIRouter(prefix="/reviews", tags=["reviews"])
         status.HTTP_409_CONFLICT: {"description": "最大心拍か安静時心拍が未設定"},
     },
 )
-async def add_review(user: CurrentUser, session: DbSession, response: Response) -> WeeklyReviewOut:
+async def add_review(
+    user: CurrentUser, session: DbSession, writer: ReviewWriterDep, response: Response
+) -> WeeklyReviewOut:
     """今の振り返りの週の振り返りを作る。週は、今日以前でいちばん近い振り返りの曜日の
     前日までの 7 日間（利用者のタイムゾーン）。
 
     その週の振り返りがもうあれば、作り直さずにそれを 200 で返す。後から届いた記録も
-    入れない。今は定型のセリフで作る。
+    入れない。セリフと選択肢は Gemini が書き、書けなければ（60 秒を超えたときも）定型に
+    する。どちらだったかは is_fallback で分かる。
     """
     if user.is_demo:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "guests cannot create reviews")
     try:
-        review, created = await create_review(session, user)
+        review, created = await create_review(session, user, writer)
     except HeartRateSettingsMissingError as e:
         raise HTTPException(status.HTTP_409_CONFLICT, "set max and resting heart rate first") from e
     if not created:
