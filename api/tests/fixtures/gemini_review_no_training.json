@@ -1,0 +1,51 @@
+{
+ "candidates": [
+  {
+   "content": {
+    "parts": [
+     {
+      "text": "{\n  \"line\": \"It looks like you had a completely quiet week with zero sessions. Life gets busy, and taking time away from training happens to everyone. Your body got a full rest, and we can ease back into things.\",\n  \"options\": [\n    {\n      \"label\": \"Take more rest\",\n      \"description\": \"Enjoy another quiet week away from training to stay refreshed.\"\n    },\n    {\n      \"label\": \"Short easy walk\",\n      \"description\": \"A gentle stroll to get moving again without any pressure.\"\n    }\n  ]\n}"
+     }
+    ],
+    "role": "model"
+   },
+   "finish_reason": "STOP"
+  }
+ ],
+ "create_time": "2026-11-01T03:41:14.506682Z",
+ "model_version": "gemini-3.8-flash",
+ "response_id": "2rTmarr2HqqMx9gPopiT2QE",
+ "usage_metadata": {
+  "candidates_token_count": 126,
+  "candidates_tokens_details": [
+   {
+    "modality": "TEXT",
+    "token_count": 126
+   }
+  ],
+  "prompt_token_count": 981,
+  "prompt_tokens_details": [
+   {
+    "modality": "TEXT",
+    "token_count": 981
+   }
+  ],
+  "thoughts_token_count": 1614,
+  "total_token_count": 2721,
+  "traffic_type": "ON_DEMAND"
+ },
+ "automatic_function_calling_history": [],
+ "parsed": {
+  "line": "It looks like you had a completely quiet week with zero sessions. Life gets busy, and taking time away from training happens to everyone. Your body got a full rest, and we can ease back into things.",
+  "options": [
+   {
+    "label": "Take more rest",
+    "description": "Enjoy another quiet week away from training to stay refreshed."
+   },
+   {
+    "label": "Short easy walk",
+    "description": "A gentle stroll to get moving again without any pressure."
+   }
+  ]
+ }
+}
