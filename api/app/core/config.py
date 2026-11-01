@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     gemini_models: list[str] = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-2.5-flash"]
     # 振り返り 1 通に待つ上限。超えたら定型にする
     gemini_timeout_sec: float = 60.0
+    # 内部の窓口（/internal）を呼べるのは、Cloud Scheduler と Cloud Tasks が付ける OIDC
+    # トークンだけ。宛先（audience）と、トークンを出すサービスアカウントのメールアドレス。
+    # どちらかが空なら、内部の窓口はすべて 401 にする
+    internal_audience: str = ""
+    internal_caller_email: str = ""
 
 
 @lru_cache
