@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # どちらかが空なら、内部の窓口はすべて 401 にする
     internal_audience: str = ""
     internal_caller_email: str = ""
+    # 振り返りを 1 人ずつ作るタスクを積むキュー（projects/.../locations/.../queues/...）。
+    # 空なら積まずに、見つけた相手をログに出すだけ
+    tasks_queue: str = ""
 
 
 @lru_cache

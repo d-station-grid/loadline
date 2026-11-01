@@ -10,12 +10,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from app.core.internal_auth import require_internal_caller
-from app.routers.deps import DbSession, ReviewWriterDep
+from app.routers.deps import DbSession, ReviewQueueDep, ReviewWriterDep
 from app.services.auto_reviews import (
     AutoReviewResult,
     UserNotFoundError,
     create_for_user,
-    due_reviews,
+    dispatch_due_reviews,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,15 +42,20 @@ class AutoReviewOut(BaseModel):
 
 
 @router.post("/reviews/dispatch")
-async def dispatch_reviews(session: DbSession) -> DispatchOut:
-    """Scheduler が 1 時間おきに呼ぶ。振り返りを自動で作る相手と週を探す。
+async def dispatch_reviews(session: DbSession, queue: ReviewQueueDep) -> DispatchOut:
+    """Scheduler が 1 時間おきに呼ぶ。振り返りを自動で作る相手と週を探し、1 人ずつ Tasks に積む。
 
-    Tasks に積むのは次の PR で足す。今は見つけた相手をログに出して返すだけ。
+    積めなかった人がいれば、残りを積み終えてから 500 を返す（Scheduler のログに失敗が残る）。
+    その人は 1 時間後の次の回でもう一度見つかる。TASKS_QUEUE が空なら探すだけ。
     """
-    due = await due_reviews(session, datetime.now(UTC))
-    logger.info("internal: %d users are due for a weekly review: %s", len(due), due)
+    done = await dispatch_due_reviews(session, queue, datetime.now(UTC))
+    if done.failed:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            f"could not enqueue {len(done.failed)} of {len(done.due)} reviews",
+        )
     return DispatchOut(
-        reviews=[DueReviewOut(user_id=d.user_id, period_start=d.period_start) for d in due]
+        reviews=[DueReviewOut(user_id=d.user_id, period_start=d.period_start) for d in done.due]
     )
 
 
