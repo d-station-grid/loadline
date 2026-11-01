@@ -24,8 +24,8 @@ class ReviewOption:
 
 
 @dataclass(frozen=True)
-class FallbackReview:
-    """アバターが話すセリフと、2〜3 個の選択肢。"""
+class ReviewContent:
+    """アバターが話すセリフと、2〜3 個の選択肢。定型でも、LLM が書いたものでも同じ形。"""
 
     script: str
     options: tuple[ReviewOption, ...]
@@ -65,9 +65,9 @@ _OPTIONS: dict[Situation, tuple[ReviewOption, ...]] = {
 }
 
 
-def fallback_review(week: WeekSituation) -> FallbackReview:
+def fallback_review(week: WeekSituation) -> ReviewContent:
     """判定した状況から、定型のセリフと選択肢を作る。"""
-    return FallbackReview(script=_script(week), options=_OPTIONS[week.situation])
+    return ReviewContent(script=_script(week), options=_OPTIONS[week.situation])
 
 
 def _script(week: WeekSituation) -> str:

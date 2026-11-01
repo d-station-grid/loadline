@@ -1,0 +1,55 @@
+{
+ "candidates": [
+  {
+   "content": {
+    "parts": [
+     {
+      "text": "{\"line\":\"You aimed to keep it steady, and you did just that across four sessions. It sounds like those hills with friends felt wonderful on the legs. Your fitness and fatigue are in a great balance right now.\",\"options\":[{\"label\":\"Take it easy\",\"description\":\"Give yourself extra rest and focus on gentle movement.\"},{\"label\":\"Keep it steady\",\"description\":\"Stay with the same balanced rhythm for another week.\"},{\"label\":\"Build a little\",\"description\":\"Add a small bit of extra time to your training.\"}]}"
+     }
+    ],
+    "role": "model"
+   },
+   "finish_reason": "STOP"
+  }
+ ],
+ "create_time": "2026-11-01T03:40:47.495571Z",
+ "model_version": "gemini-3.8-flash",
+ "response_id": "v7TmatOfHu6Nx9gPlOKYgQM",
+ "usage_metadata": {
+  "candidates_token_count": 105,
+  "candidates_tokens_details": [
+   {
+    "modality": "TEXT",
+    "token_count": 105
+   }
+  ],
+  "prompt_token_count": 1058,
+  "prompt_tokens_details": [
+   {
+    "modality": "TEXT",
+    "token_count": 1058
+   }
+  ],
+  "thoughts_token_count": 1536,
+  "total_token_count": 2699,
+  "traffic_type": "ON_DEMAND"
+ },
+ "automatic_function_calling_history": [],
+ "parsed": {
+  "line": "You aimed to keep it steady, and you did just that across four sessions. It sounds like those hills with friends felt wonderful on the legs. Your fitness and fatigue are in a great balance right now.",
+  "options": [
+   {
+    "label": "Take it easy",
+    "description": "Give yourself extra rest and focus on gentle movement."
+   },
+   {
+    "label": "Keep it steady",
+    "description": "Stay with the same balanced rhythm for another week."
+   },
+   {
+    "label": "Build a little",
+    "description": "Add a small bit of extra time to your training."
+   }
+  ]
+ }
+}

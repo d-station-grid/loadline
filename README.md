@@ -284,7 +284,7 @@ MVP では、このサービスの核となる体験だけを作ります。週�
 - **DB**: PostgreSQL 18（Neon）
 - **認証**: Firebase Authentication（firebase 12、firebase-admin 7）
 - **デプロイ先**: Google Cloud の Cloud Run（Dockerfile と GitHub Actions）。音声ファイルは Cloud Storage。週に1回の生成は Cloud Scheduler と Cloud Tasks
-- **セリフの生成**: Gemini 3.8 Flash（Vertex AI 経由。google-genai 2.24）
+- **セリフの生成**: Gemini 3.8 Flash（Vertex AI 経由。google-genai 2.34）
 - **セリフの確認**: Jev 1.13（TypeSafe AI。typesafe-sdk 0.7）
 - **音声合成**: Kokoro v1.0（オープンソース。kokoro-onnx 0.6）
 - **記録の取り込み**: Health Auto Export（iPhone の送信アプリ）

@@ -1,0 +1,51 @@
+{
+ "candidates": [
+  {
+   "content": {
+    "parts": [
+     {
+      "text": "{\"line\":\"You put in six sessions this week even with that tough work deadline and poor sleep. Your fatigue is running high, and those heavy legs are asking for some well earned kindness and rest.\",\"options\":[{\"label\":\"Take full rest\",\"description\":\"Give your body time to sleep and recover completely.\"},{\"label\":\"Short easy spins\",\"description\":\"Keep sessions brief and gentle without any pressure.\"}]}"
+     }
+    ],
+    "role": "model"
+   },
+   "finish_reason": "STOP"
+  }
+ ],
+ "create_time": "2026-11-01T03:41:02.390040Z",
+ "model_version": "gemini-3.8-flash",
+ "response_id": "zrTmapjnF_iax9gP1YfM0Qw",
+ "usage_metadata": {
+  "candidates_token_count": 80,
+  "candidates_tokens_details": [
+   {
+    "modality": "TEXT",
+    "token_count": 80
+   }
+  ],
+  "prompt_token_count": 1073,
+  "prompt_tokens_details": [
+   {
+    "modality": "TEXT",
+    "token_count": 1073
+   }
+  ],
+  "thoughts_token_count": 1208,
+  "total_token_count": 2361,
+  "traffic_type": "ON_DEMAND"
+ },
+ "automatic_function_calling_history": [],
+ "parsed": {
+  "line": "You put in six sessions this week even with that tough work deadline and poor sleep. Your fatigue is running high, and those heavy legs are asking for some well earned kindness and rest.",
+  "options": [
+   {
+    "label": "Take full rest",
+    "description": "Give your body time to sleep and recover completely."
+   },
+   {
+    "label": "Short easy spins",
+    "description": "Keep sessions brief and gentle without any pressure."
+   }
+  ]
+ }
+}
