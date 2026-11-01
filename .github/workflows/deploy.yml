@@ -20,6 +20,10 @@ env:
   REGION: asia-northeast1
   IMAGE: asia-northeast1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/loadline/api
   RUNTIME_SA: loadline-api@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+  # 振り返りを自動で作る。Scheduler と Tasks はこの URL を呼び、invoker の OIDC トークンを付ける
+  API_URL: https://api-qbvpsx77dq-an.a.run.app
+  INVOKER_SA: loadline-invoker@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+  TASKS_QUEUE: projects/${{ vars.GCP_PROJECT_ID }}/locations/asia-northeast1/queues/weekly-reviews
 
 jobs:
   deploy:
@@ -67,6 +71,6 @@ jobs:
             --image "$IMAGE:${{ github.sha }}" \
             --service-account "$RUNTIME_SA" \
             --allow-unauthenticated \
-            --set-env-vars "APP_ENV=production,FIREBASE_PROJECT_ID=${{ vars.GCP_PROJECT_ID }}" \
+            --set-env-vars "APP_ENV=production,FIREBASE_PROJECT_ID=${{ vars.GCP_PROJECT_ID }},INTERNAL_AUDIENCE=$API_URL,INTERNAL_CALLER_EMAIL=$INVOKER_SA,TASKS_QUEUE=$TASKS_QUEUE" \
             --set-secrets DATABASE_URL=database-url:latest \
             --quiet

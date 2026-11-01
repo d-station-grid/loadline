@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +25,16 @@ class Settings(BaseSettings):
     # どちらかが空なら、内部の窓口はすべて 401 にする
     internal_audience: str = ""
     internal_caller_email: str = ""
+    # 振り返りを 1 人ずつ作るタスクを積むキュー（projects/.../locations/.../queues/...）。
+    # 空なら積まずに、見つけた相手をログに出すだけ
+    tasks_queue: str = ""
+
+    @field_validator("internal_audience")
+    @classmethod
+    def _drop_trailing_slash(cls, value: str) -> str:
+        # Tasks が付ける宛先と窓口が検証する宛先は、文字列が完全に一致しないと 401 になる。
+        # どちらもこの値を使うので、ここで 1 回だけそろえる
+        return value.rstrip("/")
 
 
 @lru_cache

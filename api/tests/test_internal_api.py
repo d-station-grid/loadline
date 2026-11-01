@@ -14,11 +14,15 @@ from app.domain.calendar import today_for
 from app.domain.review_week import review_period
 from app.main import app
 from app.models import User, WeeklyReview
+from app.routers import internal
+from app.routers.deps import get_review_queue
 from app.services.auto_reviews import (
     AutoReview,
     AutoReviewResult,
+    Dispatched,
     DueReview,
     create_for_user,
+    dispatch_due_reviews,
     due_reviews,
 )
 from tests.factories import UserFactory, WeeklyReviewFactory
@@ -142,6 +146,85 @@ async def test_dispatch_returns_the_due_users(client: AsyncClient) -> None:
 
     assert res.status_code == 200
     assert res.json() == {"reviews": []}
+
+
+class FakeQueue:
+    """積んだ相手を控える。fail_for の人だけ失敗させる。"""
+
+    def __init__(self, fail_for: set[int] | None = None) -> None:
+        self.enqueued: list[DueReview] = []
+        self.at: list[datetime] = []
+        self.fail_for = fail_for or set()
+
+    async def enqueue(self, due: DueReview, at: datetime) -> None:
+        if due.user_id in self.fail_for:
+            raise RuntimeError("tasks is down")
+        self.enqueued.append(due)
+        self.at.append(at)
+
+
+async def test_dispatch_enqueues_each_due_user(session: AsyncSession) -> None:
+    first = await _runner()
+    second = await _runner()
+    await _runner(review_weekday=1)
+    queue = FakeQueue()
+
+    done = await dispatch_due_reviews(session, queue, MONDAY_6AM_TOKYO)
+
+    expected = [DueReview(u.id, date(2026, 10, 26)) for u in (first, second)]
+    assert queue.enqueued == expected
+    # タスクの名前に使う時刻は dispatch の時刻
+    assert queue.at == [MONDAY_6AM_TOKYO, MONDAY_6AM_TOKYO]
+    assert done == Dispatched(due=expected, failed=[])
+
+
+async def test_dispatch_keeps_going_when_one_fails(session: AsyncSession) -> None:
+    first = await _runner()
+    second = await _runner()
+    queue = FakeQueue(fail_for={first.id})
+
+    done = await dispatch_due_reviews(session, queue, MONDAY_6AM_TOKYO)
+
+    # 1 人目が積めなくても 2 人目は積む
+    assert queue.enqueued == [DueReview(second.id, date(2026, 10, 26))]
+    assert done.failed == [DueReview(first.id, date(2026, 10, 26))]
+
+
+async def test_dispatch_without_a_queue_only_finds(session: AsyncSession) -> None:
+    user = await _runner()
+
+    done = await dispatch_due_reviews(session, None, MONDAY_6AM_TOKYO)
+
+    assert done == Dispatched(due=[DueReview(user.id, date(2026, 10, 26))], failed=[])
+
+
+async def test_dispatch_is_500_when_some_could_not_be_queued(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    due = [DueReview(1, date(2026, 10, 26)), DueReview(2, date(2026, 10, 26))]
+
+    async def fake_dispatch(*_args: Any) -> Dispatched:
+        return Dispatched(due=due, failed=due[:1])
+
+    monkeypatch.setattr(internal, "dispatch_due_reviews", fake_dispatch)
+
+    res = await client.post("/internal/reviews/dispatch", headers=HEADERS)
+
+    assert res.status_code == 500
+    assert res.json() == {"detail": "could not enqueue 1 of 2 reviews"}
+
+
+async def test_dispatch_endpoint_uses_the_configured_queue(client: AsyncClient) -> None:
+    # 窓口が queue の依存を service に渡していること。今の時刻では誰が当たるか決められないので、
+    # 当たる人がいないことと、積まないことだけ見る
+    queue = FakeQueue()
+    app.dependency_overrides[get_review_queue] = lambda: queue
+    await _runner(max_heart_rate=None)
+
+    res = await client.post("/internal/reviews/dispatch", headers=HEADERS)
+
+    assert res.status_code == 200
+    assert queue.enqueued == []
 
 
 # 1 人分を作る

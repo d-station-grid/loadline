@@ -4,11 +4,13 @@ from typing import Annotated
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.adapters.cloud_tasks import review_queue
 from app.adapters.gemini import gemini_writer
 from app.core.auth import Identity, get_identity
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.models import User
+from app.services.auto_reviews import ReviewQueue
 from app.services.reviews import ReviewWriter
 from app.services.users import get_or_create_user
 
@@ -32,3 +34,12 @@ def get_review_writer() -> ReviewWriter | None:
 
 
 ReviewWriterDep = Annotated[ReviewWriter | None, Depends(get_review_writer)]
+
+
+@lru_cache
+def get_review_queue() -> ReviewQueue | None:
+    """振り返りのタスクを積む Cloud Tasks。プロセスで 1 つ。TASKS_QUEUE が空なら None。"""
+    return review_queue(get_settings())
+
+
+ReviewQueueDep = Annotated[ReviewQueue | None, Depends(get_review_queue)]

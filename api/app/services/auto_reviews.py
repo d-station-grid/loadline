@@ -5,8 +5,10 @@ Scheduler が 1 時間おきに due_reviews を呼び、見つかった人を 1 
 """
 
 import enum
+import logging
 from dataclasses import dataclass
 from datetime import date, datetime
+from typing import Protocol
 
 from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +18,8 @@ from app.domain.calendar import today_for
 from app.domain.review_week import review_period
 from app.models import User, WeeklyReview
 from app.services.reviews import HeartRateSettingsMissingError, ReviewWriter, create_review
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -63,6 +67,43 @@ async def due_reviews(session: AsyncSession, now: datetime) -> list[DueReview]:
         for user_id, start in weeks.items()
         if (user_id, start) not in made
     ]
+
+
+class ReviewQueue(Protocol):
+    """1 人分を作るタスクを積む。adapter の Cloud Tasks が実体。積めなければ例外を上げる。"""
+
+    async def enqueue(self, due: DueReview, at: datetime) -> None: ...
+
+
+@dataclass(frozen=True)
+class Dispatched:
+    due: list[DueReview]
+    # 積めなかった相手。1 時間後の次の回で、まだ振り返りがなければもう一度見つかる
+    failed: list[DueReview]
+
+
+async def dispatch_due_reviews(
+    session: AsyncSession, queue: ReviewQueue | None, now: datetime
+) -> Dispatched:
+    """相手を探して 1 人ずつ積む。queue がなければ（手元など）探すだけ。
+
+    1 人積めなくても残りの人は続ける。
+    """
+    due = await due_reviews(session, now)
+    # 積むのは数秒かかることがある。そのあいだ DB の接続を持たない
+    await session.commit()
+    if queue is None:
+        logger.info("dispatch: no queue configured, %d users are due: %s", len(due), due)
+        return Dispatched(due=due, failed=[])
+    failed: list[DueReview] = []
+    for d in due:
+        try:
+            await queue.enqueue(d, now)
+        except Exception:
+            logger.exception("dispatch: could not enqueue %s", d)
+            failed.append(d)
+    logger.info("dispatch: enqueued %d of %d users", len(due) - len(failed), len(due))
+    return Dispatched(due=due, failed=failed)
 
 
 class AutoReviewResult(enum.StrEnum):
