@@ -10,9 +10,10 @@ from pathlib import Path
 
 import httpx
 import pytest
+from google.auth.exceptions import DefaultCredentialsError
 from google.genai import errors, types
 
-from app.adapters.gemini import GeminiReviewWriter, gemini_writer
+from app.adapters.gemini import GeminiReviewWriter, _Review, gemini_writer
 from app.core.config import Settings
 from app.domain.fallback_review import ReviewOption
 
@@ -87,6 +88,8 @@ async def test_asks_for_json_in_the_review_schema() -> None:
 
     config = generate.configs[0]
     assert config.response_mime_type == "application/json"
+    assert config.response_schema is _Review
+    assert set(_Review.model_json_schema()["properties"]) == {"line", "options"}
     assert config.system_instruction is not None
 
 
@@ -94,6 +97,8 @@ async def test_asks_for_json_in_the_review_schema() -> None:
     "error",
     [
         pytest.param(busy(), id="busy_429"),
+        pytest.param(errors.ClientError(404, {"error": {"code": 404}}), id="no_such_model_404"),
+        pytest.param(errors.ServerError(500, {"error": {"code": 500}}), id="internal_500"),
         pytest.param(errors.ServerError(503, {"error": {"code": 503}}), id="unavailable_503"),
         pytest.param(httpx.ConnectError("connection refused"), id="network"),
     ],
@@ -106,6 +111,27 @@ async def test_moves_to_the_next_model_when_a_model_fails(error: Exception) -> N
 
     assert review is not None
     assert generate.models == ["model-a", "model-b"]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(errors.ClientError(400, {"error": {"code": 400}}), id="bad_request_400"),
+        pytest.param(errors.ClientError(401, {"error": {"code": 401}}), id="unauthenticated_401"),
+        pytest.param(errors.ClientError(403, {"error": {"code": 403}}), id="forbidden_403"),
+        # google-auth の例外には型が付いていない
+        pytest.param(DefaultCredentialsError("no creds"), id="no_credentials"),  # type: ignore[no-untyped-call]
+    ],
+)
+async def test_stops_at_once_when_another_model_would_fail_the_same_way(
+    error: Exception, caplog: pytest.LogCaptureFixture
+) -> None:
+    """リクエストの誤り、権限、認証の失敗はモデルを替えても直らない。次へ進まず打ち切る。"""
+    generate = FakeGenerate(error, recorded("steady"))
+
+    assert await writer(generate).write("prompt") is None
+    assert generate.models == ["model-a"]
+    assert [r.levelname for r in caplog.records] == ["ERROR"]
 
 
 async def test_retries_the_same_model_once_when_json_is_broken() -> None:

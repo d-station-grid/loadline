@@ -1,8 +1,9 @@
 """Vertex AI の Gemini に、振り返りのセリフと選択肢を書いてもらう。
 
 構造化出力で JSON を受け取り、domain の決まり（長さと数）で確かめる。モデルは先頭から
-順に試す。混雑などで呼べなければ次のモデルへ、壊れた JSON や決まりに合わない応答なら
-同じモデルでもう 1 回だけやり直す。全体で timeout_sec を超えるか、どのモデルでも
+順に試す。混雑や障害で呼べなければ次のモデルへ、壊れた JSON や決まりに合わない応答なら
+同じモデルでもう 1 回だけやり直す。リクエストの誤りや権限、認証の失敗はモデルを替えても
+直らないので、その場で打ち切る。全体で timeout_sec を超えるか、どのモデルでも
 だめなら None を返し、呼ぶ側が定型に切り替える。
 """
 
@@ -25,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 # 1 つのモデルで試す回数。2 回目は、壊れた JSON や決まりに合わない応答のやり直し
 ATTEMPTS_PER_MODEL = 2
+# 次のモデルで直る見込みのある 4xx。モデルがない・廃止された（404）と混雑（429）。5xx も次へ
+_NEXT_MODEL_CODES = frozenset({404, 429})
 
 
 class _Option(BaseModel):
@@ -81,10 +84,20 @@ class GeminiReviewWriter:
             for attempt in range(1, ATTEMPTS_PER_MODEL + 1):
                 try:
                     response = await self._generate(model=model, contents=contents, config=_CONFIG)
-                except (errors.APIError, httpx.HTTPError, GoogleAuthError) as error:
-                    # 混雑（429）や障害は、同じモデルでやり直さず次のモデルへ
+                except errors.APIError as error:
+                    if error.code in _NEXT_MODEL_CODES or error.code >= 500:
+                        logger.warning("gemini: %s failed: %r", model, error)
+                        break
+                    # 400 や権限（401、403）は、どのモデルでも同じ結果になる
+                    logger.error("gemini: %s rejected the request: %r", model, error)
+                    return None
+                except httpx.HTTPError as error:
+                    # 通信の失敗は、同じモデルでやり直さず次のモデルへ
                     logger.warning("gemini: %s failed: %r", model, error)
                     break
+                except GoogleAuthError as error:
+                    logger.error("gemini: authentication failed: %r", error)
+                    return None
                 try:
                     return _parse(response)
                 except (ValidationError, InvalidReviewError) as error:

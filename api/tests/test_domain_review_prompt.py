@@ -126,7 +126,7 @@ def test_prompt_passes_notes_by_date_with_labels() -> None:
 
 
 def test_system_instruction_keeps_the_rules_of_the_fallback() -> None:
-    """定型と同じ決まり: 長さ、軽い選択肢、医療的な助言をしない、専門用語を使わない。"""
+    """定型と同じ決まり（長さ、軽い選択肢、医療的な助言と専門用語なし）と、創作しない、英語で書く。"""
     for rule in (
         "28 to 40",
         "One option must always be the gentle one",
@@ -134,6 +134,8 @@ def test_system_instruction_keeps_the_rules_of_the_fallback() -> None:
         "You are not a doctor",
         "TSS, CTL, ATL, TSB, PMC or TRIMP",
         "never give fitness or fatigue as a number",
+        "Never invent events",
+        "in English, even when the notes are in another language",
     ):
         assert rule in SYSTEM_INSTRUCTION
 
