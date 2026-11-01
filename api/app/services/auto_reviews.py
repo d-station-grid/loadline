@@ -1,12 +1,12 @@
 """振り返りを自動で作る相手を探す、1 人分を作る。
 
-Scheduler が 1 時間おきに due_user_ids を呼び、見つかった人を 1 人ずつ Tasks に積む。
-Tasks からは create_for_user が 1 人ずつ呼ばれる。
+Scheduler が 1 時間おきに due_reviews を呼び、見つかった人を 1 人ずつ Tasks に積む。
+タスクには探したときの週の初日を持たせ、Tasks からは create_for_user が 1 人ずつ呼ばれる。
 """
 
 import enum
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,8 +18,16 @@ from app.models import User, WeeklyReview
 from app.services.reviews import HeartRateSettingsMissingError, ReviewWriter, create_review
 
 
-async def due_user_ids(session: AsyncSession, now: datetime) -> list[int]:
-    """now の時点で、振り返りを自動で作る相手の id（昇順）。
+@dataclass(frozen=True)
+class DueReview:
+    """自動で作る相手と、作る週の初日。"""
+
+    user_id: int
+    period_start: date
+
+
+async def due_reviews(session: AsyncSession, now: datetime) -> list[DueReview]:
+    """now の時点で、振り返りを自動で作る相手と週（利用者の id の昇順）。
 
     ゲストではなく、心拍の設定があり、振り返りの曜日の 6 時を過ぎていて、今の週の
     振り返りがまだない人。時刻の判定は利用者ごとのタイムゾーンでするので、候補は
@@ -50,7 +58,11 @@ async def due_user_ids(session: AsyncSession, now: datetime) -> list[int]:
         )
     )
     made = {(user_id, start) for user_id, start in rows}
-    return [user_id for user_id, start in weeks.items() if (user_id, start) not in made]
+    return [
+        DueReview(user_id, start)
+        for user_id, start in weeks.items()
+        if (user_id, start) not in made
+    ]
 
 
 class AutoReviewResult(enum.StrEnum):
@@ -72,20 +84,30 @@ class UserNotFoundError(Exception):
 
 
 async def create_for_user(
-    session: AsyncSession, user_id: int, writer: ReviewWriter | None
+    session: AsyncSession,
+    user_id: int,
+    period_start: date,
+    writer: ReviewWriter | None,
+    now: datetime | None = None,
 ) -> AutoReview:
-    """1 人分の今の週の振り返りを作る。作り方は本人がボタンで作るときと同じ。
+    """1 人分の、period_start に始まる週の振り返りを作る。作り方は本人がボタンで作るときと同じ。
 
     積んでから呼ばれるまでの間に、ゲストになった・心拍の設定を消した人は飛ばす。
-    時刻は確かめ直さない。遅れて日をまたいでも、今の週は変わらないため。
+    今の週が period_start でなくなっていても飛ばす。7 日以上遅れた再試行（次の振り返りの
+    曜日の 0〜6 時に届けば、記録を待つ 6 時より前に次の週を作ってしまう）と、待つ間に
+    振り返りの曜日を変えた場合。同じ週のうちの遅れ（火曜〜日曜）なら作る。
     """
     user = await session.get(User, user_id)
     if user is None:
         raise UserNotFoundError
     if user.is_demo:
         return AutoReview(AutoReviewResult.SKIPPED)
+    # 照合した週と作る週がずれないように、今日は 1 回だけ決めて create_review にも渡す
+    today = today_for(user.timezone, now)
+    if review_period(today, user.review_weekday)[0] != period_start:
+        return AutoReview(AutoReviewResult.SKIPPED)
     try:
-        review, created = await create_review(session, user, writer)
+        review, created = await create_review(session, user, writer, today=today)
     except HeartRateSettingsMissingError:
         return AutoReview(AutoReviewResult.SKIPPED)
     return AutoReview(AutoReviewResult.CREATED if created else AutoReviewResult.EXISTS, review.id)
