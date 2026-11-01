@@ -62,11 +62,18 @@ class GenerateContent(Protocol):
 
 class GeminiReviewWriter:
     def __init__(
-        self, generate: GenerateContent, models: Sequence[str], timeout_sec: float
+        self,
+        generate: GenerateContent,
+        models: Sequence[str],
+        timeout_sec: float,
+        client: genai.Client | None = None,
     ) -> None:
+        """client は generate の持ち主。genai.Client は片付けられるときに通信を閉じるので、
+        generate だけを持つと次の呼び出しが「client has been closed」で失敗する。"""
         if not models:
             raise ValueError("at least one model is required")
         self._generate = generate
+        self._client = client
         self._models = tuple(models)
         self._timeout_sec = timeout_sec
 
@@ -132,5 +139,8 @@ def gemini_writer(settings: Settings) -> GeminiReviewWriter | None:
         vertexai=True, project=settings.gemini_project, location=settings.gemini_location
     )
     return GeminiReviewWriter(
-        client.aio.models.generate_content, settings.gemini_models, settings.gemini_timeout_sec
+        client.aio.models.generate_content,
+        settings.gemini_models,
+        settings.gemini_timeout_sec,
+        client=client,
     )

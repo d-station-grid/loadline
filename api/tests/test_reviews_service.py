@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -6,7 +7,7 @@ import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from app.domain.fallback_review import ReviewOption, fallback_review
+from app.domain.fallback_review import ReviewContent, ReviewOption, fallback_review
 from app.domain.situation import Situation
 from app.models import User, WeeklyReview, WeeklyReviewOption, Workout
 from app.services.dashboard import build_dashboard
@@ -17,10 +18,12 @@ from app.services.reviews import (
     create_review,
     current_review,
     judge_review_week,
+    notes_for_review,
     review_material,
     select_option,
 )
 from tests.factories import (
+    NoteFactory,
     UserFactory,
     WeeklyReviewFactory,
     WeeklyReviewOptionFactory,
@@ -425,3 +428,115 @@ async def test_create_review_does_not_change_the_script_by_the_previous_choice(
         review.script
         == fallback_review(await judge_review_week(session, user, MONDAY, TODAY)).script
     )
+
+
+WRITTEN = ReviewContent(
+    script="A calm week of riding. " + " ".join(["word"] * 30),
+    options=(
+        ReviewOption("Rest fully", "Take a few days off."),
+        ReviewOption("Keep it steady", "Train the same way as last week."),
+    ),
+)
+
+
+class FakeWriter:
+    """受け取った本文を控え、決めた結果を返す。"""
+
+    def __init__(self, result: ReviewContent | None) -> None:
+        self.result = result
+        self.prompts: list[str] = []
+
+    async def write(self, contents: str) -> ReviewContent | None:
+        self.prompts.append(contents)
+        return self.result
+
+    def data(self) -> Any:
+        """最後に受け取った本文の JSON の部分。"""
+        text = self.prompts[-1]
+        return json.loads(text[text.index("{") :])
+
+
+async def test_create_review_saves_what_the_writer_wrote(session: AsyncSession) -> None:
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+    writer = FakeWriter(WRITTEN)
+
+    review, created = await create_review(session, user, writer, today=TODAY)
+
+    assert created
+    assert review.script == WRITTEN.script
+    assert not review.is_fallback
+    assert [(o.position, o.label, o.description) for o in review.options] == [
+        (0, "Rest fully", "Take a few days off."),
+        (1, "Keep it steady", "Train the same way as last week."),
+    ]
+    # 判定はコードで決めたものを渡し、保存する
+    assert writer.data()["situation"] == review.situation.value
+
+
+async def test_create_review_falls_back_when_the_writer_cannot_write(
+    session: AsyncSession,
+) -> None:
+    """Gemini が書けなければ（失敗、時間切れ）、定型で作る。"""
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+    writer = FakeWriter(None)
+
+    review, created = await create_review(session, user, writer, today=TODAY)
+
+    expected = fallback_review(await judge_review_week(session, user, MONDAY, TODAY))
+    assert created
+    assert len(writer.prompts) == 1
+    assert review.is_fallback
+    assert review.script == expected.script
+
+
+async def test_existing_review_does_not_call_the_writer_again(session: AsyncSession) -> None:
+    """作った週は作り直さないので、LLM も呼ばない。"""
+    user = await _user()
+    first, _ = await create_review(session, user, FakeWriter(WRITTEN), today=TODAY)
+    writer = FakeWriter(None)
+
+    second, created = await create_review(session, user, writer, today=TODAY)
+
+    assert not created
+    assert second == first
+    assert writer.prompts == []
+
+
+async def test_writer_gets_the_notes_of_the_week_and_the_previous_choice(
+    session: AsyncSession,
+) -> None:
+    user = await _user()
+    other = await _user()
+    await NoteFactory.create_async(user_id=user.id, date=MONDAY - timedelta(days=1), body="Before")
+    await NoteFactory.create_async(user_id=user.id, date=SUNDAY, label="Hills", body="Long ride")
+    await NoteFactory.create_async(user_id=user.id, date=MONDAY, body="Slept badly")
+    await NoteFactory.create_async(user_id=user.id, date=SUNDAY + timedelta(days=1), body="After")
+    await NoteFactory.create_async(user_id=other.id, date=MONDAY + timedelta(days=2), body="Other")
+    await _review_with_options(user, MONDAY - timedelta(weeks=1), chosen=1)
+    writer = FakeWriter(WRITTEN)
+
+    await create_review(session, user, writer, today=TODAY)
+
+    data = writer.data()
+    # その週の 7 日の、本人のメモだけを日付順に
+    assert data["notes"] == [
+        {"date": "2026-10-12", "label": None, "text": "Slept badly"},
+        {"date": "2026-10-18", "label": "Hills", "text": "Long ride"},
+    ]
+    assert data["last_choice"] == {"label": "Go easy", "description": "Go easy."}
+
+
+async def test_notes_are_not_sent_when_the_user_turned_it_off(session: AsyncSession) -> None:
+    """「メモを AI に送らない」設定なら、メモを渡さない。振り返りは Gemini で作る。"""
+    user = await _user(send_notes_to_ai=False)
+    await NoteFactory.create_async(user_id=user.id, date=MONDAY, body="Back pain again")
+    writer = FakeWriter(WRITTEN)
+
+    review, _ = await create_review(session, user, writer, today=TODAY)
+
+    assert writer.data()["notes"] == []
+    assert "Back pain" not in writer.prompts[-1]
+    assert not review.is_fallback
+    assert await notes_for_review(session, user, MONDAY, SUNDAY) == []

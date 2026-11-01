@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.core.db import get_session
 from app.main import app
 from app.models import Base
+from app.routers.deps import get_review_writer
 from tests.factories import BaseFactory
 
 
@@ -66,6 +67,8 @@ async def client(session: AsyncSession) -> AsyncIterator[AsyncClient]:
         yield session
 
     app.dependency_overrides[get_session] = _override
+    # API のテストでは Gemini を呼ばない。呼ぶテストは個別に差し替える
+    app.dependency_overrides[get_review_writer] = lambda: None
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c

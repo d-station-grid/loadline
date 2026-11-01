@@ -5,6 +5,7 @@
 """
 
 import asyncio
+import gc
 import json
 from pathlib import Path
 
@@ -191,3 +192,19 @@ def test_needs_at_least_one_model() -> None:
 def test_settings_without_a_project_do_not_call_gemini() -> None:
     assert gemini_writer(Settings(gemini_project="")) is None
     assert isinstance(gemini_writer(Settings(gemini_project="test-project")), GeminiReviewWriter)
+
+
+async def test_writer_keeps_the_client_open() -> None:
+    """作った genai.Client が片付けられても、通信が閉じない。
+
+    閉じると、本番の最初の呼び出しが「client has been closed」で失敗し、毎回定型になる。
+    閉じたかどうかは SDK の中の httpx のクライアントで見る。
+    """
+    writer = gemini_writer(Settings(gemini_project="test-project"))
+    assert writer is not None
+    api_client = writer._generate.__self__._api_client  # type: ignore[attr-defined]
+
+    gc.collect()
+    await asyncio.sleep(0.05)  # 片付けのときに積まれる aclose を走らせる
+
+    assert not api_client._async_httpx_client.is_closed

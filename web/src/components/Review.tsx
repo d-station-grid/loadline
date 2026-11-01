@@ -126,7 +126,7 @@ export default function Review({ user, onOpenSettings }: Props) {
         <>
           <p>No review for this week yet.</p>
           <button type="button" onClick={create} disabled={creating}>
-            {creating ? "Creating…" : "Create this week's review"}
+            {creating ? "Writing your review…" : "Create this week's review"}
           </button>
           {createError?.kind === "settings" && (
             <p role="alert">

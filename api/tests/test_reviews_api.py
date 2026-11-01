@@ -1,3 +1,4 @@
+import json
 from collections.abc import Iterator
 from datetime import date, datetime, time, timedelta
 from typing import Any
@@ -6,16 +7,19 @@ from zoneinfo import ZoneInfo
 import pytest
 from httpx import AsyncClient
 
+from app.adapters.gemini import GeminiReviewWriter
 from app.core.auth import Identity, InvalidTokenError, get_token_verifier
 from app.domain.review_week import review_period
 from app.main import app
 from app.models import User
+from app.routers.deps import get_review_writer
 from tests.factories import (
     UserFactory,
     WeeklyReviewFactory,
     WeeklyReviewOptionFactory,
     WorkoutFactory,
 )
+from tests.test_gemini_adapter import FakeGenerate, busy, recorded
 
 HEADERS = {"Authorization": "Bearer good"}
 
@@ -242,3 +246,27 @@ async def test_reviews_need_login(client: AsyncClient, method: str, path: str) -
     res = await client.request(method.upper(), path, json={"option_id": 1})
 
     assert res.status_code == 401
+
+
+@pytest.mark.parametrize(
+    ("results", "is_fallback"),
+    [
+        pytest.param([recorded("steady")], False, id="written_by_gemini"),
+        pytest.param([busy(), busy()], True, id="every_model_busy"),
+    ],
+)
+async def test_post_writes_with_gemini_and_falls_back_to_the_fixed_script(
+    client: AsyncClient, results: list[Any], is_fallback: bool
+) -> None:
+    """記録した Gemini の応答で作る。どのモデルも混雑していれば定型で 201。"""
+    await _me()
+    writer = GeminiReviewWriter(FakeGenerate(*results), ["model-a", "model-b"], 5.0)
+    app.dependency_overrides[get_review_writer] = lambda: writer
+
+    res = await client.post("/reviews", headers=HEADERS)
+
+    assert res.status_code == 201
+    body = res.json()
+    assert body["is_fallback"] is is_fallback
+    expected = json.loads(recorded("steady").text or "")
+    assert (body["script"] == expected["line"]) is not is_fallback

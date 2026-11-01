@@ -4,7 +4,9 @@
 数字とアバターの話す数字を食い違わせないため。
 """
 
+import logging
 from datetime import UTC, date, datetime, timedelta
+from typing import Protocol
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select, update
@@ -12,9 +14,10 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.calendar import start_of_day, today_for
-from app.domain.fallback_review import ReviewOption, fallback_review
+from app.domain.fallback_review import ReviewContent, ReviewOption, fallback_review
 from app.domain.load import FitnessPoint
 from app.domain.review_material import ReviewMaterial
+from app.domain.review_prompt import NoteForReview, review_prompt
 from app.domain.review_week import review_period
 from app.domain.situation import (
     DAYS_IN_WEEK,
@@ -24,10 +27,18 @@ from app.domain.situation import (
     WeekSituation,
     judge_week,
 )
-from app.models import ReviewStatus, User, WeeklyReview, WeeklyReviewOption, Workout
+from app.models import Note, ReviewStatus, User, WeeklyReview, WeeklyReviewOption, Workout
 from app.schemas.dashboard import DayPoint
 from app.schemas.reviews import ReviewOptionOut, WeeklyReviewOut
 from app.services.dashboard import build_dashboard
+
+logger = logging.getLogger(__name__)
+
+
+class ReviewWriter(Protocol):
+    """LLM で振り返りを書く。書けなければ None（定型に切り替える）。adapter の Gemini が実体。"""
+
+    async def write(self, contents: str) -> ReviewContent | None: ...
 
 
 class HeartRateSettingsMissingError(Exception):
@@ -139,6 +150,40 @@ async def review_material(
     )
 
 
+async def notes_for_review(
+    session: AsyncSession, user: User, start: date, end: date
+) -> list[NoteForReview]:
+    """start〜end のメモ。「メモを AI に送らない」設定なら、読まずに空を返す。"""
+    if not user.send_notes_to_ai:
+        return []
+    rows = await session.execute(
+        select(Note.date, Note.label, Note.body)
+        .where(Note.user_id == user.id, Note.date >= start, Note.date <= end)
+        .order_by(Note.date)
+    )
+    return [NoteForReview(day=r.date, label=r.label, body=r.body) for r in rows]
+
+
+async def _write(
+    session: AsyncSession,
+    user: User,
+    material: ReviewMaterial,
+    writer: ReviewWriter | None,
+) -> ReviewContent | None:
+    """LLM に書いてもらう。writer がない（設定で切っている）か、書けなければ None。"""
+    if writer is None:
+        return None
+    week = material.week
+    notes = await notes_for_review(session, user, week.start, week.end)
+    # LLM を待つ 10〜60 秒のあいだ、読み込みのトランザクションを閉じて DB の接続を手放す。
+    # 読んだだけなので何も書かない。expire_on_commit=False なので、読んだ行はそのまま使える
+    await session.commit()
+    content = await writer.write(review_prompt(material, notes))
+    if content is None:
+        logger.warning("review: falling back to the fixed script for user %s", user.id)
+    return content
+
+
 async def _options(session: AsyncSession, review_id: int) -> list[WeeklyReviewOption]:
     stmt = (
         select(WeeklyReviewOption)
@@ -164,16 +209,22 @@ async def _out(session: AsyncSession, review: WeeklyReview) -> WeeklyReviewOut:
 
 
 async def create_review(
-    session: AsyncSession, user: User, today: date | None = None
+    session: AsyncSession,
+    user: User,
+    writer: ReviewWriter | None = None,
+    today: date | None = None,
 ) -> tuple[WeeklyReviewOut, bool]:
-    """今の振り返りの週の振り返りを、定型で作る。作ったら True、もうあればそれと False。
+    """今の振り返りの週の振り返りを作る。作ったら True、もうあればそれと False。
+
+    writer があれば LLM に書いてもらい、なければ（または書けなければ）定型で作る。
 
     週は、今日以前でいちばん近い振り返りの曜日の前日までの 7 日間（利用者のタイムゾーン）。
     一度作った週は作り直さない。作った時点の記録で書いた、その週の 1 通にする。選択肢を
     選んだ後にセリフが変わると選んだ理由とずれ、LLM で作るようになれば作り直すたびに
     費用もかかるため。遅れて届く記録は、自動で作る時刻を遅らせて拾う。
-    同時に 2 回呼ばれても 1 件だけ入る（ON CONFLICT DO NOTHING）。振り返りと選択肢は
-    同じトランザクションで入れるので、後から来た側には選択肢までそろって見える。
+    同時に 2 回呼ばれても 1 件だけ入る（ON CONFLICT DO NOTHING）。そのときは LLM も
+    2 回呼ばれるが、残るのは先に入れた側。振り返りと選択肢は同じトランザクションで
+    入れるので、後から来た側には選択肢までそろって見える。
     """
     today = today or today_for(user.timezone)
     start, end = review_period(today, user.review_weekday)
@@ -182,8 +233,9 @@ async def create_review(
         return await _out(session, existing), False
 
     material = await review_material(session, user, start, today)
-    # 定型は前の週の選択を読まない。材料は LLM で作るときのためにそろえておく
-    content = fallback_review(material.week)
+    written = await _write(session, user, material, writer)
+    # 定型は前の週の選択とメモを読まない
+    content = written or fallback_review(material.week)
     review = await session.scalar(
         insert(WeeklyReview)
         .values(
@@ -193,7 +245,7 @@ async def create_review(
             situation=material.week.situation.value,
             script=content.script,
             status=ReviewStatus.COMPLETED.value,
-            is_fallback=True,
+            is_fallback=written is None,
         )
         .on_conflict_do_nothing(index_elements=[WeeklyReview.user_id, WeeklyReview.period_start])
         .returning(WeeklyReview)

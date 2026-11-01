@@ -591,7 +591,7 @@ test("ラベルを付けて書くと、一覧の本文の前に出し、親に�
     />,
   );
   await screen.findByText("No notes in this period.");
-  expect(onNotesChange).toHaveBeenLastCalledWith([]);
+  await waitFor(() => expect(onNotesChange).toHaveBeenLastCalledWith([]));
 
   fireEvent.change(screen.getByLabelText("Note"), {
     target: { value: "Race day." },
@@ -609,10 +609,13 @@ test("ラベルを付けて書くと、一覧の本文の前に出し、親に�
   expect(screen.getByRole("listitem")).toHaveTextContent(
     "2026-10-18 [Race] Race day.",
   );
-  // 親はチャートの印に使う。保存の直後に新しい一覧が届く
-  expect(onNotesChange).toHaveBeenLastCalledWith([
-    expect.objectContaining({ date: "2026-10-18", label: "Race" }),
-  ]);
+  // 親はチャートの印に使う。保存の直後に新しい一覧が届く。親に渡すのは描いた後の
+  // useEffect なので、一覧の文字が出た時点ではまだ呼ばれていないことがある（遅い CI で落ちた）
+  await waitFor(() =>
+    expect(onNotesChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({ date: "2026-10-18", label: "Race" }),
+    ]),
+  );
 });
 
 test("ラベルは幅で数え、全角 7 文字は保存できない", async () => {

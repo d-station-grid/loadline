@@ -206,6 +206,29 @@ test("まだない週は作るボタンを出し、押すとその場に出す",
   ).not.toBeInTheDocument();
 });
 
+test("Gemini が書いている間は、ボタンを止めて書いていることを出す", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue(null);
+  let finish: (r: WeeklyReviewOut) => void = () => {};
+  vi.mocked(createReview).mockReturnValue(
+    new Promise((resolve) => {
+      finish = resolve;
+    }),
+  );
+  renderReview();
+  await screen.findByText("No review for this week yet.");
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Create this week's review" }),
+  );
+
+  const writing = await screen.findByRole("button", {
+    name: "Writing your review…",
+  });
+  expect(writing).toBeDisabled();
+  finish(review());
+  expect(await screen.findByText(/A heavy week/)).toBeInTheDocument();
+});
+
 test("心拍の設定がなくて作れなければ、設定画面へ案内する", async () => {
   vi.mocked(getCurrentReview).mockResolvedValue(null);
   vi.mocked(createReview).mockRejectedValue(new ApiError(409));
