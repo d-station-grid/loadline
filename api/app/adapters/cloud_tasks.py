@@ -6,7 +6,7 @@
 
 import logging
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
 from google.api_core.exceptions import AlreadyExists
@@ -27,9 +27,15 @@ class TasksClient(Protocol):
     async def create_task(self, *, parent: str, task: tasks_v2.Task, timeout: float) -> Any: ...
 
 
-def task_id(due: DueReview) -> str:
-    """同じ人の同じ週は同じ名前にする。Tasks の側でも二重に積まない。"""
-    return f"review-{due.user_id}-{due.period_start.isoformat()}"
+def task_id(due: DueReview, at: datetime) -> str:
+    """人と週と、積んだ時刻（UTC の時まで）で決める名前。
+
+    同じ時のうちに Scheduler が呼び直しても、同じ名前なので二重に積まない。次の時は別の
+    名前になるので、再試行を使い切って消えたタスクも積み直せる（消えたタスクの名前は
+    Cloud Tasks が最大 24 時間使わせない）。二重に作らないのは DB の一意制約が受け持つ。
+    """
+    hour = at.astimezone(UTC).strftime("%Y%m%d%H")
+    return f"review-{due.user_id}-{due.period_start.isoformat()}-{hour}"
 
 
 class CloudTasksReviewQueue:
@@ -41,9 +47,10 @@ class CloudTasksReviewQueue:
         client_factory: Callable[[], TasksClient] = tasks_v2.CloudTasksAsyncClient,
     ) -> None:
         """queue は projects/.../locations/.../queues/... の形。base_url は api の URL で、
-        OIDC トークンの宛先（audience）にも使う。"""
+        OIDC トークンの宛先（audience）にも使う。窓口の検証と同じ値を渡す（設定の
+        INTERNAL_AUDIENCE。末尾の / は設定を読むときに落としてある）。"""
         self._queue = queue
-        self._base_url = base_url.rstrip("/")
+        self._base_url = base_url
         self._caller_email = caller_email
         self._client_factory = client_factory
         self._client: TasksClient | None = None
@@ -55,14 +62,16 @@ class CloudTasksReviewQueue:
             self._client = self._client_factory()
         return self._client
 
-    async def enqueue(self, due: DueReview) -> None:
-        """1 人分のタスクを積む。同じ名前がもうあれば、積めたものとして扱う。
+    async def enqueue(self, due: DueReview, at: datetime) -> None:
+        """1 人分のタスクを積む。at は dispatch の時刻で、タスクの名前に使う。
+
+        同じ名前がもうある（同じ時のうちに積んだ）なら、積めたものとして扱う。
 
         積めなかったときは google.api_core の例外を上げる。呼ぶ側が残りの人を続ける。
         """
         path = f"/internal/reviews/users/{due.user_id}/weeks/{due.period_start.isoformat()}"
         task = tasks_v2.Task(
-            name=f"{self._queue}/tasks/{task_id(due)}",
+            name=f"{self._queue}/tasks/{task_id(due, at)}",
             http_request=tasks_v2.HttpRequest(
                 http_method=tasks_v2.HttpMethod.POST,
                 url=self._base_url + path,
@@ -77,8 +86,8 @@ class CloudTasksReviewQueue:
                 parent=self._queue, task=task, timeout=CREATE_TIMEOUT_SEC
             )
         except AlreadyExists:
-            # 前の回で積んだタスクが、まだ動いていないか、終わって間もない
-            logger.info("tasks: %s is already queued", task_id(due))
+            # 同じ時のうちに、Scheduler の呼び直しが同じ人を積んだ
+            logger.info("tasks: %s is already queued", task_id(due, at))
 
 
 def review_queue(settings: Settings) -> CloudTasksReviewQueue | None:

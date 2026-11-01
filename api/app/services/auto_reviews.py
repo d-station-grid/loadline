@@ -72,7 +72,7 @@ async def due_reviews(session: AsyncSession, now: datetime) -> list[DueReview]:
 class ReviewQueue(Protocol):
     """1 人分を作るタスクを積む。adapter の Cloud Tasks が実体。積めなければ例外を上げる。"""
 
-    async def enqueue(self, due: DueReview) -> None: ...
+    async def enqueue(self, due: DueReview, at: datetime) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -98,7 +98,7 @@ async def dispatch_due_reviews(
     failed: list[DueReview] = []
     for d in due:
         try:
-            await queue.enqueue(d)
+            await queue.enqueue(d, now)
         except Exception:
             logger.exception("dispatch: could not enqueue %s", d)
             failed.append(d)

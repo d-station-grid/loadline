@@ -153,12 +153,14 @@ class FakeQueue:
 
     def __init__(self, fail_for: set[int] | None = None) -> None:
         self.enqueued: list[DueReview] = []
+        self.at: list[datetime] = []
         self.fail_for = fail_for or set()
 
-    async def enqueue(self, due: DueReview) -> None:
+    async def enqueue(self, due: DueReview, at: datetime) -> None:
         if due.user_id in self.fail_for:
             raise RuntimeError("tasks is down")
         self.enqueued.append(due)
+        self.at.append(at)
 
 
 async def test_dispatch_enqueues_each_due_user(session: AsyncSession) -> None:
@@ -171,6 +173,8 @@ async def test_dispatch_enqueues_each_due_user(session: AsyncSession) -> None:
 
     expected = [DueReview(u.id, date(2026, 10, 26)) for u in (first, second)]
     assert queue.enqueued == expected
+    # タスクの名前に使う時刻は dispatch の時刻
+    assert queue.at == [MONDAY_6AM_TOKYO, MONDAY_6AM_TOKYO]
     assert done == Dispatched(due=expected, failed=[])
 
 
