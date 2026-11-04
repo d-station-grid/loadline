@@ -13,7 +13,6 @@ from app.core.internal_auth import require_internal_caller
 from app.routers.deps import DbSession, LineCheckerDep, ReviewQueueDep, ReviewWriterDep
 from app.services.auto_reviews import (
     AutoReviewResult,
-    UserNotFoundError,
     create_for_user,
     dispatch_due_reviews,
 )
@@ -69,13 +68,11 @@ async def create_review_for_user(
 ) -> AutoReviewOut:
     """Tasks が 1 人ずつ呼ぶ。探したときの週（period_start に始まる 7 日間）の振り返りを作る。
 
-    2xx 以外を返すと Tasks がやり直す。作れない相手（ゲスト、心拍の設定がない、今の週が
-    period_start でなくなった）はやり直しても変わらないので 200 の skipped にする。
+    2xx 以外を返すと Tasks がやり直す。作れない相手（アカウントを消した、ゲスト、心拍の
+    設定がない、今の週が period_start でなくなった）はやり直しても変わらないので 200 の
+    skipped にする。
     """
-    try:
-        done = await create_for_user(session, user_id, period_start, writer, checker)
-    except UserNotFoundError as e:
-        raise HTTPException(status.HTTP_404_NOT_FOUND) from e
+    done = await create_for_user(session, user_id, period_start, writer, checker)
     logger.info(
         "internal: weekly review for user %s, week of %s: %s",
         user_id,

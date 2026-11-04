@@ -5,12 +5,14 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.cloud_tasks import review_queue
+from app.adapters.firebase_accounts import account_deleter
 from app.adapters.gemini import gemini_writer
 from app.adapters.jev import jev_checker
 from app.core.auth import Identity, get_identity
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.models import User
+from app.services.accounts import AccountDeleter
 from app.services.auto_reviews import ReviewQueue
 from app.services.reviews import LineChecker, ReviewWriter
 from app.services.users import get_or_create_user
@@ -53,3 +55,12 @@ def get_review_queue() -> ReviewQueue | None:
 
 
 ReviewQueueDep = Annotated[ReviewQueue | None, Depends(get_review_queue)]
+
+
+@lru_cache
+def get_account_deleter() -> AccountDeleter:
+    """Firebase の利用者を消す。プロセスで 1 つ。資格情報は初めて消すときに読む。"""
+    return account_deleter(get_settings())
+
+
+AccountDeleterDep = Annotated[AccountDeleter, Depends(get_account_deleter)]

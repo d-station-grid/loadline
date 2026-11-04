@@ -125,10 +125,6 @@ class AutoReview:
     review_id: int | None = None
 
 
-class UserNotFoundError(Exception):
-    """その id の利用者がいない。"""
-
-
 async def create_for_user(
     session: AsyncSession,
     user_id: int,
@@ -139,15 +135,14 @@ async def create_for_user(
 ) -> AutoReview:
     """1 人分の、period_start に始まる週の振り返りを作る。作り方は本人がボタンで作るときと同じ。
 
-    積んでから呼ばれるまでの間に、ゲストになった・心拍の設定を消した人は飛ばす。
+    積んでから呼ばれるまでの間に、アカウントを消した・ゲストになった・心拍の設定を消した人は
+    飛ばす。
     今の週が period_start でなくなっていても飛ばす。7 日以上遅れた再試行（次の振り返りの
     曜日の 0〜6 時に届けば、記録を待つ 6 時より前に次の週を作ってしまう）と、待つ間に
     振り返りの曜日を変えた場合。同じ週のうちの遅れ（火曜〜日曜）なら作る。
     """
     user = await session.get(User, user_id)
-    if user is None:
-        raise UserNotFoundError
-    if user.is_demo:
+    if user is None or user.is_demo:
         return AutoReview(AutoReviewResult.SKIPPED)
     # 照合した週と作る週がずれないように、今日は 1 回だけ決めて create_review にも渡す
     today = today_for(user.timezone, now)

@@ -842,6 +842,23 @@ export type ReceiveIngestPostResponses = {
 export type ReceiveIngestPostResponse =
   ReceiveIngestPostResponses[keyof ReceiveIngestPostResponses];
 
+export type DeleteMeMeDeleteData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/me";
+};
+
+export type DeleteMeMeDeleteResponses = {
+  /**
+   * Successful Response
+   */
+  204: void;
+};
+
+export type DeleteMeMeDeleteResponse =
+  DeleteMeMeDeleteResponses[keyof DeleteMeMeDeleteResponses];
+
 export type ReadNotesNotesGetData = {
   body?: never;
   path?: never;

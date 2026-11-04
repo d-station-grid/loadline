@@ -185,6 +185,26 @@
         ]
       }
     },
+    "/me": {
+      "delete": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Delete Me",
+        "description": "ログイン中の本人を消す。記録、メモ、振り返り、取り込み用トークン、Firebase の利用者。\n\nFirebase の利用者を消せなければ何も消さずに 502 を返す。もう一度呼べばやり直せる。",
+        "operationId": "delete_me_me_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/notes": {
       "get": {
         "tags": [
