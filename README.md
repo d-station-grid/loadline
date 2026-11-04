@@ -362,7 +362,8 @@ clone したあとに実行します。
 Health Auto Export の JSON を、受け口と同じ処理で取り込みます。Apple Watch 以外は入らず、同じ記録は二重になりません。`api/` で実行します。
 
 - 自分の行に入れる: `uv run python -m scripts.seed --email <ログインしたメール> ../notes/sample_health-auto-export_workouts-v2.json`
-- デモ用の利用者を作って入れる: `uv run python -m scripts.seed --demo ../notes/sample_health-auto-export_workouts-v2.json`
+
+ゲストに見せるデモデータは、`api/` で `uv run python -m scripts.seed_demo` で入れます。デモ用の利用者を作り直し、16 週分のワークアウト、心拍、VO2max、メモと、最後の 4 週分の振り返りを入れます。何度流しても同じ中身になります。ゲストログインには、Firebase コンソールで匿名ログインを有効にしておきます。
 
 iPhone から実際に送るには、設定画面でトークンを発行し、Health Auto Export の送信先に本番の URL（`/ingest`）とヘッダー `Authorization: Bearer <トークン>` を設定します。
 

@@ -378,7 +378,18 @@ async def current_review(
 
     いちばん新しい期間の行ではなく、今の週で探す。振り返りの曜日を変えた直後は、
     いちばん新しい行が今の週より古い回のことがあるため。
+
+    デモの利用者だけは、いちばん新しい期間の行を返す。デモデータは日付が動かないので、
+    今の週で探すといつも None になるため。行は seed で入れる。
     """
+    if user.is_demo:
+        latest = await session.scalar(
+            select(WeeklyReview)
+            .where(WeeklyReview.user_id == user.id)
+            .order_by(WeeklyReview.period_start.desc())
+            .limit(1)
+        )
+        return None if latest is None else await _out(session, latest)
     today = today or today_for(user.timezone)
     start, _ = review_period(today, user.review_weekday)
     review = await _find(session, user.id, start)

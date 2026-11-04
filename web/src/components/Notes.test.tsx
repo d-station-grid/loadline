@@ -668,3 +668,22 @@ test("ラベルだけ直しても保存でき、空にするとラベルを消�
     "token",
   );
 });
+
+test("ゲストはメモを読めるが、書く欄とボタンは押せない", async () => {
+  stored = [note("2026-10-10", "Easy jog", 3)];
+  const guest = {
+    isAnonymous: true,
+    getIdToken: async () => "token",
+  } as unknown as User;
+  render(<Notes user={guest} since="2026-09-01" today="2026-10-18" />);
+
+  // 書いてある日を選ぶと読める。直す欄とボタンは止まったまま
+  fireEvent.click(await screen.findByRole("button", { name: "2026-10-10" }));
+  expect(screen.getByLabelText("Note")).toHaveValue("Easy jog");
+  expect(screen.getByLabelText("Note")).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();
+  expect(screen.getByText(/Guests can read the notes/)).toBeInTheDocument();
+  expect(editNote).not.toHaveBeenCalled();
+  expect(deleteNote).not.toHaveBeenCalled();
+});

@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +15,7 @@ from app.models import User
 from app.services.accounts import AccountDeleter
 from app.services.auto_reviews import ReviewQueue
 from app.services.reviews import LineChecker, ReviewWriter
-from app.services.users import AccountDeletedError, get_or_create_user
+from app.services.users import AccountDeletedError, DemoUnavailableError, get_or_create_user
 
 
 async def get_current_user(
@@ -24,7 +24,8 @@ async def get_current_user(
 ) -> User:
     """ログイン済みの本人の行。ID トークンの検証は get_identity に任せる。
 
-    アカウントを消した人のトークンは、期限の前でも 401 にする。
+    アカウントを消した人のトークンは、期限の前でも 401 にする。ゲスト（匿名ログイン）は
+    デモの利用者になる。デモの利用者がまだいなければ 503。
     """
     try:
         return await get_or_create_user(session, identity)
@@ -32,10 +33,29 @@ async def get_current_user(
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED, headers={"WWW-Authenticate": "Bearer"}
         ) from None
+    except DemoUnavailableError:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "guest mode is not available"
+        ) from None
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
 DbSession = Annotated[AsyncSession, Depends(get_session)]
+
+
+def get_writable_user(user: CurrentUser) -> User:
+    """書き込める本人。ゲスト（デモの利用者）は見るだけなので 403 にし、デモデータを守る。"""
+    if user.is_demo:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "guests can only view")
+    return user
+
+
+WritableUser = Annotated[User, Depends(get_writable_user)]
+
+# 書き込みの窓口に付ける、ゲストの 403 の説明
+GUEST_FORBIDDEN: dict[int | str, dict[str, Any]] = {
+    status.HTTP_403_FORBIDDEN: {"description": "ゲスト（デモの利用者）は見るだけで、書き込めない"}
+}
 
 
 @lru_cache

@@ -126,3 +126,11 @@ code {
   align-items: stretch;
   gap: 8px;
 }
+
+/* まとめて止めるためだけの fieldset。枠と余白は付けない */
+fieldset.plain {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}

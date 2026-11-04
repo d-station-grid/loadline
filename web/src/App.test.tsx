@@ -4,17 +4,22 @@ import { beforeEach, expect, test, vi } from "vitest";
 
 import type { UserOut } from "./api";
 import App from "./App";
-import { login } from "./lib/api";
+import { ApiError, login } from "./lib/api";
 
 const firebaseAuth = vi.hoisted(() => ({
   onAuthStateChanged: vi.fn(),
+  signInAnonymously: vi.fn(),
   signInWithPopup: vi.fn(),
   signOut: vi.fn(),
 }));
 
 vi.mock("firebase/auth", () => firebaseAuth);
 vi.mock("./lib/firebase", () => ({ auth: {}, googleProvider: {} }));
-vi.mock("./lib/api", () => ({ login: vi.fn() }));
+vi.mock("./lib/api", async (importOriginal) => ({
+  // ApiError は本物を使う。状態コードで文言を出し分けるため
+  ApiError: (await importOriginal<typeof import("./lib/api")>()).ApiError,
+  login: vi.fn(),
+}));
 // 設定ページは自分のテストで見る。ここではログインの流れだけ
 vi.mock("./pages/SettingsPage", () => ({
   default: ({ onDeleted }: { onDeleted: () => void }) => (
@@ -277,4 +282,46 @@ test("消したあとのログアウトに失敗したら、やり直せる", as
   expect(
     screen.getByRole("button", { name: "Sign in with Google" }),
   ).toBeInTheDocument();
+});
+
+const guest = {
+  displayName: null,
+  email: null,
+  isAnonymous: true,
+  getIdToken: async () => "guest-token",
+} as unknown as User;
+
+test("ゲストで試すと匿名でログインし、見るだけの案内が出る", async () => {
+  restoredUser(null);
+  firebaseAuth.signInAnonymously.mockImplementation(async () => {
+    notify(guest);
+    return { user: guest };
+  });
+  vi.mocked(login).mockResolvedValue({ id: 9, email: "demo@loadline.invalid" });
+  render(<App />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Try as a guest" }));
+
+  expect(
+    await screen.findByText(/Viewing demo data as a guest/),
+  ).toBeInTheDocument();
+  expect(firebaseAuth.signInAnonymously).toHaveBeenCalled();
+  expect(login).toHaveBeenCalledWith("guest-token");
+});
+
+test("デモデータがない環境では、ゲストに使えないと出してログアウトする", async () => {
+  restoredUser(null);
+  firebaseAuth.signInAnonymously.mockImplementation(async () => {
+    notify(guest);
+    return { user: guest };
+  });
+  vi.mocked(login).mockRejectedValue(new ApiError(503));
+  render(<App />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Try as a guest" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Guest mode isn't available right now.",
+  );
+  expect(firebaseAuth.signOut).toHaveBeenCalled();
 });
