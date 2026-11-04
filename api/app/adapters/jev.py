@@ -71,16 +71,19 @@ QUESTIONS: dict[str, Question] = {
 }
 
 
-# メモの問いは、まだ本物の Jev で確かめていない。変えるときも、確かめた結果を残す。
-# 疲れ、寝不足、脚の重さだけでは立てない。立てると、ほとんどの週で増やす選択肢が消えるため。
-# 筋肉の張りや痛みは立てる側に倒す（立っても、増やす選択肢が出ないだけ）
+# メモの問い。変えたら scripts/check_note_question.py で本物の Jev に聞き、期待どおりか確かめる。
+# 立てるのは、今ある痛み、けが、病気、体の不調（良くなってきた、治療中を含む）。
+# 立てないのは、治ったと書いてあるもの、練習の後の普通の筋肉痛や張り、疲れ、寝不足、脚の重さ。
+# これらで立てると、ほとんどの週で増やす選択肢が消えるため
 NOTE_QUESTIONS: dict[str, Question] = {
     "mentions_health": Noul(
         instructions=(
-            "`notes` mention pain, soreness, an injury, an illness, or another physical symptom, "
-            "such as a sore knee, back pain, a cold, a fever, a headache or feeling sick. "
-            "It counts even if the note says it is getting better or is about a treatment. "
-            "Being tired, sleeping badly or having heavy legs does not count by itself."
+            "`notes` say the writer has pain, an injury, an illness or another health problem "
+            "now, such as knee pain, back pain, a cold, a fever or feeling sick. "
+            "It still counts if the note says it is getting better or is being treated. "
+            "It does not count if the note says the problem is gone. "
+            "Ordinary muscle soreness or stiffness after training, being tired, sleeping badly "
+            "or having heavy legs does not count by itself."
         ),
     ),
 }
