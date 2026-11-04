@@ -9,6 +9,7 @@ from typing import Any
 import httpx2
 import pytest
 from typesafe_sdk import (
+    ChoiceAnswer,
     Content,
     NoulAnswer,
     Question,
@@ -29,6 +30,7 @@ from typesafe_sdk import (
 
 from app.adapters.jev import NOTE_QUESTIONS, QUESTIONS, JevLineChecker, jev_checker
 from app.core.config import Settings
+from app.domain.expression import ExpressionAnswer
 from app.domain.fallback_review import ReviewContent, ReviewOption
 from app.domain.line_check import LineCheck, flagged
 from app.domain.note_check import NoteCheck, health_flag
@@ -43,11 +45,31 @@ CONTENT = ReviewContent(
 )
 
 
-def answered(**nouls: float) -> SystemOneResponse:
+def answered(*, expression: tuple[str, float] | None = None, **nouls: float) -> SystemOneResponse:
+    """Noul の答えと、あれば表情（Choice）の答え。表情は (名前, 確信度)。"""
+    answers: dict[str, Any] = {name: NoulAnswer(noul=p) for name, p in nouls.items()}
+    if expression is not None:
+        name, confidence = expression
+        answers["expression"] = ChoiceAnswer(
+            choice=name, confidence=confidence, probabilities={name: confidence}
+        )
     return SystemOneResponse(
-        model="jev-latest",
-        usage=Usage(input_tokens=120, output_tokens=4),
-        answers={name: NoulAnswer(noul=p) for name, p in nouls.items()},
+        model="jev-latest", usage=Usage(input_tokens=120, output_tokens=4), answers=answers
+    )
+
+
+def line_answer(
+    pushes_harder: float = 0.0,
+    medical_advice: float = 0.0,
+    offers_more: float = 0.0,
+    expression: tuple[str, float] | None = ("relaxed", 0.9),
+) -> SystemOneResponse:
+    """セリフの確認への答え。3 つの Noul と表情。"""
+    return answered(
+        pushes_harder=pushes_harder,
+        medical_advice=medical_advice,
+        offers_more=offers_more,
+        expression=expression,
     )
 
 
@@ -78,17 +100,33 @@ def api_error(cls: type[TypeSafeAPIError], status: int) -> Exception:
 
 
 async def test_safe_answer() -> None:
-    system_one = FakeSystemOne(answered(pushes_harder=0.02, medical_advice=0.01))
+    system_one = FakeSystemOne(line_answer(0.02, 0.01, 0.03, ("happy", 0.8)))
 
     check = await checker(system_one).check(CONTENT)
 
-    assert check == LineCheck(pushes_harder=0.02, medical_advice=0.01)
-    assert flagged(check) == {}
+    assert check == LineCheck(
+        pushes_harder=0.02,
+        medical_advice=0.01,
+        offers_more=0.03,
+        expression=ExpressionAnswer("happy", 0.8),
+    )
+    assert flagged(check, may_offer_more=False) == {}
 
 
-async def test_asks_both_questions_about_the_line_and_the_options_at_once() -> None:
-    """話す部分と選択肢の文をつないだものを、2 つの問いで 1 回だけ聞く。"""
-    system_one = FakeSystemOne(answered(pushes_harder=0.0, medical_advice=0.0))
+async def test_a_missing_expression_does_not_stop_the_check(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """表情の答えがなくても、話してよいかの答えは使う。表情は domain で relaxed にする。"""
+    check = await checker(FakeSystemOne(line_answer(expression=None))).check(CONTENT)
+
+    assert check is not None
+    assert check.expression is None
+    assert [r.levelname for r in caplog.records] == ["WARNING"]
+
+
+async def test_asks_every_question_about_the_line_and_the_options_at_once() -> None:
+    """話す部分と選択肢の文をつないだものを、4 つの問いで 1 回だけ聞く。"""
+    system_one = FakeSystemOne(line_answer())
 
     await checker(system_one).check(CONTENT)
 
@@ -99,7 +137,7 @@ async def test_asks_both_questions_about_the_line_and_the_options_at_once() -> N
         }
     ]
     assert system_one.questions == [QUESTIONS]
-    assert set(QUESTIONS) == {"pushes_harder", "medical_advice"}
+    assert set(QUESTIONS) == {"pushes_harder", "medical_advice", "offers_more", "expression"}
 
 
 @pytest.mark.parametrize(
@@ -114,12 +152,12 @@ async def test_asks_both_questions_about_the_line_and_the_options_at_once() -> N
 async def test_answers_at_or_above_the_cutoff_are_flagged(
     pushes: float, medical: float, risks: dict[str, float]
 ) -> None:
-    system_one = FakeSystemOne(answered(pushes_harder=pushes, medical_advice=medical))
+    system_one = FakeSystemOne(line_answer(pushes, medical))
 
     check = await checker(system_one).check(CONTENT)
 
     assert check is not None
-    assert flagged(check) == risks
+    assert flagged(check, may_offer_more=True) == risks
 
 
 @pytest.mark.parametrize(
@@ -165,9 +203,9 @@ async def test_returns_none_when_it_takes_too_long(caplog: pytest.LogCaptureFixt
             self, state: Content, questions: Mapping[str, Question]
         ) -> SystemOneResponse:
             await asyncio.sleep(1)
-            return answered(pushes_harder=0.0, medical_advice=0.0)
+            return line_answer()
 
-    slow = Slow(answered(pushes_harder=0.0, medical_advice=0.0))
+    slow = Slow(line_answer())
 
     assert await checker(slow, timeout_sec=0.01).check(CONTENT) is None
     assert [r.levelname for r in caplog.records] == ["WARNING"]
@@ -183,10 +221,11 @@ async def test_returns_none_when_the_sdk_times_out() -> None:
     "response",
     [
         pytest.param(answered(pushes_harder=0.0), id="missing_answer"),
+        pytest.param(answered(pushes_harder=0.0, medical_advice=0.0), id="missing_offers_more"),
         pytest.param(answered(), id="no_answers"),
-        pytest.param(answered(pushes_harder=0.0, medical_advice=1.5), id="above_one"),
-        pytest.param(answered(pushes_harder=-0.1, medical_advice=0.0), id="below_zero"),
-        pytest.param(answered(pushes_harder=float("nan"), medical_advice=0.0), id="nan"),
+        pytest.param(line_answer(medical_advice=1.5), id="above_one"),
+        pytest.param(line_answer(pushes_harder=-0.1), id="below_zero"),
+        pytest.param(line_answer(offers_more=float("nan")), id="nan"),
     ],
 )
 async def test_returns_none_for_an_unexpected_answer(

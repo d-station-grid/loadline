@@ -152,6 +152,7 @@ class WeeklyReviewFactory(BaseFactory[WeeklyReview]):
     audio_path = None
     status = ReviewStatus.COMPLETED.value
     is_fallback = True
+    expression = "relaxed"
     created_at = Ignore()
     updated_at = Ignore()
 

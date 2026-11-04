@@ -64,6 +64,9 @@ jobs:
           gcloud run jobs execute api-migrate \
             --project "${{ vars.GCP_PROJECT_ID }}" --region "$REGION" --wait --quiet
 
+      # 振り返りのセリフは Gemini（Vertex AI）で書き、Jev で確かめる。Vertex AI は実行用の
+      # サービスアカウントの権限（roles/aiplatform.user）で呼ぶ。Jev のキーは Secret Manager から。
+      # Jev のキーがないと、Gemini が書いても話さずに定型にする
       - name: deploy api
         run: |
           gcloud run deploy api \
@@ -71,6 +74,6 @@ jobs:
             --image "$IMAGE:${{ github.sha }}" \
             --service-account "$RUNTIME_SA" \
             --allow-unauthenticated \
-            --set-env-vars "APP_ENV=production,FIREBASE_PROJECT_ID=${{ vars.GCP_PROJECT_ID }},INTERNAL_AUDIENCE=$API_URL,INTERNAL_CALLER_EMAIL=$INVOKER_SA,TASKS_QUEUE=$TASKS_QUEUE" \
-            --set-secrets DATABASE_URL=database-url:latest \
+            --set-env-vars "APP_ENV=production,FIREBASE_PROJECT_ID=${{ vars.GCP_PROJECT_ID }},INTERNAL_AUDIENCE=$API_URL,INTERNAL_CALLER_EMAIL=$INVOKER_SA,TASKS_QUEUE=$TASKS_QUEUE,GEMINI_PROJECT=${{ vars.GCP_PROJECT_ID }}" \
+            --set-secrets DATABASE_URL=database-url:latest,TYPESAFE_API_KEY=typesafe-api-key:latest \
             --quiet

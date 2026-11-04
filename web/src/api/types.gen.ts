@@ -76,6 +76,11 @@ export type DayPoint = {
 };
 
 /**
+ * Expression
+ */
+export type Expression = "happy" | "relaxed" | "sad" | "surprised";
+
+/**
  * HTTPValidationError
  */
 export type HttpValidationError = {
@@ -528,6 +533,7 @@ export type Vo2MaxPoint = {
  * 週に 1 回の振り返り。期間は利用者のタイムゾーンでの日付で、両端を含む。
  *
  * script はアバターのセリフで、字幕にも使う。is_fallback が true なら人が書いた定型。
+ * expression はセリフを話すときのアバターの表情。定型なら relaxed。
  * options は position の順。音声は声にする機能で足す。
  */
 export type WeeklyReviewOut = {
@@ -553,6 +559,7 @@ export type WeeklyReviewOut = {
    * Is Fallback
    */
   is_fallback: boolean;
+  expression: Expression;
   /**
    * Created At
    */
