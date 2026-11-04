@@ -25,6 +25,7 @@ type Props = { user: User; onOpenSettings: () => void };
 /**
  * 今の週の振り返り。セリフを字幕として出し、その週の過ごし方の選択肢を並べる。
  * まだなければ、その場で作るボタンを出す。選んだ後もボタンは残し、押せば選び直せる。
+ * ゲストはデモの振り返りを見るだけ。作るボタンは出さず、選択肢は押せない。
  */
 export default function Review({ user, onOpenSettings }: Props) {
   // undefined は読み込み中、null はまだない週
@@ -40,6 +41,7 @@ export default function Review({ user, onOpenSettings }: Props) {
   const [selectError, setSelectError] = useState<SelectError | null>(null);
   // 連打よけ。disabled は描画のあとにしか効かないので、送った直後にここで止める
   const busy = useRef(false);
+  const guest = user.isAnonymous;
 
   useEffect(() => {
     let cancelled = false;
@@ -125,9 +127,11 @@ export default function Review({ user, onOpenSettings }: Props) {
       {review === null && (
         <>
           <p>No review for this week yet.</p>
-          <button type="button" onClick={create} disabled={creating}>
-            {creating ? "Writing your review…" : "Create this week's review"}
-          </button>
+          {!guest && (
+            <button type="button" onClick={create} disabled={creating}>
+              {creating ? "Writing your review…" : "Create this week's review"}
+            </button>
+          )}
           {createError?.kind === "settings" && (
             <p role="alert">
               Set your max and resting heart rate before creating a review.{" "}
@@ -166,7 +170,7 @@ export default function Review({ user, onOpenSettings }: Props) {
                   key={o.id}
                   type="button"
                   aria-pressed={chosen}
-                  disabled={selecting}
+                  disabled={selecting || guest}
                   onClick={() => {
                     if (!chosen) void select(review.id, o.id);
                   }}
@@ -181,6 +185,9 @@ export default function Review({ user, onOpenSettings }: Props) {
               );
             })}
           </div>
+          {guest && (
+            <p>Guests can't choose an option. Sign in to plan your week.</p>
+          )}
           {selectError?.kind === "closed" && (
             <p role="alert">
               This review is from a past week.{" "}

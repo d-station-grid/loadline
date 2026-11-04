@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import Identity, InvalidTokenError, get_token_verifier
-from app.domain.calendar import since_for_weeks
+from app.domain.calendar import since_for_weeks, today_in
 from app.main import app
 from app.models import User, Workout
 from app.schemas.ingest import IngestPayload
@@ -142,7 +142,7 @@ def test_since_for_weeks_uses_the_date_in_user_timezone() -> None:
     tz = ZoneInfo("Pacific/Kiritimati")
     now = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
 
-    assert since_for_weeks(4, tz, now) == datetime(2026, 9, 25, 0, 0, tzinfo=tz)
+    assert since_for_weeks(4, today_in(tz, now), tz) == datetime(2026, 9, 25, 0, 0, tzinfo=tz)
 
 
 @pytest.mark.parametrize(

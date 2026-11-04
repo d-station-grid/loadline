@@ -276,3 +276,33 @@ test("読み込みに失敗したら Retry で読み直す", async () => {
   expect(await screen.findByText(/A heavy week/)).toBeInTheDocument();
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
+
+const guest = {
+  isAnonymous: true,
+  getIdToken: async () => "token",
+} as unknown as User;
+
+test("ゲストは振り返りを読めるが、選択肢は押せない", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue(review());
+  render(<Review user={guest} onOpenSettings={vi.fn()} />);
+
+  await screen.findByText(/A heavy week/);
+  for (const name of ["Rest fully", "Go easy", "Short and light"]) {
+    expect(option(name)).toBeDisabled();
+  }
+  expect(screen.getByText(/Guests can't choose an option/)).toBeInTheDocument();
+  fireEvent.click(option("Go easy"));
+  expect(selectReviewOption).not.toHaveBeenCalled();
+});
+
+test("ゲストには振り返りを作るボタンを出さない", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue(null);
+  render(<Review user={guest} onOpenSettings={vi.fn()} />);
+
+  expect(
+    await screen.findByText("No review for this week yet."),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Create this week's review" }),
+  ).not.toBeInTheDocument();
+});

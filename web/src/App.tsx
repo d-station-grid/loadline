@@ -1,12 +1,13 @@
 import {
   onAuthStateChanged,
+  signInAnonymously,
   signInWithPopup,
   signOut,
   type User,
 } from "firebase/auth";
 import { useEffect, useRef, useState } from "react";
 
-import { login } from "./lib/api";
+import { ApiError, login } from "./lib/api";
 import { auth, googleProvider } from "./lib/firebase";
 import DashboardPage from "./pages/DashboardPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -15,6 +16,15 @@ import WorkoutsPage from "./pages/WorkoutsPage";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Sign-in failed";
+}
+
+/** ログインで api に断られたときの文言。ゲストはデモデータを見るので、
+ * まだ入れていない環境では 503 になる。Google のログインの 503 はほかの失敗と同じに扱う */
+function loginErrorMessage(e: unknown, guest: boolean): string {
+  if (guest && e instanceof ApiError && e.status === 503) {
+    return "Guest mode isn't available right now.";
+  }
+  return errorMessage(e);
 }
 
 // ログイン済みの画面。ルーティングのライブラリは入れず、state で切り替える
@@ -56,7 +66,7 @@ function App() {
         }
       } catch (e) {
         if (isLatest()) {
-          setError(errorMessage(e));
+          setError(loginErrorMessage(e, next.isAnonymous));
           await signOut(auth); // null の通知が来て、未ログインの画面に戻る
         }
       } finally {
@@ -75,6 +85,16 @@ function App() {
     setError(null);
     try {
       await signInWithPopup(auth, googleProvider);
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }
+
+  /** ゲストは Firebase の匿名ログイン。api はデモの利用者として扱い、見るだけにする */
+  async function handleGuest() {
+    setError(null);
+    try {
+      await signInAnonymously(auth);
     } catch (e) {
       setError(errorMessage(e));
     }
@@ -128,7 +148,11 @@ function App() {
         <h1>loadline</h1>
         <button type="button" onClick={handleSignIn}>
           Sign in with Google
+        </button>{" "}
+        <button type="button" onClick={handleGuest}>
+          Try as a guest
         </button>
+        <p>Guests can look around demo data without signing up.</p>
         {error && <p role="alert">{error}</p>}
       </main>
     );
@@ -150,8 +174,14 @@ function App() {
           </button>
         </nav>
         <p>
-          Signed in as {user.displayName ?? user.email}{" "}
-          <span>{user.email}</span>{" "}
+          {user.isAnonymous ? (
+            "Viewing demo data as a guest (read-only)"
+          ) : (
+            <>
+              Signed in as {user.displayName ?? user.email}{" "}
+              <span>{user.email}</span>
+            </>
+          )}{" "}
           <button type="button" onClick={() => signOut(auth)}>
             Sign out
           </button>

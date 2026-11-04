@@ -1,6 +1,12 @@
 from fastapi import APIRouter, HTTPException, Response, status
 
-from app.routers.deps import CurrentUser, DbSession, LineCheckerDep, ReviewWriterDep
+from app.routers.deps import (
+    CurrentUser,
+    DbSession,
+    LineCheckerDep,
+    ReviewWriterDep,
+    WritableUser,
+)
 from app.schemas.reviews import SelectionIn, WeeklyReviewOut
 from app.services.reviews import (
     HeartRateSettingsMissingError,
@@ -25,7 +31,7 @@ router = APIRouter(prefix="/reviews", tags=["reviews"])
     },
 )
 async def add_review(
-    user: CurrentUser,
+    user: WritableUser,
     session: DbSession,
     writer: ReviewWriterDep,
     checker: LineCheckerDep,
@@ -40,8 +46,6 @@ async def add_review(
     引っかかった、確かめられなかった（時間切れも）ときは定型にする。設定がなければ
     定型だけ。どちらだったかは is_fallback で分かる。
     """
-    if user.is_demo:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "guests cannot create reviews")
     try:
         review, created = await create_review(session, user, writer, checker)
     except HeartRateSettingsMissingError as e:
@@ -54,10 +58,18 @@ async def add_review(
 @router.get(
     "/current",
     response_model=WeeklyReviewOut,
-    responses={status.HTTP_404_NOT_FOUND: {"description": "今の週の振り返りはまだない"}},
+    responses={
+        status.HTTP_404_NOT_FOUND: {
+            "description": "今の週の振り返りはまだない（ゲストは、デモの振り返りがひとつもない）"
+        }
+    },
 )
 async def read_current_review(user: CurrentUser, session: DbSession) -> WeeklyReviewOut:
-    """今の振り返りの週の振り返り。週の決め方は POST /reviews と同じ。"""
+    """今の振り返りの週の振り返り。週の決め方は POST /reviews と同じ。
+
+    ゲスト（デモの利用者）には、今の週ではなく、いちばん新しい期間の振り返りを返す。
+    デモデータは日付が動かず、今の週の振り返りはないため。
+    """
     review = await current_review(session, user)
     if review is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
@@ -74,15 +86,13 @@ async def read_current_review(user: CurrentUser, session: DbSession) -> WeeklyRe
     },
 )
 async def put_selection(
-    review_id: int, body: SelectionIn, user: CurrentUser, session: DbSession
+    review_id: int, body: SelectionIn, user: WritableUser, session: DbSession
 ) -> WeeklyReviewOut:
     """振り返りの選択肢を 1 つ選ぶ。選び直すと、前に選んだものは外れる。
 
     選び直せるのは今の週の振り返りだけ。過ぎた週の選択は、次の週の振り返りの材料に
     使うので変えない。
     """
-    if user.is_demo:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "guests cannot select options")
     try:
         return await select_option(session, user, review_id, body.option_id)
     except ReviewNotFoundError as e:

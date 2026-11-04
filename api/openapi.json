@@ -11,7 +11,7 @@
           "auth"
         ],
         "summary": "Login",
-        "description": "ID トークンで本人を確かめ、初回なら利用者の行を作って返す。\n\nアカウントを消した人のトークンは 401（行を作り直さない）。",
+        "description": "ID トークンで本人を確かめ、初回なら利用者の行を作って返す。\n\nアカウントを消した人のトークンは 401（行を作り直さない）。ゲスト（Firebase の匿名\nログイン）は行を作らず、デモの利用者を返す。",
         "operationId": "login_auth_login_post",
         "responses": {
           "200": {
@@ -23,6 +23,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "ゲスト（匿名ログイン）で入ったが、デモデータがまだ入っていない"
           }
         },
         "security": [
@@ -319,6 +322,9 @@
           "400": {
             "description": "未来の日付"
           },
+          "403": {
+            "description": "ゲスト（デモの利用者）は見るだけで、書き込めない"
+          },
           "409": {
             "description": "その日のメモはもうある"
           },
@@ -380,6 +386,9 @@
               }
             }
           },
+          "403": {
+            "description": "ゲスト（デモの利用者）は見るだけで、書き込めない"
+          },
           "404": {
             "description": "本人のメモにない"
           },
@@ -421,6 +430,9 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "403": {
+            "description": "ゲスト（デモの利用者）は見るだけで、書き込めない"
           },
           "404": {
             "description": "本人のメモにない"
@@ -487,7 +499,7 @@
           "reviews"
         ],
         "summary": "Read Current Review",
-        "description": "今の振り返りの週の振り返り。週の決め方は POST /reviews と同じ。",
+        "description": "今の振り返りの週の振り返り。週の決め方は POST /reviews と同じ。\n\nゲスト（デモの利用者）には、今の週ではなく、いちばん新しい期間の振り返りを返す。\nデモデータは日付が動かず、今の週の振り返りはないため。",
         "operationId": "read_current_review_reviews_current_get",
         "responses": {
           "200": {
@@ -501,7 +513,7 @@
             }
           },
           "404": {
-            "description": "今の週の振り返りはまだない"
+            "description": "今の週の振り返りはまだない（ゲストは、デモの振り返りがひとつもない）"
           }
         },
         "security": [
@@ -631,6 +643,9 @@
               }
             }
           },
+          "403": {
+            "description": "ゲスト（デモの利用者）は見るだけで、書き込めない"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -667,6 +682,9 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "ゲスト（デモの利用者）は見るだけで、書き込めない"
           }
         },
         "security": [

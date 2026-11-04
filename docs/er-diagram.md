@@ -105,6 +105,7 @@ erDiagram
 | テーブル | カラム | 理由 |
 |---|---|---|
 | users | firebase_uid | Google アカウント1つにつき、利用者は1人 |
+| users | is_demo（true のものだけ） | デモの利用者は1人だけ。ゲストは全員この1人として扱う |
 | ingest_tokens | token_digest | トークンから利用者を特定する |
 | workouts | user_id, external_id | 同じ記録が何度届いても、二重に数えない |
 | vo2max_readings | user_id, measured_at | 同じ測定が何度届いても、二重に数えない |

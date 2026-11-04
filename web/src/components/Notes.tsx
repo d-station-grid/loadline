@@ -86,6 +86,7 @@ function withoutDraft(drafts: EditDrafts, id: number): EditDrafts {
 /**
  * ダッシュボードの期間のメモと、日付を選んで書く欄。走らなかった日にも書ける。
  * 書いてある日を選ぶと、同じ欄でそのメモを直したり消したりできる。
+ * ゲストは読むだけ。日付は選べるが、書く欄とボタンは押せない。
  */
 export default function Notes({ user, since, today, onNotesChange }: Props) {
   // どの since で読んだ一覧かを組で持つ。今の since と違う間は読み込み中として扱う
@@ -105,6 +106,7 @@ export default function Notes({ user, since, today, onNotesChange }: Props) {
   const [saveError, setSaveError] = useState<string | null>(null);
   // 保存の連打よけ。disabled は描画のあとにしか効かないので、送った直後にここで止める
   const savingNow = useRef(false);
+  const guest = user.isAnonymous;
 
   useEffect(() => {
     // 読み直すと、前に頼んだ一覧の返事は捨てる。保存より前の一覧で上書きしないため
@@ -141,6 +143,7 @@ export default function Notes({ user, since, today, onNotesChange }: Props) {
   // YYYY-MM-DD は文字列のまま比べられる
   const inPeriod = date >= since && date <= today;
   const canSave =
+    !guest &&
     !saving &&
     notes !== null &&
     existing === null &&
@@ -149,6 +152,7 @@ export default function Notes({ user, since, today, onNotesChange }: Props) {
     labelFits(label);
   // 直さずに保存しても意味がないので、本文かラベルが変わったときだけ押せる
   const canSaveEdit =
+    !guest &&
     !saving &&
     existing !== null &&
     editBody.trim() !== "" &&
@@ -269,6 +273,7 @@ export default function Notes({ user, since, today, onNotesChange }: Props) {
       <form onSubmit={handleSave}>
         {/* 保存中は日付も本文も触らせない。保存が終わったときに次の本文を消さないため */}
         <fieldset disabled={saving}>
+          {guest && <p>Guests can read the notes but can't write them.</p>}
           <label>
             Date
             <input
@@ -279,52 +284,55 @@ export default function Notes({ user, since, today, onNotesChange }: Props) {
               onChange={(e) => selectDay(e.target.value)}
             />
           </label>
-          {existing ? (
-            <>
-              <label>
-                Note
-                <textarea
-                  value={editBody}
-                  maxLength={MAX_BODY}
-                  rows={3}
-                  onChange={(e) => changeDraft({ body: e.target.value })}
+          {/* ゲストは日付を選んで読めるが、書く欄とボタンは止める */}
+          <fieldset disabled={guest} className="plain">
+            {existing ? (
+              <>
+                <label>
+                  Note
+                  <textarea
+                    value={editBody}
+                    maxLength={MAX_BODY}
+                    rows={3}
+                    onChange={(e) => changeDraft({ body: e.target.value })}
+                  />
+                </label>
+                <LabelField
+                  value={editLabel}
+                  onChange={(value) => changeDraft({ label: value })}
                 />
-              </label>
-              <LabelField
-                value={editLabel}
-                onChange={(value) => changeDraft({ label: value })}
-              />
-              <button type="submit" disabled={!canSaveEdit}>
-                Save changes
-              </button>{" "}
-              <button type="button" onClick={handleDelete}>
-                Delete
-              </button>
-            </>
-          ) : (
-            <>
-              <label>
-                Note
-                <textarea
-                  value={body}
-                  maxLength={MAX_BODY}
-                  rows={3}
-                  placeholder="How did you feel? Anything that happened?"
-                  onChange={(e) => setBody(e.target.value)}
-                />
-              </label>
-              <LabelField value={label} onChange={setLabel} />
-              {/* 期間を切り替えて、選んでいた日が外に出たとき。書きかけの本文は残す */}
-              {!inPeriod && (
-                <p>
-                  Pick a day from {since} to {today}.
-                </p>
-              )}
-              <button type="submit" disabled={!canSave}>
-                Save note
-              </button>
-            </>
-          )}
+                <button type="submit" disabled={!canSaveEdit}>
+                  Save changes
+                </button>{" "}
+                <button type="button" onClick={handleDelete}>
+                  Delete
+                </button>
+              </>
+            ) : (
+              <>
+                <label>
+                  Note
+                  <textarea
+                    value={body}
+                    maxLength={MAX_BODY}
+                    rows={3}
+                    placeholder="How did you feel? Anything that happened?"
+                    onChange={(e) => setBody(e.target.value)}
+                  />
+                </label>
+                <LabelField value={label} onChange={setLabel} />
+                {/* 期間を切り替えて、選んでいた日が外に出たとき。書きかけの本文は残す */}
+                {!inPeriod && (
+                  <p>
+                    Pick a day from {since} to {today}.
+                  </p>
+                )}
+                <button type="submit" disabled={!canSave}>
+                  Save note
+                </button>
+              </>
+            )}
+          </fieldset>
         </fieldset>
       </form>
       {status && <p role="status">{status}</p>}

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Annotated, Protocol
+from typing import Annotated, Any, Protocol
 
 import firebase_admin
 from fastapi import Depends, HTTPException, status
@@ -18,6 +18,16 @@ class Identity:
 
     uid: str
     email: str
+    # Firebase の匿名ログイン。ゲストとして、デモの利用者のデータを見せる
+    is_anonymous: bool = False
+
+
+def identity_from_claims(claims: dict[str, Any]) -> Identity:
+    """検証ずみのトークンの中身から身元を取り出す。匿名ログインはメールを持たない。"""
+    provider = claims.get("firebase", {}).get("sign_in_provider")
+    return Identity(
+        uid=claims["uid"], email=claims.get("email", ""), is_anonymous=provider == "anonymous"
+    )
 
 
 class InvalidTokenError(Exception):
@@ -50,7 +60,7 @@ class FirebaseTokenVerifier:
             claims = firebase_auth.verify_id_token(token, app=self._app)
         except (ValueError, firebase_auth.InvalidIdTokenError) as e:
             raise InvalidTokenError from e
-        return Identity(uid=claims["uid"], email=claims.get("email", ""))
+        return identity_from_claims(claims)
 
 
 @lru_cache

@@ -14,6 +14,7 @@ from app.schemas.workouts import (
     WorkoutSummary,
     zone_seconds,
 )
+from app.services.users import today_of
 
 
 async def list_workouts(
@@ -59,10 +60,11 @@ async def workout_list(
     """一覧の 1 ページと、絞り込みに使った始まり。
 
     weeks を渡すと、since は利用者のタイムゾーンの今日から weeks 週前の日の 0 時になる。
-    since と一緒には渡さない（router で落とす）。
+    since と一緒には渡さない（router で落とす）。今日は today_of で決める（ダッシュボードと同じ）。
     """
     if weeks is not None:
-        since = since_for_weeks(weeks, ZoneInfo(user.timezone))
+        today = await today_of(session, user)
+        since = since_for_weeks(weeks, today, ZoneInfo(user.timezone))
     rows = await list_workouts(
         session, user.id, since=since, until=until, before_id=before_id, limit=limit
     )

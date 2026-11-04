@@ -476,3 +476,26 @@ test("消せなかったら、消すボタンにフォーカスが戻る", async
     screen.getByRole("button", { name: "Delete my account" }),
   ).toHaveFocus();
 });
+
+test("ゲストは設定を見られるが、保存も発行も削除も押せない", async () => {
+  vi.mocked(getSettings).mockResolvedValue({
+    ...defaults,
+    max_heart_rate: 188,
+  });
+  const guest = {
+    isAnonymous: true,
+    getIdToken: async () => "token",
+  } as unknown as User;
+  render(<SettingsPage user={guest} onDeleted={onDeleted} />);
+
+  expect(await screen.findByLabelText("Max heart rate")).toHaveValue(188);
+  expect(screen.getByLabelText("Max heart rate")).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Issue token" })).toBeDisabled();
+  expect(
+    screen.getByRole("button", { name: "Delete account…" }),
+  ).toBeDisabled();
+  expect(
+    screen.getByText(/Guests can view the demo settings/),
+  ).toBeInTheDocument();
+});

@@ -761,6 +761,13 @@ export type LoginAuthLoginPostData = {
   url: "/auth/login";
 };
 
+export type LoginAuthLoginPostErrors = {
+  /**
+   * ゲスト（匿名ログイン）で入ったが、デモデータがまだ入っていない
+   */
+  503: unknown;
+};
+
 export type LoginAuthLoginPostResponses = {
   /**
    * Successful Response
@@ -919,6 +926,10 @@ export type AddNoteNotesPostErrors = {
    */
   400: unknown;
   /**
+   * ゲスト（デモの利用者）は見るだけで、書き込めない
+   */
+  403: unknown;
+  /**
    * その日のメモはもうある
    */
   409: unknown;
@@ -955,6 +966,10 @@ export type RemoveNoteNotesNoteIdDeleteData = {
 
 export type RemoveNoteNotesNoteIdDeleteErrors = {
   /**
+   * ゲスト（デモの利用者）は見るだけで、書き込めない
+   */
+  403: unknown;
+  /**
    * 本人のメモにない
    */
   404: unknown;
@@ -990,6 +1005,10 @@ export type EditNoteNotesNoteIdPatchData = {
 };
 
 export type EditNoteNotesNoteIdPatchErrors = {
+  /**
+   * ゲスト（デモの利用者）は見るだけで、書き込めない
+   */
+  403: unknown;
   /**
    * 本人のメモにない
    */
@@ -1054,7 +1073,7 @@ export type ReadCurrentReviewReviewsCurrentGetData = {
 
 export type ReadCurrentReviewReviewsCurrentGetErrors = {
   /**
-   * 今の週の振り返りはまだない
+   * 今の週の振り返りはまだない（ゲストは、デモの振り返りがひとつもない）
    */
   404: unknown;
 };
@@ -1139,6 +1158,10 @@ export type UpdateSettingsSettingsPutData = {
 
 export type UpdateSettingsSettingsPutErrors = {
   /**
+   * ゲスト（デモの利用者）は見るだけで、書き込めない
+   */
+  403: unknown;
+  /**
    * Validation Error
    */
   422: HttpValidationError;
@@ -1162,6 +1185,13 @@ export type ReissueIngestTokenSettingsIngestTokenPostData = {
   path?: never;
   query?: never;
   url: "/settings/ingest-token";
+};
+
+export type ReissueIngestTokenSettingsIngestTokenPostErrors = {
+  /**
+   * ゲスト（デモの利用者）は見るだけで、書き込めない
+   */
+  403: unknown;
 };
 
 export type ReissueIngestTokenSettingsIngestTokenPostResponses = {

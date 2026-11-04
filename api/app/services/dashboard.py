@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.calendar import start_of_day, today_in
+from app.domain.calendar import start_of_day
 from app.domain.load import (
     FITNESS_DAYS,
     daily_loads,
@@ -19,6 +19,7 @@ from app.domain.vo2max import AVERAGE_DAYS, vo2max_trend
 from app.models import User, Vo2maxReading, Workout, WorkoutHeartRate
 from app.schemas.dashboard import Dashboard, DayPoint, Sport, Vo2maxPoint, WorkoutPoint
 from app.schemas.workouts import zone_seconds
+from app.services.users import today_of
 
 # 表示の期間より前から計算を始める日数。体力の時定数の 6 倍で、それより前の負荷は
 # e^(−6) ≈ 0.25% しか残らない。0 から立ち上がって期間の初日の体力が低く出るのを防ぐ
@@ -91,11 +92,12 @@ async def build_dashboard(
     weeks 週前の日になる。「直近 N 週」の始まりを利用者のタイムゾーンの今日から決めるため。
     期間の誤りは InvalidPeriodError。
 
-    today は利用者のタイムゾーンでの今日。省けば今の時刻から決める。振り返りの service が
-    自分の決めた今日と同じ日で切るために渡す。
+    today は利用者のタイムゾーンでの今日。振り返りの service が自分の決めた今日と同じ日で
+    切るために渡す。省けば today_of で決める（ふだんは今の日付、デモの利用者は最後の
+    ワークアウトの日）。
     """
     tz = ZoneInfo(user.timezone)
-    today = today or today_in(tz)
+    today = today or await today_of(session, user)
     first_day = await _first_day(session, user.id, tz) if needs_first_day(since, weeks) else None
     since, until = dashboard_period(today, since, until, weeks, first_day)
 

@@ -147,6 +147,8 @@ export default function SettingsPage({ user, onDeleted }: Props) {
   const openRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
+  // ゲストはデモの設定を見るだけ。保存、トークンの発行、削除は押せない
+  const guest = user.isAnonymous;
 
   useEffect(() => {
     const target = focusNext.current;
@@ -187,7 +189,7 @@ export default function SettingsPage({ user, onDeleted }: Props) {
 
   async function handleSave(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!form) return;
+    if (!form || guest) return;
     setError(null);
     setStatus(null);
     const problem = settingsProblem(form);
@@ -255,70 +257,75 @@ export default function SettingsPage({ user, onDeleted }: Props) {
   return (
     <section>
       <h2>Settings</h2>
+      {guest && <p>Guests can view the demo settings but can't change them.</p>}
       {/* 設定を読めなくても、削除の節は出す */}
       {form ? (
         <>
           {/* 確かめるのは settingsProblem に任せる。ブラウザの吹き出しで止めると、文言が
               ブラウザごとに違い、テストでも確かめられないため。min と max は矢印の範囲の目安 */}
           <form onSubmit={handleSave} noValidate>
-            <fieldset>
-              <legend>Heart rate</legend>
-              {HEART_RATE_FIELDS.map(({ field, label, min, max }) => (
-                <label key={field}>
-                  {label}
-                  <input
-                    type="number"
-                    min={min}
-                    max={max}
-                    step={1}
-                    value={form[field] ?? ""}
-                    onChange={(e) => update(field, toInt(e.target.value))}
-                  />
+            <fieldset disabled={guest} className="plain">
+              <fieldset>
+                <legend>Heart rate</legend>
+                {HEART_RATE_FIELDS.map(({ field, label, min, max }) => (
+                  <label key={field}>
+                    {label}
+                    <input
+                      type="number"
+                      min={min}
+                      max={max}
+                      step={1}
+                      value={form[field] ?? ""}
+                      onChange={(e) => update(field, toInt(e.target.value))}
+                    />
+                  </label>
+                ))}
+              </fieldset>
+
+              <fieldset>
+                <legend>Weekly review</legend>
+                <label>
+                  Time zone
+                  <select
+                    value={form.timezone}
+                    onChange={(e) => update("timezone", e.target.value)}
+                  >
+                    {timezones().map((tz) => (
+                      <option key={tz} value={tz}>
+                        {tz}
+                      </option>
+                    ))}
+                  </select>
                 </label>
-              ))}
-            </fieldset>
+                <label>
+                  Review day
+                  <select
+                    value={form.review_weekday}
+                    onChange={(e) =>
+                      update("review_weekday", Number(e.target.value))
+                    }
+                  >
+                    {WEEKDAYS.map((name, i) => (
+                      <option key={name} value={i}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={form.send_notes_to_ai}
+                    onChange={(e) =>
+                      update("send_notes_to_ai", e.target.checked)
+                    }
+                  />
+                  Let the AI read my notes
+                </label>
+              </fieldset>
 
-            <fieldset>
-              <legend>Weekly review</legend>
-              <label>
-                Time zone
-                <select
-                  value={form.timezone}
-                  onChange={(e) => update("timezone", e.target.value)}
-                >
-                  {timezones().map((tz) => (
-                    <option key={tz} value={tz}>
-                      {tz}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Review day
-                <select
-                  value={form.review_weekday}
-                  onChange={(e) =>
-                    update("review_weekday", Number(e.target.value))
-                  }
-                >
-                  {WEEKDAYS.map((name, i) => (
-                    <option key={name} value={i}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={form.send_notes_to_ai}
-                  onChange={(e) => update("send_notes_to_ai", e.target.checked)}
-                />
-                Let the AI read my notes
-              </label>
+              <button type="submit">Save</button>
             </fieldset>
-
-            <button type="submit">Save</button>
             {status && <p role="status">{status}</p>}
           </form>
 
@@ -339,7 +346,11 @@ export default function SettingsPage({ user, onDeleted }: Props) {
                   : "No token yet."}
               </p>
             )}
-            <button type="button" onClick={handleIssueToken} disabled={issuing}>
+            <button
+              type="button"
+              onClick={handleIssueToken}
+              disabled={issuing || guest}
+            >
               {lastFour ? "Reissue token" : "Issue token"}
             </button>
           </section>
@@ -377,7 +388,12 @@ export default function SettingsPage({ user, onDeleted }: Props) {
             {deleteError && <p role="alert">{deleteError}</p>}
           </>
         ) : (
-          <button ref={openRef} type="button" onClick={openDelete}>
+          <button
+            ref={openRef}
+            type="button"
+            onClick={openDelete}
+            disabled={guest}
+          >
             Delete account…
           </button>
         )}

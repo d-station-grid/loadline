@@ -3,7 +3,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
-from app.routers.deps import CurrentUser, DbSession
+from app.routers.deps import GUEST_FORBIDDEN, CurrentUser, DbSession, WritableUser
 from app.schemas.notes import NoteIn, NoteList, NoteOut, NoteUpdate
 from app.services.notes import (
     FutureDateError,
@@ -35,10 +35,11 @@ async def read_notes(
     responses={
         # 422 は上書きしない。FastAPI が付ける検証エラーの形を、生成する型に残すため
         status.HTTP_400_BAD_REQUEST: {"description": "未来の日付"},
+        **GUEST_FORBIDDEN,
         status.HTTP_409_CONFLICT: {"description": "その日のメモはもうある"},
     },
 )
-async def add_note(body: NoteIn, user: CurrentUser, session: DbSession) -> NoteOut:
+async def add_note(body: NoteIn, user: WritableUser, session: DbSession) -> NoteOut:
     """メモを 1 件書く。走らなかった日にも書ける。1 日 1 件で、その日にもうあれば 409。"""
     try:
         note = await create_note(session, user, body.date, body.body, body.label)
@@ -55,9 +56,9 @@ NOT_FOUND: dict[int | str, dict[str, Any]] = {
 }
 
 
-@router.patch("/{note_id}", response_model=NoteOut, responses=NOT_FOUND)
+@router.patch("/{note_id}", response_model=NoteOut, responses={**GUEST_FORBIDDEN, **NOT_FOUND})
 async def edit_note(
-    note_id: int, body: NoteUpdate, user: CurrentUser, session: DbSession
+    note_id: int, body: NoteUpdate, user: WritableUser, session: DbSession
 ) -> NoteOut:
     """メモの本文やラベルを直す。送った項目だけを変え、日付は変えない。"""
     changes = body.model_dump(include=body.model_fields_set)
@@ -67,8 +68,12 @@ async def edit_note(
     return NoteOut.model_validate(note)
 
 
-@router.delete("/{note_id}", status_code=status.HTTP_204_NO_CONTENT, responses=NOT_FOUND)
-async def remove_note(note_id: int, user: CurrentUser, session: DbSession) -> Response:
+@router.delete(
+    "/{note_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={**GUEST_FORBIDDEN, **NOT_FOUND},
+)
+async def remove_note(note_id: int, user: WritableUser, session: DbSession) -> Response:
     """メモを消す。消した日には、また新しく書ける。"""
     if not await delete_note(session, user.id, note_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND)
