@@ -842,6 +842,34 @@ export type ReceiveIngestPostResponses = {
 export type ReceiveIngestPostResponse =
   ReceiveIngestPostResponses[keyof ReceiveIngestPostResponses];
 
+export type DeleteMeMeDeleteData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/me";
+};
+
+export type DeleteMeMeDeleteErrors = {
+  /**
+   * ゲスト（デモの利用者）は消せない
+   */
+  403: unknown;
+  /**
+   * Firebase の利用者を消せなかった。何も消していないので、やり直せる
+   */
+  502: unknown;
+};
+
+export type DeleteMeMeDeleteResponses = {
+  /**
+   * Successful Response
+   */
+  204: void;
+};
+
+export type DeleteMeMeDeleteResponse =
+  DeleteMeMeDeleteResponses[keyof DeleteMeMeDeleteResponses];
+
 export type ReadNotesNotesGetData = {
   body?: never;
   path?: never;

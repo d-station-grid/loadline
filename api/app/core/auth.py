@@ -39,7 +39,8 @@ class FirebaseTokenVerifier:
     def __init__(self, project_id: str) -> None:
         # SDK は初期化のときに資格情報を読む。検証だけなら要らないので空のものを渡し、
         # 認証情報のない環境（CI など）でも同じ動きにする。
-        # 利用者の管理など Google に認証が要る機能を使うときは ApplicationDefault に替える
+        # 利用者を消すなど認証が要る管理の機能は、ADC で初期化した別の app で行う
+        # （adapters/firebase_accounts.py）
         self._app = firebase_admin.initialize_app(
             _NoCredential(), options={"projectId": project_id}
         )

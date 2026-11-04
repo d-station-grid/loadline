@@ -11,7 +11,7 @@
           "auth"
         ],
         "summary": "Login",
-        "description": "ID トークンで本人を確かめ、初回なら利用者の行を作って返す。",
+        "description": "ID トークンで本人を確かめ、初回なら利用者の行を作って返す。\n\nアカウントを消した人のトークンは 401（行を作り直さない）。",
         "operationId": "login_auth_login_post",
         "responses": {
           "200": {
@@ -176,6 +176,32 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/me": {
+      "delete": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Delete Me",
+        "description": "ログイン中の本人を消す。記録、メモ、振り返り、取り込み用トークン、Firebase の利用者。\n\nFirebase の利用者を消せなければ何も消さずに 502 を返す。もう一度呼べばやり直せる。\n消したあとは、同じ ID トークンでも 401 になる。",
+        "operationId": "delete_me_me_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "ゲスト（デモの利用者）は消せない"
+          },
+          "502": {
+            "description": "Firebase の利用者を消せなかった。何も消していないので、やり直せる"
           }
         },
         "security": [

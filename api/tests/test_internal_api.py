@@ -313,10 +313,12 @@ async def test_task_after_the_review_weekday_changed_is_skipped(
     assert await _review_count(session, user) == 0
 
 
-async def test_task_for_a_missing_user_is_404(client: AsyncClient) -> None:
+async def test_task_for_a_deleted_user_is_skipped(client: AsyncClient) -> None:
+    # 積んだ後に本人がアカウントを消した。やり直しても変わらないので 2xx で返す
     res = await client.post(_task_path(999999, _current_week()), headers=HEADERS)
 
-    assert res.status_code == 404
+    assert res.status_code == 200
+    assert res.json() == {"result": "skipped", "review_id": None}
 
 
 async def test_task_with_a_broken_date_is_422(client: AsyncClient) -> None:

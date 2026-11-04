@@ -3,14 +3,24 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import Identity
-from app.models import User
+from app.models import DeletedAccount, User
+
+
+class AccountDeletedError(Exception):
+    """アカウントを消した人の ID トークン。期限まで検証を通るので、ここで止める。"""
 
 
 async def get_or_create_user(session: AsyncSession, identity: Identity) -> User:
-    """firebase_uid で探し、なければ作る。初回ログインで行ができる。"""
+    """firebase_uid で探し、なければ作る。初回ログインで行ができる。
+
+    アカウントを消した人の uid なら作らずに AccountDeletedError を上げる。行がある人は
+    消していないので、見るのは行がないときだけ。
+    """
     user = await session.scalar(select(User).where(User.firebase_uid == identity.uid))
     if user is not None:
         return user
+    if await session.get(DeletedAccount, identity.uid) is not None:
+        raise AccountDeletedError
 
     user = User(firebase_uid=identity.uid, email=identity.email)
     session.add(user)
