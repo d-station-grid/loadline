@@ -112,12 +112,13 @@ def _script(week: WeekSituation, health_flag: bool) -> str:
                 "A lighter week helps the work you've done sink in."
             )
         case Situation.FRESH if health_flag:
-            # 選択肢と食い違わないように、増やすことを勧めない。フラグはメモを確かめられ
-            # なかったときにも立つので、メモの中身にも触れない
+            # 選択肢と食い違わないように、増やすことを勧めない。痛みや病気がある週か、メモを
+            # 確かめられなかった週なので、休めた、回復したとは言い切らず、メモの中身にも触れない
             return (
-                "You're well rested. Your fatigue is below your fitness right now, "
-                "so your body has had time to recover. "
-                "This week, keep things comfortable and listen to how your body feels."
+                "Your fatigue is below your fitness right now. "
+                "Numbers are only part of the picture, though. "
+                "This week, keep things comfortable, take it at your own pace, "
+                "and listen to how your body feels."
             )
         case Situation.FRESH:
             return (

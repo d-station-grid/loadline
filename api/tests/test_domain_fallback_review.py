@@ -249,6 +249,16 @@ def test_health_flag_keeps_the_script_from_suggesting_more(situation: Situation)
 
     assert adds_load(script) == []
     assert "room to train" not in script
+
+
+def test_fresh_week_with_the_health_flag_does_not_say_the_body_has_recovered() -> None:
+    """痛みや病気がある週か、メモを確かめられなかった週なので、休めた、回復したとは
+    言い切らない。疲労が体力より低いという、数字が示すことだけを言う。"""
+    script = fallback_review(week(Situation.FRESH), health_flag=True).script
+
+    assert "recover" not in script
+    assert "rested" not in script
+    assert "fatigue is below your fitness" in script
     assert 28 <= words(script) <= 40
 
 
