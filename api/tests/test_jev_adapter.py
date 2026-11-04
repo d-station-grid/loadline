@@ -3,6 +3,7 @@
 import asyncio
 import gc
 from collections.abc import Mapping
+from datetime import date
 from typing import Any
 
 import httpx2
@@ -26,10 +27,12 @@ from typesafe_sdk import (
     Usage,
 )
 
-from app.adapters.jev import QUESTIONS, JevLineChecker, jev_checker
+from app.adapters.jev import NOTE_QUESTIONS, QUESTIONS, JevLineChecker, jev_checker
 from app.core.config import Settings
 from app.domain.fallback_review import ReviewContent, ReviewOption
 from app.domain.line_check import LineCheck, flagged
+from app.domain.note_check import NoteCheck, health_flag
+from app.domain.review_prompt import NoteForReview
 
 CONTENT = ReviewContent(
     script="A calm week of riding.",
@@ -233,3 +236,58 @@ async def test_checker_keeps_the_client_open() -> None:
     await asyncio.sleep(0.05)
 
     assert not http_client.is_closed
+
+
+NOTES = [
+    NoteForReview(date(2026, 10, 14), None, "Knee hurts on stairs."),
+    NoteForReview(date(2026, 10, 12), "Work", "Deadline week."),
+]
+
+
+async def test_asks_about_the_notes_of_the_week_at_once() -> None:
+    """メモを日付順に 1 行ずつつなぎ、体調の問いだけを 1 回聞く。"""
+    system_one = FakeSystemOne(answered(mentions_health=0.91))
+
+    check = await checker(system_one).check_notes(NOTES)
+
+    assert check == NoteCheck(mentions_health=0.91)
+    assert system_one.states == [
+        {"notes": "2026-10-12 Work Deadline week.\n2026-10-14 Knee hurts on stairs."}
+    ]
+    assert system_one.questions == [NOTE_QUESTIONS]
+    assert set(NOTE_QUESTIONS) == {"mentions_health"}
+
+
+@pytest.mark.parametrize(
+    ("yes", "flag"),
+    [
+        pytest.param(0.02, False, id="no"),
+        pytest.param(0.34, False, id="just_below_the_cutoff"),
+        pytest.param(0.35, True, id="exactly_at_the_cutoff"),
+        pytest.param(0.9, True, id="yes"),
+    ],
+)
+async def test_health_flag_is_decided_by_the_cutoff(yes: float, flag: bool) -> None:
+    check = await checker(FakeSystemOne(answered(mentions_health=yes))).check_notes(NOTES)
+
+    assert check is not None
+    assert health_flag(check) is flag
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        pytest.param(api_error(TypeSafeRateLimitError, 429), id="busy_429"),
+        pytest.param(TypeSafeAPITimeoutError(15.0), id="sdk_timeout"),
+        pytest.param(answered(pushes_harder=0.0, medical_advice=0.0), id="answers_of_the_line"),
+        pytest.param(answered(mentions_health=float("nan")), id="nan"),
+        pytest.param(answered(mentions_health=1.2), id="above_one"),
+    ],
+)
+async def test_notes_that_cannot_be_checked_return_none(
+    result: SystemOneResponse | Exception, caplog: pytest.LogCaptureFixture
+) -> None:
+    """失敗、時間切れ、想定外の応答は、確かめられなかったものとする。メモの文はログに残さない。"""
+    assert await checker(FakeSystemOne(result)).check_notes(NOTES) is None
+    assert [r.levelname for r in caplog.records] == ["WARNING"]
+    assert all("Knee" not in r.getMessage() for r in caplog.records)

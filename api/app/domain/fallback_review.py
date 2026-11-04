@@ -7,7 +7,8 @@ LLM が使えないときや、作ったセリフを確かめられなかった�
 選択肢には必ず軽いもの（休む、軽く流す）を入れる。疲労が高い週には、強度や量を上げる
 選択肢を出さない。判定は「疲労」より先に「記録が足りない」「走れなかった週」「中断明け」を
 当てるので、この 3 つも疲労が高いことがある。増やす選択肢を置くのは「休めている」と
-「順調」だけにする。
+「順調」だけにする。メモの体調のフラグが立った週は、その 2 つからも増やす選択肢を外す。
+フラグはメモを Jev で確かめた答えからコードで決めたもので、ここではメモそのものは読まない。
 """
 
 from dataclasses import dataclass
@@ -65,9 +66,19 @@ _OPTIONS: dict[Situation, tuple[ReviewOption, ...]] = {
 }
 
 
-def fallback_review(week: WeekSituation) -> ReviewContent:
-    """判定した状況から、定型のセリフと選択肢を作る。"""
-    return ReviewContent(script=_script(week), options=_OPTIONS[week.situation])
+# 量や強度を上げる選択肢。体調のフラグが立った週は外す。外しても 2 個は残る
+_ADDS_LOAD = frozenset({"Add a bit more", "Add one session"})
+
+
+def fallback_review(week: WeekSituation, health_flag: bool = False) -> ReviewContent:
+    """判定した状況から、定型のセリフと選択肢を作る。
+
+    health_flag はメモの体調のフラグ。メモを確かめていなければ False のまま呼ぶ。
+    """
+    options = _OPTIONS[week.situation]
+    if health_flag:
+        options = tuple(o for o in options if o.label not in _ADDS_LOAD)
+    return ReviewContent(script=_script(week), options=options)
 
 
 def _script(week: WeekSituation) -> str:

@@ -17,8 +17,9 @@ from app.services.auto_reviews import DueReview
 
 logger = logging.getLogger(__name__)
 
-# Gemini を待つ上限（60 秒）に、材料を読む時間とコールドスタートの分を足す
-DISPATCH_DEADLINE_SEC = 120
+# Gemini を待つ上限（60 秒）と Jev を待つ上限（メモとセリフで 15 秒ずつ）に、材料を読む時間と
+# コールドスタートの分を足す
+DISPATCH_DEADLINE_SEC = 150
 # 積む呼び出し 1 回の上限。Scheduler の 1 回のうちに全員を積み終える
 CREATE_TIMEOUT_SEC = 10.0
 

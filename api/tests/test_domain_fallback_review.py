@@ -230,3 +230,21 @@ def test_scripts_do_not_overstate_what_the_numbers_show() -> None:
 
     assert "recover" not in no_training
     assert "dropped" not in fresh
+
+
+@pytest.mark.parametrize("situation", list(Situation))
+def test_health_flag_removes_options_that_add_load(situation: Situation) -> None:
+    """痛みや病気に触れたメモがある週は、休めている週や順調な週でも増やす選択肢を外す。
+    外しても、軽い選択肢を含めて 2 個は残る。"""
+    options = fallback_review(week(situation, rest_days_before=20), health_flag=True).options
+
+    assert adds_load(" ".join(f"{o.label} {o.description}" for o in options)) == []
+    assert len(options) >= 2
+
+
+@pytest.mark.parametrize("situation", [Situation.FRESH, Situation.STEADY])
+def test_without_the_health_flag_rested_weeks_may_add_load(situation: Situation) -> None:
+    """フラグが立っていなければ、休めている週と順調な週には増やす選択肢を 1 つ置く。"""
+    options = fallback_review(week(situation)).options
+
+    assert adds_load(" ".join(f"{o.label} {o.description}" for o in options)) != []

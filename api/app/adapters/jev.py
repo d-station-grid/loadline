@@ -1,8 +1,10 @@
-"""TypeSafe AI の Jev に、LLM が書いたセリフを話してよいか確かめてもらう。
+"""TypeSafe AI の Jev に、LLM が書いたセリフを話してよいか、その週のメモが痛みや病気に
+触れているかを確かめてもらう。
 
-1 回の呼び出しで、無理強いと医療の助言の 2 つを Noul（はい・いいえの確率）で聞く。
-話してよいかの判定（境目との比較）は domain の line_check で行う。ここは聞いて、答えを
-LineCheck に写すだけ。
+セリフは 1 回の呼び出しで、無理強いと医療の助言の 2 つを Noul（はい・いいえの確率）で聞く。
+メモは別の 1 回で、痛みや病気に触れているかを聞く。セリフより先に、LLM に書かせる前に聞く。
+話してよいか、体調のフラグを立てるか（境目との比較）は domain の line_check と note_check で
+行う。ここは聞いて、答えを LineCheck と NoteCheck に写すだけ。
 
 失敗、時間切れ、想定外の応答では None を返し、呼ぶ側が定型に切り替える。やり直しはしない。
 待つのは 1 回で、SDK のやり直しも切る。
@@ -11,7 +13,7 @@ LineCheck に写すだけ。
 import asyncio
 import logging
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Protocol
 
 from typesafe_sdk import (
@@ -32,6 +34,8 @@ from typesafe_sdk import (
 from app.core.config import Settings
 from app.domain.fallback_review import ReviewContent
 from app.domain.line_check import LineCheck, text_to_check
+from app.domain.note_check import NoteCheck, notes_to_check
+from app.domain.review_prompt import NoteForReview
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +71,21 @@ QUESTIONS: dict[str, Question] = {
 }
 
 
+# メモの問いは、まだ本物の Jev で確かめていない。変えるときも、確かめた結果を残す。
+# 疲れ、寝不足、脚の重さだけでは立てない。立てると、ほとんどの週で増やす選択肢が消えるため。
+# 筋肉の張りや痛みは立てる側に倒す（立っても、増やす選択肢が出ないだけ）
+NOTE_QUESTIONS: dict[str, Question] = {
+    "mentions_health": Noul(
+        instructions=(
+            "`notes` mention pain, soreness, an injury, an illness, or another physical symptom, "
+            "such as a sore knee, back pain, a cold, a fever, a headache or feeling sick. "
+            "It counts even if the note says it is getting better or is about a treatment. "
+            "Being tired, sleeping badly or having heavy legs does not count by itself."
+        ),
+    ),
+}
+
+
 class InvalidAnswerError(Exception):
     """Jev の応答に、聞いた問いの答えがないか、確率が 0〜1 の数でない。"""
 
@@ -93,9 +112,33 @@ class JevLineChecker:
 
     async def check(self, content: ReviewContent) -> LineCheck | None:
         """content を確かめた答え。確かめられなければ None。"""
+        response = await self._ask({"line": text_to_check(content)}, QUESTIONS)
+        if response is None:
+            return None
+        try:
+            return _parse(response)
+        except InvalidAnswerError as error:
+            logger.warning("jev: unexpected answer: %s", error)
+            return None
+
+    async def check_notes(self, notes: Sequence[NoteForReview]) -> NoteCheck | None:
+        """その週のメモを確かめた答え。確かめられなければ None。メモが空なら、呼ぶ側が呼ばない。"""
+        response = await self._ask({"notes": notes_to_check(notes)}, NOTE_QUESTIONS)
+        if response is None:
+            return None
+        try:
+            return NoteCheck(mentions_health=_yes(response, "mentions_health"))
+        except InvalidAnswerError as error:
+            logger.warning("jev: unexpected answer about the notes: %s", error)
+            return None
+
+    async def _ask(
+        self, state: Content, questions: Mapping[str, Question]
+    ) -> SystemOneResponse | None:
+        """1 回だけ聞く。失敗、時間切れでは None。文の中身はログに残さない。"""
         try:
             async with asyncio.timeout(self._timeout_sec):
-                response = await self._system_one({"line": text_to_check(content)}, QUESTIONS)
+                return await self._system_one(state, questions)
         except TimeoutError:
             # SDK の時間切れ（TypeSafeAPITimeoutError）も TimeoutError
             logger.warning("jev: gave up after %s seconds", self._timeout_sec)
@@ -106,11 +149,6 @@ class JevLineChecker:
         except TypeSafeError as error:
             # 混雑、障害、通信の失敗、壊れた応答（TypeSafeAPIResponseValidationError）
             logger.warning("jev: failed: %r", error)
-            return None
-        try:
-            return _parse(response)
-        except InvalidAnswerError as error:
-            logger.warning("jev: unexpected answer: %s", error)
             return None
 
 
