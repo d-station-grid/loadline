@@ -1,13 +1,17 @@
 """ゲスト（Firebase の匿名ログイン）は、デモの利用者のデータを見るだけ。"""
 
-from collections.abc import Iterator
+import asyncio
+from collections.abc import AsyncIterator, Iterator
 from datetime import date
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
+import scripts.seed_demo as seed_module
 from app.core.auth import Identity, InvalidTokenError, get_token_verifier, identity_from_claims
 from app.main import app
 from app.models import (
@@ -21,7 +25,8 @@ from app.models import (
     WorkoutHeartRate,
 )
 from app.routers.deps import get_account_deleter
-from scripts.seed_demo import FIRST_DAY, LAST_DAY, REVIEWS, seed_demo
+from app.services.reviews import select_option
+from scripts.seed_demo import FIRST_DAY, LAST_DAY, REVIEWS, seed_demo, seed_demo_atomically
 from tests.test_me_api import FakeDeleter
 
 GUEST = {"Authorization": "Bearer guest"}
@@ -198,3 +203,69 @@ async def test_seed_demo_can_run_again(session: AsyncSession, demo: User) -> Non
     )
     assert users == 1
     assert reviews == REVIEWS
+
+
+async def test_only_one_demo_user_can_exist(session: AsyncSession, demo: User) -> None:
+    """ゲストは全員デモの利用者 1 人として扱う。2 人目は DB が断る。"""
+    session.add(User(email="second@loadline.invalid", is_demo=True))
+
+    with pytest.raises(IntegrityError):
+        await session.flush()
+
+
+# ここから下は、seed をテストの外のトランザクションに入れずに本当に確定させる。
+# 終わったらデモの利用者を消し、ほかのテストに残さない
+
+
+@pytest.fixture
+async def committed(engine: AsyncEngine) -> AsyncIterator[AsyncEngine]:
+    yield engine
+    async with engine.begin() as conn:
+        await conn.execute(delete(User).where(User.is_demo.is_(True)))
+
+
+async def _demo_state(engine: AsyncEngine) -> tuple[list[int], int, int]:
+    """確定したデモの利用者の id、振り返りの数、選んだ選択肢の数。"""
+    async with engine.connect() as conn:
+        ids = list(await conn.scalars(select(User.id).where(User.is_demo.is_(True))))
+        reviews = await conn.scalar(
+            select(func.count()).select_from(WeeklyReview).where(WeeklyReview.user_id.in_(ids))
+        )
+        selected = await conn.scalar(
+            select(func.count())
+            .select_from(WeeklyReviewOption)
+            .join(WeeklyReview)
+            .where(WeeklyReview.user_id.in_(ids), WeeklyReviewOption.selected_at.is_not(None))
+        )
+    return ids, reviews or 0, selected or 0
+
+
+async def test_a_failed_seed_keeps_the_previous_demo_data(
+    committed: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """振り返りの途中で落ちても、前のデモがそのまま残る。半端なデモは見せない。"""
+    first = await seed_demo_atomically(committed)
+
+    calls = 0
+    real = select_option
+
+    async def fail_on_second(*args: Any, **kwargs: Any) -> Any:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("boom")
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(seed_module, "select_option", fail_on_second)
+    with pytest.raises(RuntimeError):
+        await seed_demo_atomically(committed)
+
+    assert await _demo_state(committed) == ([first], REVIEWS, REVIEWS - 1)
+
+
+async def test_seeding_twice_at_once_leaves_one_demo_user(committed: AsyncEngine) -> None:
+    await asyncio.gather(seed_demo_atomically(committed), seed_demo_atomically(committed))
+
+    ids, reviews, selected = await _demo_state(committed)
+    assert len(ids) == 1
+    assert (reviews, selected) == (REVIEWS, REVIEWS - 1)

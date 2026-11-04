@@ -12,6 +12,9 @@
 あれば Gemini が書いて Jev で確かめ、なければ定型になる。前の 3 週は選択肢を 1 つ
 選んでおく。最後の週は選ばずに残す（ゲストには押せない選択肢として見せる）。
 音声はまだ入れない（声にする機能で足す）。
+
+全体を 1 つのトランザクションで入れる。途中で失敗したら何も変えず、前のデモデータが
+そのまま残る。同時に 2 回流しても、advisory lock で 1 回ずつ順に入る。
 """
 
 import asyncio
@@ -22,13 +25,13 @@ from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import delete
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.adapters.gemini import gemini_writer
 from app.adapters.jev import jev_checker
 from app.core.config import get_settings
-from app.core.db import get_session_factory
+from app.core.db import get_engine
 from app.models import Note, User, Vo2maxReading, Workout, WorkoutHeartRate
 from app.services.reviews import LineChecker, ReviewWriter, create_review, select_option
 
@@ -48,6 +51,8 @@ ZONE_2 = 160  # Mid と High の境目
 
 # 外部 id を毎回同じにするための名前空間
 _NAMESPACE = uuid.UUID("6f1b0d6e-45de-4c0a-9d6b-6c6f61646c6e")
+# デモデータを入れる間の advisory lock の鍵。ほかで使わない数ならよい
+_LOCK_KEY = 45_0001
 
 
 @dataclass(frozen=True)
@@ -168,8 +173,14 @@ async def seed_demo(
     writer: ReviewWriter | None = None,
     checker: LineChecker | None = None,
 ) -> User:
-    """デモの利用者を作り直して、記録、メモ、振り返りを入れる。"""
+    """デモの利用者を作り直して、記録、メモ、振り返りを入れる。
+
+    session は外のトランザクションに入れておく（seed_demo_atomically）。中の commit は
+    savepoint になり、外のトランザクションを確定するまで、ほかからは前のデモが見える。
+    """
     rng = random.Random(45)
+    # 同時に流れたら、先のほうが確定するまで待つ。待たずに進むと両方がデモの利用者を作る
+    await session.execute(select(func.pg_advisory_xact_lock(_LOCK_KEY)))
     # 行を消せば、外部キーの ON DELETE CASCADE で記録も振り返りも消える
     await session.execute(delete(User).where(User.is_demo.is_(True)))
     user = User(
@@ -217,11 +228,30 @@ async def seed_demo(
     return user
 
 
+async def seed_demo_atomically(
+    engine: AsyncEngine,
+    writer: ReviewWriter | None = None,
+    checker: LineChecker | None = None,
+) -> int:
+    """seed_demo を 1 つのトランザクションで流し、最後まで済んだときだけ確定する。
+
+    create_review などは途中で commit するので、外のトランザクションに入れて savepoint に
+    する。途中で例外が出たら全部を巻き戻し、前のデモデータを残す。作ったデモの利用者の id を返す。
+    """
+    async with engine.connect() as conn, conn.begin():
+        async with AsyncSession(
+            bind=conn, expire_on_commit=False, join_transaction_mode="create_savepoint"
+        ) as session:
+            user = await seed_demo(session, writer, checker)
+    return user.id
+
+
 async def main() -> None:
     settings = get_settings()
-    async with get_session_factory()() as session:
-        user = await seed_demo(session, gemini_writer(settings), jev_checker(settings))
-        print(f"demo user {user.id}: {FIRST_DAY} to {LAST_DAY}")
+    user_id = await seed_demo_atomically(
+        get_engine(), gemini_writer(settings), jev_checker(settings)
+    )
+    print(f"demo user {user_id}: {FIRST_DAY} to {LAST_DAY}")
 
 
 if __name__ == "__main__":

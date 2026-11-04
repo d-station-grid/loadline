@@ -499,7 +499,7 @@
           "reviews"
         ],
         "summary": "Read Current Review",
-        "description": "今の振り返りの週の振り返り。週の決め方は POST /reviews と同じ。",
+        "description": "今の振り返りの週の振り返り。週の決め方は POST /reviews と同じ。\n\nゲスト（デモの利用者）には、今の週ではなく、いちばん新しい期間の振り返りを返す。\nデモデータは日付が動かず、今の週の振り返りはないため。",
         "operationId": "read_current_review_reviews_current_get",
         "responses": {
           "200": {
@@ -513,7 +513,7 @@
             }
           },
           "404": {
-            "description": "今の週の振り返りはまだない"
+            "description": "今の週の振り返りはまだない（ゲストは、デモの振り返りがひとつもない）"
           }
         },
         "security": [

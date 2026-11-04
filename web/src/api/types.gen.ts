@@ -1073,7 +1073,7 @@ export type ReadCurrentReviewReviewsCurrentGetData = {
 
 export type ReadCurrentReviewReviewsCurrentGetErrors = {
   /**
-   * 今の週の振り返りはまだない
+   * 今の週の振り返りはまだない（ゲストは、デモの振り返りがひとつもない）
    */
   404: unknown;
 };

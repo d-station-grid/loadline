@@ -325,3 +325,15 @@ test("デモデータがない環境では、ゲストに使えないと出し�
   );
   expect(firebaseAuth.signOut).toHaveBeenCalled();
 });
+
+test("Google のログインで api が 503 でも、ゲストの文言にはしない", async () => {
+  restoredUser(null);
+  vi.mocked(login).mockRejectedValue(new ApiError(503));
+  render(<App />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Sign in with Google" }));
+
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("API returned 503");
+  expect(alert).not.toHaveTextContent("Guest mode");
+});

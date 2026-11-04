@@ -58,10 +58,18 @@ async def add_review(
 @router.get(
     "/current",
     response_model=WeeklyReviewOut,
-    responses={status.HTTP_404_NOT_FOUND: {"description": "今の週の振り返りはまだない"}},
+    responses={
+        status.HTTP_404_NOT_FOUND: {
+            "description": "今の週の振り返りはまだない（ゲストは、デモの振り返りがひとつもない）"
+        }
+    },
 )
 async def read_current_review(user: CurrentUser, session: DbSession) -> WeeklyReviewOut:
-    """今の振り返りの週の振り返り。週の決め方は POST /reviews と同じ。"""
+    """今の振り返りの週の振り返り。週の決め方は POST /reviews と同じ。
+
+    ゲスト（デモの利用者）には、今の週ではなく、いちばん新しい期間の振り返りを返す。
+    デモデータは日付が動かず、今の週の振り返りはないため。
+    """
     review = await current_review(session, user)
     if review is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)

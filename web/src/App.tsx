@@ -15,11 +15,16 @@ import WorkoutPage from "./pages/WorkoutPage";
 import WorkoutsPage from "./pages/WorkoutsPage";
 
 function errorMessage(e: unknown): string {
-  // ゲストは api のデモデータを見る。まだ入れていない環境では 503 になる
-  if (e instanceof ApiError && e.status === 503) {
+  return e instanceof Error ? e.message : "Sign-in failed";
+}
+
+/** ログインで api に断られたときの文言。ゲストはデモデータを見るので、
+ * まだ入れていない環境では 503 になる。Google のログインの 503 はほかの失敗と同じに扱う */
+function loginErrorMessage(e: unknown, guest: boolean): string {
+  if (guest && e instanceof ApiError && e.status === 503) {
     return "Guest mode isn't available right now.";
   }
-  return e instanceof Error ? e.message : "Sign-in failed";
+  return errorMessage(e);
 }
 
 // ログイン済みの画面。ルーティングのライブラリは入れず、state で切り替える
@@ -61,7 +66,7 @@ function App() {
         }
       } catch (e) {
         if (isLatest()) {
-          setError(errorMessage(e));
+          setError(loginErrorMessage(e, next.isAnonymous));
           await signOut(auth); // null の通知が来て、未ログインの画面に戻る
         }
       } finally {
