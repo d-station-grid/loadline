@@ -1,4 +1,5 @@
 import json
+from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -9,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.domain.fallback_review import ReviewContent, ReviewOption, fallback_review
 from app.domain.line_check import LineCheck
+from app.domain.note_check import NoteCheck
+from app.domain.review_prompt import NoteForReview
 from app.domain.situation import Situation
 from app.models import User, WeeklyReview, WeeklyReviewOption, Workout
 from app.services.dashboard import build_dashboard
@@ -458,18 +461,27 @@ class FakeWriter:
 
 
 SAFE = LineCheck(pushes_harder=0.02, medical_advice=0.01)
+NO_HEALTH_NOTE = NoteCheck(mentions_health=0.03)
 
 
 class FakeChecker:
-    """受け取ったセリフを控え、決めた結果を返す。"""
+    """受け取ったセリフとメモを控え、決めた結果を返す。"""
 
-    def __init__(self, result: LineCheck | None) -> None:
+    def __init__(
+        self, result: LineCheck | None, notes_result: NoteCheck | None = NO_HEALTH_NOTE
+    ) -> None:
         self.result = result
+        self.notes_result = notes_result
         self.contents: list[ReviewContent] = []
+        self.notes: list[list[NoteForReview]] = []
 
     async def check(self, content: ReviewContent) -> LineCheck | None:
         self.contents.append(content)
         return self.result
+
+    async def check_notes(self, notes: Sequence[NoteForReview]) -> NoteCheck | None:
+        self.notes.append(list(notes))
+        return self.notes_result
 
 
 async def test_create_review_saves_what_the_writer_wrote(session: AsyncSession) -> None:
@@ -632,3 +644,165 @@ async def test_create_review_without_a_checker_does_not_speak_what_gemini_writes
     assert review.is_fallback
     assert review.script == expected.script
     assert any("no line checker" in r.message for r in caplog.records)
+
+
+def _adds_load(labels: list[str]) -> list[str]:
+    return [label for label in labels if label in {"Add a bit more", "Add one session"}]
+
+
+async def test_notes_are_checked_with_jev_before_the_writer(session: AsyncSession) -> None:
+    """その週のメモを Jev で確かめてから書かせる。痛みに触れていなければ、順調な週は増やす
+    選択肢を出してよい。"""
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+    await NoteFactory.create_async(user_id=user.id, date=MONDAY, label="Work", body="Busy week")
+    writer = FakeWriter(WRITTEN)
+    checker = FakeChecker(SAFE, NoteCheck(mentions_health=0.34))
+
+    await create_review(session, user, writer, checker, today=TODAY)
+
+    assert checker.notes == [[NoteForReview(day=MONDAY, label="Work", body="Busy week")]]
+    assert writer.data()["situation"] == "steady"
+    assert writer.data()["may_offer_more"] is True
+
+
+async def test_health_flag_keeps_the_writer_from_offering_more(session: AsyncSession) -> None:
+    """痛みや病気に触れたメモがある週は、順調な週でも増やす選択肢を出させない。コードで決める。"""
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+    await NoteFactory.create_async(user_id=user.id, date=MONDAY, body="Knee hurts on stairs")
+    writer = FakeWriter(WRITTEN)
+    checker = FakeChecker(SAFE, NoteCheck(mentions_health=0.35))
+
+    review, _ = await create_review(session, user, writer, checker, today=TODAY)
+
+    assert writer.data()["situation"] == "steady"
+    assert writer.data()["may_offer_more"] is False
+    assert not review.is_fallback
+
+
+async def test_health_flag_also_removes_more_from_the_fixed_options(session: AsyncSession) -> None:
+    """フラグが立った週に Gemini の文が引っかかって定型になっても、増やす選択肢は出さない。"""
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+    await NoteFactory.create_async(user_id=user.id, date=MONDAY, body="Caught a cold")
+    flagged_line = LineCheck(pushes_harder=0.9, medical_advice=0.0)
+    checker = FakeChecker(flagged_line, NoteCheck(mentions_health=0.8))
+
+    review, _ = await create_review(session, user, FakeWriter(WRITTEN), checker, today=TODAY)
+
+    week = await judge_review_week(session, user, MONDAY, TODAY)
+    labels = [o.label for o in review.options]
+    assert review.is_fallback
+    assert _adds_load([o.label for o in fallback_review(week).options]) != []
+    assert _adds_load(labels) == []
+    assert labels == [o.label for o in fallback_review(week, health_flag=True).options]
+
+
+async def test_notes_that_cannot_be_checked_fall_back_without_more(
+    session: AsyncSession, caplog: pytest.LogCaptureFixture
+) -> None:
+    """メモを Jev で確かめられなければ、Gemini は呼ばずに定型にする。増やす選択肢も外す
+    （痛みに触れていないと確かめられていないので、安全側に倒す）。"""
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+    await NoteFactory.create_async(user_id=user.id, date=MONDAY, body="Back pain again")
+    writer = FakeWriter(WRITTEN)
+    checker = FakeChecker(SAFE, None)
+
+    review, created = await create_review(session, user, writer, checker, today=TODAY)
+
+    assert created
+    assert writer.prompts == []
+    assert checker.contents == []
+    assert review.is_fallback
+    assert _adds_load([o.label for o in review.options]) == []
+    logs = [r.getMessage() for r in caplog.records if "could not check the notes" in r.message]
+    assert len(logs) == 1
+    assert "Back pain" not in logs[0]
+
+
+async def test_health_flag_log_does_not_keep_the_notes(
+    session: AsyncSession, caplog: pytest.LogCaptureFixture
+) -> None:
+    """フラグが立ったことと確率はログに残し、メモの文は残さない。"""
+    caplog.set_level("INFO")
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+    await NoteFactory.create_async(user_id=user.id, date=MONDAY, body="Knee hurts on stairs")
+
+    await create_review(
+        session,
+        user,
+        FakeWriter(WRITTEN),
+        FakeChecker(SAFE, NoteCheck(mentions_health=0.72)),
+        today=TODAY,
+    )
+
+    logs = [r.getMessage() for r in caplog.records if "pain or sickness" in r.message]
+    assert len(logs) == 1
+    assert "mentions_health=0.72" in logs[0]
+    assert "Knee" not in logs[0]
+
+
+@pytest.mark.parametrize(
+    "send_notes_to_ai", [pytest.param(True, id="no_notes"), pytest.param(False, id="turned_off")]
+)
+async def test_notes_are_not_checked_when_there_are_none_to_send(
+    session: AsyncSession, send_notes_to_ai: bool
+) -> None:
+    """メモがない週と、「メモを AI に送らない」設定では、Jev にもメモを送らない。
+    フラグは立てない。"""
+    user = await _user(send_notes_to_ai=send_notes_to_ai)
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+    if not send_notes_to_ai:
+        await NoteFactory.create_async(user_id=user.id, date=MONDAY, body="Back pain again")
+    writer = FakeWriter(WRITTEN)
+    checker = FakeChecker(SAFE)
+
+    review, _ = await create_review(session, user, writer, checker, today=TODAY)
+
+    assert checker.notes == []
+    assert writer.data()["may_offer_more"] is True
+    assert not review.is_fallback
+
+
+async def test_notes_are_checked_even_without_the_writer(session: AsyncSession) -> None:
+    """Gemini を切っていても、Jev があればメモを確かめ、定型から増やす選択肢を外す。"""
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+    await NoteFactory.create_async(user_id=user.id, date=MONDAY, body="Knee hurts on stairs")
+    checker = FakeChecker(SAFE, NoteCheck(mentions_health=0.8))
+
+    review, created = await create_review(session, user, None, checker, today=TODAY)
+
+    week = await judge_review_week(session, user, MONDAY, TODAY)
+    assert created
+    assert review.is_fallback
+    assert len(checker.notes) == 1
+    assert checker.contents == []
+    assert _adds_load([o.label for o in review.options]) == []
+    assert review.script == fallback_review(week, health_flag=True).script
+
+
+@pytest.mark.parametrize(
+    ("notes_result", "adds_load"),
+    [
+        pytest.param(NO_HEALTH_NOTE, True, id="no_pain"),
+        pytest.param(None, False, id="cannot_check"),
+    ],
+)
+async def test_without_the_writer_the_fixed_options_follow_the_note_check(
+    session: AsyncSession, notes_result: NoteCheck | None, adds_load: bool
+) -> None:
+    """Gemini がないとき、痛みに触れていなければ今までどおり。確かめられなければ安全側。"""
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+    await NoteFactory.create_async(user_id=user.id, date=MONDAY, body="Busy week")
+
+    review, _ = await create_review(
+        session, user, None, FakeChecker(SAFE, notes_result), today=TODAY
+    )
+
+    assert review.is_fallback
+    assert (_adds_load([o.label for o in review.options]) != []) is adds_load

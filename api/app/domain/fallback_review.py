@@ -7,7 +7,9 @@ LLM が使えないときや、作ったセリフを確かめられなかった�
 選択肢には必ず軽いもの（休む、軽く流す）を入れる。疲労が高い週には、強度や量を上げる
 選択肢を出さない。判定は「疲労」より先に「記録が足りない」「走れなかった週」「中断明け」を
 当てるので、この 3 つも疲労が高いことがある。増やす選択肢を置くのは「休めている」と
-「順調」だけにする。
+「順調」だけにする。メモの体調のフラグが立った週は、その 2 つからも増やす選択肢を外し、
+セリフも増やすことを勧めない言い方にする。
+フラグはメモを Jev で確かめた答えからコードで決めたもので、ここではメモそのものは読まない。
 """
 
 from dataclasses import dataclass
@@ -65,12 +67,22 @@ _OPTIONS: dict[Situation, tuple[ReviewOption, ...]] = {
 }
 
 
-def fallback_review(week: WeekSituation) -> ReviewContent:
-    """判定した状況から、定型のセリフと選択肢を作る。"""
-    return ReviewContent(script=_script(week), options=_OPTIONS[week.situation])
+# 量や強度を上げる選択肢。体調のフラグが立った週は外す。外しても 2 個は残る
+_ADDS_LOAD = frozenset({"Add a bit more", "Add one session"})
 
 
-def _script(week: WeekSituation) -> str:
+def fallback_review(week: WeekSituation, health_flag: bool = False) -> ReviewContent:
+    """判定した状況から、定型のセリフと選択肢を作る。
+
+    health_flag はメモの体調のフラグ。メモを確かめていなければ False のまま呼ぶ。
+    """
+    options = _OPTIONS[week.situation]
+    if health_flag:
+        options = tuple(o for o in options if o.label not in _ADDS_LOAD)
+    return ReviewContent(script=_script(week, health_flag), options=options)
+
+
+def _script(week: WeekSituation, health_flag: bool) -> str:
     sessions = _count(week.workouts, "session")
     match week.situation:
         case Situation.NOT_ENOUGH_DATA:
@@ -98,6 +110,15 @@ def _script(week: WeekSituation) -> str:
                 "You've been working hard. Your fatigue is well above your fitness right now, "
                 "so your body is asking for some recovery. "
                 "A lighter week helps the work you've done sink in."
+            )
+        case Situation.FRESH if health_flag:
+            # 選択肢と食い違わないように、増やすことを勧めない。痛みや病気がある週か、メモを
+            # 確かめられなかった週なので、休めた、回復したとは言い切らず、メモの中身にも触れない
+            return (
+                "Your fatigue is below your fitness right now. "
+                "Numbers are only part of the picture, though. "
+                "This week, keep things comfortable, take it at your own pace, "
+                "and listen to how your body feels."
             )
         case Situation.FRESH:
             return (

@@ -1,7 +1,8 @@
 """LLM に振り返りを書いてもらうための指示と材料、返ってきた文の検査。
 
 数字の比較はここ（コード）で済ませ、LLM には結果だけを渡す。状況の判定、前の週との差、
-量を増やす選択肢を出してよいかは、どれもコードで決めてから渡す。
+量を増やす選択肢を出してよいかは、どれもコードで決めてから渡す。出してよいかは、状況と
+メモの体調のフラグ（note_check）から決める。
 渡す数字は、定型と同じく回数、分、休んだ日数とその差だけ。体力と疲労の値は渡さない。
 今の計算の単位では体力が 20 前後になり、一般的な目安の数字と比べると誤解を招くため。
 メモは、呼ぶ側が「メモを AI に送らない」設定を見て、送ってよいものだけを渡す。
@@ -28,6 +29,12 @@ DESCRIPTION_MAX_CHARS = 255
 # 量や強度を上げる選択肢を出してよい状況。定型と同じ。判定は「疲労」より先に
 # 「記録が足りない」「走れなかった週」「中断明け」を当てるので、この 3 つも疲労が高いことがある
 _MAY_OFFER_MORE = frozenset({Situation.FRESH, Situation.STEADY})
+
+
+def may_offer_more(situation: Situation, health_flag: bool) -> bool:
+    """量や強度を上げる選択肢を出してよいか。痛みや病気に触れたメモがある週は出さない。"""
+    return situation in _MAY_OFFER_MORE and not health_flag
+
 
 SYSTEM_INSTRUCTION = """\
 You are a gentle companion who stands beside a training dashboard and talks to an amateur \
@@ -83,8 +90,13 @@ class InvalidReviewError(ValueError):
     """LLM が書いた振り返りが、長さや数の決まりに合わない。"""
 
 
-def review_prompt(material: ReviewMaterial, notes: Sequence[NoteForReview]) -> str:
-    """LLM に渡す本文。その週の材料を JSON にして、何を書いてほしいかを添える。"""
+def review_prompt(
+    material: ReviewMaterial, notes: Sequence[NoteForReview], *, health_flag: bool
+) -> str:
+    """LLM に渡す本文。その週の材料を JSON にして、何を書いてほしいかを添える。
+
+    health_flag はメモの体調のフラグ。立っていれば may_offer_more を false にする。
+    """
     week = material.week
     previous = material.previous_choice
     data = {
@@ -103,7 +115,7 @@ def review_prompt(material: ReviewMaterial, notes: Sequence[NoteForReview]) -> s
             "sessions": week.workouts_change,
             "minutes": _minutes(week.total_sec_change),
         },
-        "may_offer_more": week.situation in _MAY_OFFER_MORE,
+        "may_offer_more": may_offer_more(week.situation, health_flag),
         "last_choice": None
         if previous is None
         else {"label": previous.label, "description": previous.description},

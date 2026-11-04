@@ -47,9 +47,11 @@ def material(previous_choice: ReviewOption | None = None, **changes: Any) -> Rev
     return ReviewMaterial(week=replace(BASE, **changes), previous_choice=previous_choice)
 
 
-def prompt_data(m: ReviewMaterial, notes: list[NoteForReview] | None = None) -> Any:
+def prompt_data(
+    m: ReviewMaterial, notes: list[NoteForReview] | None = None, health_flag: bool = False
+) -> Any:
     """本文の JSON の部分だけを読む。"""
-    text = review_prompt(m, notes or [])
+    text = review_prompt(m, notes or [], health_flag=health_flag)
     return json.loads(text[text.index("{") :])
 
 
@@ -71,7 +73,7 @@ def test_prompt_passes_counts_minutes_and_changes_counted_by_code() -> None:
 
 def test_prompt_does_not_pass_fitness_or_fatigue_values() -> None:
     """体力と疲労の値は、単位のせいで誤解を招くので渡さない。"""
-    text = review_prompt(material(), [])
+    text = review_prompt(material(), [], health_flag=False)
 
     for value in ("19.6", "21.3", "-1.7", "0.087", "0.6", "0.9"):
         assert value not in text
@@ -99,6 +101,14 @@ def test_code_decides_whether_options_may_add_load(
     situation: Situation, may_offer_more: bool
 ) -> None:
     assert prompt_data(material(situation=situation))["may_offer_more"] is may_offer_more
+
+
+@pytest.mark.parametrize("situation", list(Situation))
+def test_health_flag_keeps_options_from_adding_load(situation: Situation) -> None:
+    """痛みや病気に触れたメモがある週は、どの状況でも量や強度を上げる選択肢を出さない。"""
+    data = prompt_data(material(situation=situation), health_flag=True)
+
+    assert data["may_offer_more"] is False
 
 
 def test_prompt_passes_the_previous_choice() -> None:
