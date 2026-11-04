@@ -66,6 +66,10 @@ beforeEach(() => {
     notify(taro);
     return { user: taro };
   });
+  // ログアウトが済むと、Firebase は null の通知を出す
+  firebaseAuth.signOut.mockImplementation(async () => {
+    notify(null);
+  });
 });
 
 test("未ログインならログインのボタンが出る", () => {
@@ -206,5 +210,71 @@ test("消したあとにもう一度ログインすると、ダッシュボー�
 
   expect(
     await screen.findByRole("button", { name: "dashboard" }),
+  ).toBeInTheDocument();
+});
+
+test("ログアウトが終わるまでは、ログイン画面もページも出さない", async () => {
+  restoredUser(taro);
+  vi.mocked(login).mockResolvedValue({ id: 1, email: "taro@example.com" });
+  let finishSignOut: () => void = () => {};
+  firebaseAuth.signOut.mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        finishSignOut = () => {
+          notify(null);
+          resolve();
+        };
+      }),
+  );
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+  workoutsPage.mockClear();
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "settings" }));
+  });
+
+  expect(screen.getByText("Signing out…")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Sign in with Google" }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText("Signed in as Taro")).not.toBeInTheDocument();
+  expect(workoutsPage).not.toHaveBeenCalled();
+
+  await act(async () => {
+    finishSignOut();
+  });
+
+  expect(
+    screen.getByRole("button", { name: "Sign in with Google" }),
+  ).toBeInTheDocument();
+  expect(workoutsPage).not.toHaveBeenCalled();
+});
+
+test("消したあとのログアウトに失敗したら、やり直せる", async () => {
+  restoredUser(taro);
+  vi.mocked(login).mockResolvedValue({ id: 1, email: "taro@example.com" });
+  firebaseAuth.signOut.mockRejectedValueOnce(new Error("network"));
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+  workoutsPage.mockClear();
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "settings" }));
+  });
+
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Couldn't sign out. Please try again.",
+  );
+  expect(screen.queryByText("Signed in as Taro")).not.toBeInTheDocument();
+  expect(workoutsPage).not.toHaveBeenCalled();
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+  });
+
+  expect(firebaseAuth.signOut).toHaveBeenCalledTimes(2);
+  expect(
+    screen.getByRole("button", { name: "Sign in with Google" }),
   ).toBeInTheDocument();
 });

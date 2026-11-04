@@ -344,3 +344,119 @@ test("ゲストは消せないと出す", async () => {
   );
   expect(onDeleted).not.toHaveBeenCalled();
 });
+
+test("消したあとのやり直しで 401 なら、消えたものとして知らせる", async () => {
+  vi.mocked(deleteAccount).mockRejectedValue(new ApiError(401));
+  render(<SettingsPage user={user} onDeleted={onDeleted} />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Delete account…" }),
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Delete my account" }));
+
+  await vi.waitFor(() => expect(onDeleted).toHaveBeenCalledTimes(1));
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+test("ID トークンを取れなければ、Firebase の利用者は消えているので知らせる", async () => {
+  const gone = {
+    getIdToken: vi
+      .fn()
+      .mockResolvedValueOnce("token")
+      .mockRejectedValue({ code: "auth/user-token-expired" }),
+  } as unknown as User;
+  render(<SettingsPage user={gone} onDeleted={onDeleted} />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Delete account…" }),
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Delete my account" }));
+
+  await vi.waitFor(() => expect(onDeleted).toHaveBeenCalledTimes(1));
+  expect(deleteAccount).not.toHaveBeenCalled();
+});
+
+test.each([
+  { name: "応答が届かない", error: new TypeError("Failed to fetch") },
+  { name: "502 以外の 5xx", error: new ApiError(500) },
+])(
+  "$name なら、消えたか分からないと出し、もう一度押せる",
+  async ({ error }) => {
+    vi.mocked(deleteAccount).mockRejectedValue(error);
+    render(<SettingsPage user={user} onDeleted={onDeleted} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Delete account…" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete my account" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't confirm whether your account was deleted. Please try again.",
+    );
+    expect(onDeleted).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "Delete my account" }),
+    ).toBeEnabled();
+  },
+);
+
+test("ID トークンを取るときの通信の失敗は、消えたか分からないと出す", async () => {
+  const offline = {
+    getIdToken: vi
+      .fn()
+      .mockResolvedValueOnce("token")
+      .mockRejectedValue({ code: "auth/network-request-failed" }),
+  } as unknown as User;
+  render(<SettingsPage user={offline} onDeleted={onDeleted} />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Delete account…" }),
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Delete my account" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Couldn't confirm whether your account was deleted.",
+  );
+  expect(onDeleted).not.toHaveBeenCalled();
+});
+
+test("設定を読めなくても、削除の節は出る", async () => {
+  vi.mocked(getSettings).mockRejectedValue(new Error("API returned 500"));
+  render(<SettingsPage user={user} onDeleted={onDeleted} />);
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "API returned 500",
+  );
+  expect(
+    screen.getByRole("button", { name: "Delete account…" }),
+  ).toBeInTheDocument();
+});
+
+test("確認に切り替えると Cancel に、やめると最初のボタンにフォーカスが移る", async () => {
+  render(<SettingsPage user={user} onDeleted={onDeleted} />);
+  await screen.findByLabelText("Max heart rate");
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Delete account…" }),
+  );
+
+  expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+  expect(screen.getByRole("button", { name: "Delete account…" })).toHaveFocus();
+});
+
+test("消せなかったら、消すボタンにフォーカスが戻る", async () => {
+  vi.mocked(deleteAccount).mockRejectedValue(new ApiError(502));
+  render(<SettingsPage user={user} onDeleted={onDeleted} />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Delete account…" }),
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Delete my account" }));
+
+  await screen.findByRole("alert");
+  expect(
+    screen.getByRole("button", { name: "Delete my account" }),
+  ).toHaveFocus();
+});
