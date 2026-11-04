@@ -1,4 +1,5 @@
 from app.models.base import Base
+from app.models.deleted_account import DeletedAccount
 from app.models.ingest_token import IngestToken
 from app.models.note import Note
 from app.models.user import User
@@ -8,6 +9,7 @@ from app.models.workout import Workout, WorkoutHeartRate
 
 __all__ = [
     "Base",
+    "DeletedAccount",
     "IngestToken",
     "Note",
     "ReviewStatus",

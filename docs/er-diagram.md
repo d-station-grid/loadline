@@ -10,6 +10,11 @@ erDiagram
   users ||--o{ weekly_reviews : ""
   weekly_reviews ||--o{ weekly_review_options : ""
 
+  deleted_accounts {
+    varchar firebase_uid PK "消した人の uid。1 日で消す"
+    timestamptz deleted_at
+  }
+
   users {
     bigint id PK
     varchar firebase_uid UK "デモ用の行は NULL"
@@ -113,6 +118,12 @@ erDiagram
 負荷、体力、疲労、余力、強度ごとの時間は、保存しません。`workout_heart_rates` の1分ごとの心拍と、`users` の心拍の設定から、表示のたびに計算します。心拍の設定を変えても、過去の記録を計算し直す処理は要りません。
 
 メモとワークアウトは、外部キーでつなぎません。ワークアウト詳細に出す「その日のメモ」は、利用者のタイムゾーンでの日付で探します。
+
+## アカウントの削除
+
+`users` の行を消すと、ほかのテーブルの本人の行は外部キーの `ON DELETE CASCADE` で消えます。Firebase Authentication の利用者も消します。
+
+`deleted_accounts` は `users` とつながない表です。Firebase の利用者を消しても、出してある ID トークンは期限（1 時間）まで検証を通ります。そのトークンで利用者の行を作り直さないよう、消した人の `firebase_uid` だけを残して拒否します。1 日たったら、1 時間おきの dispatch が消します。
 
 ## ゲストのデータ
 

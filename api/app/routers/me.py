@@ -6,11 +6,21 @@ from app.services.accounts import AccountDeleteError, delete_account
 router = APIRouter(prefix="/me", tags=["me"])
 
 
-@router.delete("", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_403_FORBIDDEN: {"description": "ゲスト（デモの利用者）は消せない"},
+        status.HTTP_502_BAD_GATEWAY: {
+            "description": "Firebase の利用者を消せなかった。何も消していないので、やり直せる"
+        },
+    },
+)
 async def delete_me(user: CurrentUser, session: DbSession, deleter: AccountDeleterDep) -> None:
     """ログイン中の本人を消す。記録、メモ、振り返り、取り込み用トークン、Firebase の利用者。
 
     Firebase の利用者を消せなければ何も消さずに 502 を返す。もう一度呼べばやり直せる。
+    消したあとは、同じ ID トークンでも 401 になる。
     """
     if user.is_demo:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "guests cannot delete the account")

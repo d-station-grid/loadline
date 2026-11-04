@@ -53,6 +53,8 @@ class FirebaseAccountDeleter:
             # もう消えている（前の削除が Firebase だけ済んだ、手で消した）。消えたものとして続ける
             logger.info("firebase: user %s is already gone", uid)
         except (FirebaseError, GoogleAuthError, ValueError) as e:
+            # 窓口は 502 を返すだけなので、原因はここで残す
+            logger.exception("firebase: could not delete user %s", uid)
             raise AccountDeleteError from e
 
     async def delete(self, uid: str) -> None:

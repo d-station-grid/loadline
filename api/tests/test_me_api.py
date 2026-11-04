@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
@@ -10,6 +11,7 @@ from app.core.internal_auth import get_internal_caller_verifier
 from app.main import app
 from app.models import (
     Base,
+    DeletedAccount,
     IngestToken,
     Note,
     User,
@@ -20,7 +22,11 @@ from app.models import (
     WorkoutHeartRate,
 )
 from app.routers.deps import get_account_deleter
-from app.services.accounts import AccountDeleteError, delete_account
+from app.services.accounts import (
+    AccountDeleteError,
+    delete_account,
+    forget_deleted_accounts,
+)
 from tests.factories import (
     IngestTokenFactory,
     NoteFactory,
@@ -97,9 +103,14 @@ async def _rows_of(session: AsyncSession, user_id: int) -> dict[str, int]:
         .join(WeeklyReview, WeeklyReviewOption.weekly_review_id == WeeklyReview.id)
         .where(WeeklyReview.user_id == user_id),
     }
-    # 表を足したらここでも数える。数え漏れを残さない
-    assert counts.keys() == Base.metadata.tables.keys()
+    # 表を足したらここでも数える。数え漏れを残さない。deleted_accounts は消した人の uid を
+    # 1 日だけ残す表なので、_deleted_uid で別に見る
+    assert counts.keys() == Base.metadata.tables.keys() - {DeletedAccount.__tablename__}
     return {name: (await session.scalar(q)) or 0 for name, q in counts.items()}
+
+
+async def _deleted_uid(session: AsyncSession, uid: str) -> bool:
+    return await session.get(DeletedAccount, uid, populate_existing=True) is not None
 
 
 async def test_delete_removes_every_row_of_the_user(
@@ -117,6 +128,8 @@ async def test_delete_removes_every_row_of_the_user(
     assert res.content == b""
     assert deleter.deleted == ["uid-1"]
     assert all(n == 0 for n in (await _rows_of(session, me_id)).values())
+    # 残るのは uid だけ。同じトークンで作り直させないため
+    assert await _deleted_uid(session, "uid-1")
     # 別の利用者の行は 1 つも減らない
     assert all(n > 0 for n in others_before.values())
     assert await _rows_of(session, other_id) == others_before
@@ -137,6 +150,7 @@ async def test_firebase_failure_keeps_every_row(
     assert res.status_code == 502
     assert all(n > 0 for n in before.values())
     assert await _rows_of(session, me_id) == before
+    assert not await _deleted_uid(session, "uid-1")
 
 
 async def test_user_without_firebase_uid_is_deleted_without_firebase(
@@ -151,6 +165,7 @@ async def test_user_without_firebase_uid_is_deleted_without_firebase(
 
     assert deleter.deleted == []
     assert all(n == 0 for n in (await _rows_of(session, user_id)).values())
+    assert await session.scalar(select(func.count()).select_from(DeletedAccount)) == 0
 
 
 async def test_guest_cannot_delete(
@@ -197,3 +212,71 @@ async def test_task_for_the_deleted_user_is_skipped(
 
     assert res.status_code == 200
     assert res.json() == {"result": "skipped", "review_id": None}
+
+
+@pytest.mark.parametrize(
+    ("method", "path"), [("GET", "/notes"), ("GET", "/settings"), ("POST", "/auth/login")]
+)
+async def test_token_after_delete_is_401(
+    client: AsyncClient, session: AsyncSession, deleter: FakeDeleter, method: str, path: str
+) -> None:
+    # Firebase の利用者を消しても、出してある ID トークンは期限まで検証を通る（偽物も通す）
+    await _user_with_everything("uid-1")
+    await session.commit()
+    await client.delete("/me", headers=HEADERS)
+
+    res = await client.request(method, path, headers=HEADERS)
+
+    assert res.status_code == 401
+    # 行を作り直さない
+    count = select(func.count()).where(User.firebase_uid == "uid-1")
+    assert await session.scalar(count) == 0
+
+
+async def test_firebase_failure_lets_the_user_keep_using_the_app(
+    client: AsyncClient, session: AsyncSession, deleter: FakeDeleter
+) -> None:
+    await _user_with_everything("uid-1")
+    await session.commit()
+    deleter.fail = True
+    await client.delete("/me", headers=HEADERS)
+
+    res = await client.get("/settings", headers=HEADERS)
+
+    assert res.status_code == 200
+
+
+async def test_old_deleted_uids_are_forgotten(session: AsyncSession) -> None:
+    now = datetime(2026, 11, 4, 12, 0, tzinfo=UTC)
+    session.add_all(
+        [
+            DeletedAccount(firebase_uid="old", deleted_at=now - timedelta(days=1, seconds=1)),
+            DeletedAccount(firebase_uid="recent", deleted_at=now - timedelta(hours=23)),
+        ]
+    )
+    await session.commit()
+
+    forgotten = await forget_deleted_accounts(session, now)
+
+    assert forgotten == 1
+    assert not await _deleted_uid(session, "old")
+    assert await _deleted_uid(session, "recent")
+
+
+async def test_dispatch_forgets_old_deleted_uids(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    session.add(
+        DeletedAccount(firebase_uid="old", deleted_at=datetime.now(UTC) - timedelta(days=2))
+    )
+    await session.commit()
+    app.dependency_overrides[get_internal_caller_verifier] = FakeCallerVerifier
+    try:
+        res = await client.post(
+            "/internal/reviews/dispatch", headers={"Authorization": "Bearer from-google"}
+        )
+    finally:
+        app.dependency_overrides.pop(get_internal_caller_verifier, None)
+
+    assert res.status_code == 200
+    assert not await _deleted_uid(session, "old")

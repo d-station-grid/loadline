@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Iterator
 from typing import Any
 
@@ -68,11 +69,19 @@ async def test_user_already_gone_counts_as_deleted(delete_user: FakeDeleteUser) 
     assert delete_user.calls == ["uid-1"]
 
 
-async def test_firebase_error_is_account_delete_error(delete_user: FakeDeleteUser) -> None:
+async def test_firebase_error_is_account_delete_error(
+    delete_user: FakeDeleteUser, caplog: pytest.LogCaptureFixture
+) -> None:
     delete_user.error = firebase_exceptions.UnavailableError("try later")
 
-    with pytest.raises(AccountDeleteError):
-        await FirebaseAccountDeleter("loadline-app").delete("uid-1")
+    with caplog.at_level(logging.ERROR, logger=firebase_accounts.__name__):
+        with pytest.raises(AccountDeleteError):
+            await FirebaseAccountDeleter("loadline-app").delete("uid-1")
+
+    # 窓口は 502 を返すだけなので、原因はログに残る
+    [record] = caplog.records
+    assert "uid-1" in record.getMessage()
+    assert isinstance(record.exc_info and record.exc_info[1], firebase_exceptions.UnavailableError)
 
 
 async def test_missing_credentials_is_account_delete_error() -> None:

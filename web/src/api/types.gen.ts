@@ -849,6 +849,17 @@ export type DeleteMeMeDeleteData = {
   url: "/me";
 };
 
+export type DeleteMeMeDeleteErrors = {
+  /**
+   * ゲスト（デモの利用者）は消せない
+   */
+  403: unknown;
+  /**
+   * Firebase の利用者を消せなかった。何も消していないので、やり直せる
+   */
+  502: unknown;
+};
+
 export type DeleteMeMeDeleteResponses = {
   /**
    * Successful Response

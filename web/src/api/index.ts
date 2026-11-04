@@ -14,6 +14,7 @@ export type {
   Dashboard,
   DayPoint,
   DeleteMeMeDeleteData,
+  DeleteMeMeDeleteErrors,
   DeleteMeMeDeleteResponse,
   DeleteMeMeDeleteResponses,
   EditNoteNotesNoteIdPatchData,

@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from app.core.internal_auth import require_internal_caller
 from app.routers.deps import DbSession, LineCheckerDep, ReviewQueueDep, ReviewWriterDep
+from app.services.accounts import forget_deleted_accounts
 from app.services.auto_reviews import (
     AutoReviewResult,
     create_for_user,
@@ -46,8 +47,14 @@ async def dispatch_reviews(session: DbSession, queue: ReviewQueueDep) -> Dispatc
 
     積めなかった人がいれば、残りを積み終えてから 500 を返す（Scheduler のログに失敗が残る）。
     その人は 1 時間後の次の回でもう一度見つかる。TASKS_QUEUE が空なら探すだけ。
+
+    ついでに、1 日より前にアカウントを消した人の uid を消す（もう誰のトークンも期限切れ）。
     """
-    done = await dispatch_due_reviews(session, queue, datetime.now(UTC))
+    now = datetime.now(UTC)
+    forgotten = await forget_deleted_accounts(session, now)
+    if forgotten:
+        logger.info("dispatch: forgot %d deleted accounts", forgotten)
+    done = await dispatch_due_reviews(session, queue, now)
     if done.failed:
         raise HTTPException(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
