@@ -183,25 +183,26 @@ async def _write(
     writer: ReviewWriter | None,
     checker: LineChecker | None,
 ) -> tuple[ReviewContent | None, bool]:
-    """LLM に書いてもらい、Jev で確かめる。話してよいと確かめられた文と、体調のフラグを返す。
+    """メモを Jev で確かめて体調のフラグを決め、LLM に書いてもらい、Jev で確かめる。
+    話してよいと確かめられた文と、体調のフラグを返す。
 
     文は、writer がない（設定で切っている）、書けない、確かめて引っかかった、確かめられ
     なかった、のどれでも None（定型にする）。checker がなければ、確かめられない文を書かせても
     話さないので、LLM も呼ばない。メモも送らずに済む。
 
-    LLM に書かせる前に、その週のメモが痛みや病気に触れているかを Jev で確かめ、フラグを
-    コードで決める。フラグが立てば、LLM にも定型にも量や強度を上げる選択肢を出させない。
-    メモを確かめられなければ LLM は呼ばず、フラグを立てた側（安全側）にして定型にする。
-    メモを読んでいない（checker がない、送らない設定、メモがない）ときは立てない。
+    フラグは writer の有無に関わらず、checker があれば決める。LLM に書かせる前に、その週の
+    メモが痛みや病気に触れているかを Jev で確かめ、コードで決める。フラグが立てば、LLM にも
+    定型にも量や強度を上げる選択肢を出させない。メモを確かめられなければ LLM は呼ばず、
+    フラグを立てた側（安全側）にして定型にする。メモを読んでいない（checker がない、送らない
+    設定、メモがない）ときは立てない。
     """
-    if writer is None:
-        return None, False
     if checker is None:
-        logger.warning(
-            "review: no line checker, so not asking the writer; "
-            "falling back to the fixed script for user %s",
-            user.id,
-        )
+        if writer is not None:
+            logger.warning(
+                "review: no line checker, so not asking the writer; "
+                "falling back to the fixed script for user %s",
+                user.id,
+            )
         return None, False
     week = material.week
     notes = await notes_for_review(session, user, week.start, week.end)
@@ -226,6 +227,8 @@ async def _write(
                 note_check.mentions_health,
                 user.id,
             )
+    if writer is None:
+        return None, flag
     content = await writer.write(review_prompt(material, notes, health_flag=flag))
     if content is None:
         logger.warning(
