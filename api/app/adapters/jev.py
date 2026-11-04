@@ -82,15 +82,20 @@ QUESTIONS: dict[str, Question] = {
             "moving again after time off does not count."
         ),
     ),
+    # relaxed は表情が決まらないときの顔でもあるので、説明を狭くして寄りすぎないようにする。
+    # ほめる、祝う文は、軽く過ごす提案が入っていても happy
     "expression": Choice(
         instructions="Which facial expression fits an avatar saying `line` aloud?",
         criteria={
-            "happy": "Cheerful: it celebrates what the listener did or a good week.",
-            "relaxed": "Calm and gentle: it talks about rest, an easy week or steady training.",
+            "happy": "Cheerful: it praises or celebrates something the listener did, such as "
+            "a good week, a personal best or coming back after a break. Choose this even if "
+            "it also suggests keeping things easy.",
+            "relaxed": "Calm: it is mostly about resting, recovering or a quiet, ordinary week, "
+            "and it does not praise or celebrate anything.",
             "sad": "Sympathetic: it acknowledges something hard, such as pain, sickness "
-            "or a week without training.",
-            "surprised": "Amazed: it reacts to something remarkable, such as a big step up "
-            "or a return after a long break.",
+            "or being unable to train.",
+            "surprised": "Amazed: it reacts to something unexpected or remarkable, such as "
+            "a sudden big jump in training.",
         },
     ),
 }

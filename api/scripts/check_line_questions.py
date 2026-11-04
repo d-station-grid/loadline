@@ -9,17 +9,23 @@ pushes_harder と medical_advice の値も参考に出す（試作で確かめ�
 Jev を呼ぶので費用がかかる。テスト（make check）からは呼ばない。
 
     cd api && TYPESAFE_API_KEY=... uv run python -m scripts.check_line_questions
+
+--baseline を付けると、試作の 2 つの問い（pushes_harder と medical_advice）だけで同じ
+セリフを聞き、その値も表にする。問いを足したことで 2 つの値が動いたかを比べるため。
 """
 
 import asyncio
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 
-from app.adapters.jev import JevLineChecker, jev_checker
+from typesafe_sdk import AsyncTypeSafeClient, Question, RetryPolicy
+
+from app.adapters.jev import QUESTIONS, JevLineChecker, SystemOne, jev_checker
 from app.core.config import get_settings
 from app.domain.expression import Expression, expression_for
 from app.domain.fallback_review import ReviewContent, ReviewOption
-from app.domain.line_check import YES_CUTOFF, LineCheck
+from app.domain.line_check import YES_CUTOFF, LineCheck, text_to_check
 
 H, R, SA, SU = Expression.HAPPY, Expression.RELAXED, Expression.SAD, Expression.SURPRISED
 
@@ -136,13 +142,54 @@ def render(results: list[Result]) -> str:
     return "\n".join(lines)
 
 
+# 試作で確かめた 2 つの問い
+BASELINE_QUESTIONS: Mapping[str, Question] = {
+    name: QUESTIONS[name] for name in ("pushes_harder", "medical_advice")
+}
+
+
+async def baseline(
+    system_one: SystemOne, cases: tuple[Case, ...] = CASES
+) -> list[tuple[Case, float, float]]:
+    """試作の 2 つの問いだけで聞いた pushes_harder と medical_advice。"""
+    results = []
+    for case in cases:
+        response = await system_one({"line": text_to_check(case.content)}, BASELINE_QUESTIONS)
+        nouls = response.nouls
+        results.append((case, nouls["pushes_harder"].noul, nouls["medical_advice"].noul))
+    return results
+
+
+def render_baseline(rows: list[tuple[Case, float, float]], results: list[Result]) -> str:
+    """2 つの問いだけで聞いた値と、4 つまとめて聞いた値を並べる表。"""
+    lines = [
+        "| セリフ | pushes（2 問） | pushes（4 問） | medical（2 問） | medical（4 問） |",
+        "|---|---|---|---|---|",
+    ]
+    for (case, pushes, medical), r in zip(rows, results, strict=True):
+        four = (None, None) if r.check is None else (r.check.pushes_harder, r.check.medical_advice)
+        cells = ["-" if v is None else f"{v:.2f}" for v in four]
+        lines.append(f"| {case.script} | {pushes:.2f} | {cells[0]} | {medical:.2f} | {cells[1]} |")
+    return "\n".join(lines)
+
+
 async def main() -> int:
-    checker = jev_checker(get_settings())
+    settings = get_settings()
+    checker = jev_checker(settings)
     if checker is None:
         print("TYPESAFE_API_KEY が空か、Jev のクライアントを作れません", file=sys.stderr)
         return 2
     results = await run(checker)
     print(render(results))
+    if "--baseline" in sys.argv[1:]:
+        client = AsyncTypeSafeClient(
+            api_key=settings.typesafe_api_key,
+            model=settings.typesafe_model,
+            retry=RetryPolicy(max_retries=0),
+            timeout=settings.typesafe_timeout_sec,
+        )
+        print()
+        print(render_baseline(await baseline(client.system_one), results))
     return 0 if all(r.ok for r in results) else 1
 
 
