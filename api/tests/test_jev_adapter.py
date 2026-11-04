@@ -3,6 +3,7 @@
 import asyncio
 import gc
 from collections.abc import Mapping
+from typing import Any
 
 import httpx2
 import pytest
@@ -16,9 +17,12 @@ from typesafe_sdk import (
     TypeSafeAPIResponseValidationError,
     TypeSafeAPITimeoutError,
     TypeSafeAuthenticationError,
+    TypeSafeBadRequestError,
     TypeSafeInternalServerError,
+    TypeSafeNotFoundError,
     TypeSafePermissionDeniedError,
     TypeSafeRateLimitError,
+    TypeSafeUnprocessableEntityError,
     Usage,
 )
 
@@ -76,7 +80,7 @@ async def test_safe_answer() -> None:
     check = await checker(system_one).check(CONTENT)
 
     assert check == LineCheck(pushes_harder=0.02, medical_advice=0.01)
-    assert flagged(check) == []
+    assert flagged(check) == {}
 
 
 async def test_asks_both_questions_about_the_line_and_the_options_at_once() -> None:
@@ -98,14 +102,14 @@ async def test_asks_both_questions_about_the_line_and_the_options_at_once() -> N
 @pytest.mark.parametrize(
     ("pushes", "medical", "risks"),
     [
-        pytest.param(0.9, 0.0, ["pushes_harder"], id="pushes_harder"),
-        pytest.param(0.0, 0.6, ["medical_advice"], id="medical_advice"),
-        pytest.param(0.35, 0.0, ["pushes_harder"], id="exactly_at_the_cutoff"),
-        pytest.param(0.4, 0.35, ["pushes_harder", "medical_advice"], id="both"),
+        pytest.param(0.9, 0.0, {"pushes_harder": 0.9}, id="pushes_harder"),
+        pytest.param(0.0, 0.6, {"medical_advice": 0.6}, id="medical_advice"),
+        pytest.param(0.35, 0.0, {"pushes_harder": 0.35}, id="exactly_at_the_cutoff"),
+        pytest.param(0.4, 0.35, {"pushes_harder": 0.4, "medical_advice": 0.35}, id="both"),
     ],
 )
 async def test_answers_at_or_above_the_cutoff_are_flagged(
-    pushes: float, medical: float, risks: list[str]
+    pushes: float, medical: float, risks: dict[str, float]
 ) -> None:
     system_one = FakeSystemOne(answered(pushes_harder=pushes, medical_advice=medical))
 
@@ -139,12 +143,15 @@ async def test_returns_none_when_jev_fails(
     [
         pytest.param(api_error(TypeSafeAuthenticationError, 401), id="unauthenticated_401"),
         pytest.param(api_error(TypeSafePermissionDeniedError, 403), id="forbidden_403"),
+        pytest.param(api_error(TypeSafeNotFoundError, 404), id="no_such_model_404"),
+        pytest.param(api_error(TypeSafeBadRequestError, 400), id="bad_request_400"),
+        pytest.param(api_error(TypeSafeUnprocessableEntityError, 422), id="unprocessable_422"),
     ],
 )
-async def test_wrong_key_is_logged_as_an_error(
+async def test_our_mistakes_are_logged_as_errors(
     error: Exception, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """キーや権限の誤りは呼び直しても直らない。気づけるように error で残す。"""
+    """キー、権限、モデル名、リクエストの誤りは呼び直しても直らない。error で残す。"""
     assert await checker(FakeSystemOne(error)).check(CONTENT) is None
     assert [r.levelname for r in caplog.records] == ["ERROR"]
 
@@ -196,6 +203,24 @@ async def test_other_errors_are_not_hidden() -> None:
 def test_settings_without_a_key_do_not_call_jev() -> None:
     assert jev_checker(Settings(typesafe_api_key="")) is None
     assert isinstance(jev_checker(Settings(typesafe_api_key="test-key")), JevLineChecker)
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        pytest.param({"typesafe_api_key": "bad key"}, id="key_with_a_space"),
+        pytest.param({"typesafe_api_key": "kéy"}, id="non_ascii_key"),
+        pytest.param(
+            {"typesafe_api_key": "test-key", "typesafe_timeout_sec": 0}, id="zero_timeout"
+        ),
+    ],
+)
+def test_settings_that_the_sdk_rejects_fall_back_to_no_checker(
+    fields: dict[str, Any], caplog: pytest.LogCaptureFixture
+) -> None:
+    """作れない設定では 500 にせず、checker なし（定型）にする。"""
+    assert jev_checker(Settings(**fields)) is None
+    assert [r.levelname for r in caplog.records] == ["ERROR"]
 
 
 async def test_checker_keeps_the_client_open() -> None:

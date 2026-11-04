@@ -9,7 +9,8 @@ from dataclasses import dataclass
 
 from app.domain.fallback_review import ReviewContent
 
-# 「はい」とみなす境目。安全側に倒すため、0.5 より低くする
+# Noul で「はい」とみなす境目。安全側に倒すため、0.5 より低くする。
+# Choice（表情など）の答えはこの境目では判定しない。足すときは別の判定を置く
 YES_CUTOFF = 0.35
 
 
@@ -28,7 +29,7 @@ def text_to_check(content: ReviewContent) -> str:
     return " ".join([content.script, *[f"{o.label}: {o.description}" for o in content.options]])
 
 
-def flagged(check: LineCheck) -> list[str]:
-    """境目以上だった問いの名前。空なら話してよい。"""
+def flagged(check: LineCheck) -> dict[str, float]:
+    """境目以上だった問いの名前と、その「はい」の確率。空なら話してよい。"""
     answers = {"pushes_harder": check.pushes_harder, "medical_advice": check.medical_advice}
-    return [name for name, yes in answers.items() if yes >= YES_CUTOFF]
+    return {name: yes for name, yes in answers.items() if yes >= YES_CUTOFF}

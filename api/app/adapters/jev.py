@@ -22,8 +22,11 @@ from typesafe_sdk import (
     RetryPolicy,
     SystemOneResponse,
     TypeSafeAuthenticationError,
+    TypeSafeBadRequestError,
     TypeSafeError,
+    TypeSafeNotFoundError,
     TypeSafePermissionDeniedError,
+    TypeSafeUnprocessableEntityError,
 )
 
 from app.core.config import Settings
@@ -31,6 +34,16 @@ from app.domain.fallback_review import ReviewContent
 from app.domain.line_check import LineCheck, text_to_check
 
 logger = logging.getLogger(__name__)
+
+# 呼び直しても同じになる、こちらの誤り。キー（401）、権限（403）、モデル名（404）、
+# リクエストの形（400、422）。気づけるように error で残す
+_OUR_MISTAKES = (
+    TypeSafeAuthenticationError,
+    TypeSafePermissionDeniedError,
+    TypeSafeNotFoundError,
+    TypeSafeBadRequestError,
+    TypeSafeUnprocessableEntityError,
+)
 
 # 問いは試作で危ないセリフをすべて止められた言い方のまま。変えるときは試作で確かめ直す。
 # 表情などの問いも、ここに足せば同じ 1 回の呼び出しで聞ける
@@ -87,8 +100,7 @@ class JevLineChecker:
             # SDK の時間切れ（TypeSafeAPITimeoutError）も TimeoutError
             logger.warning("jev: gave up after %s seconds", self._timeout_sec)
             return None
-        except (TypeSafeAuthenticationError, TypeSafePermissionDeniedError) as error:
-            # キーや権限の誤り。呼び直しても同じなので、気づけるように error にする
+        except _OUR_MISTAKES as error:
             logger.error("jev: rejected the request: %r", error)
             return None
         except TypeSafeError as error:
@@ -120,13 +132,21 @@ def _parse(response: SystemOneResponse) -> LineCheck:
 
 
 def jev_checker(settings: Settings) -> JevLineChecker | None:
-    """設定から作る。キーが空なら None（確かめられないので、LLM の文は話さず定型にする）。"""
+    """設定から作る。キーが空なら None（確かめられないので、LLM の文は話さず定型にする）。
+
+    キーの形が壊れている、時間切れの秒数が 0 以下などで作れないときも None にする。
+    振り返りを 500 にせず、定型で作れるようにするため。
+    """
     if not settings.typesafe_api_key:
         return None
-    client = AsyncTypeSafeClient(
-        api_key=settings.typesafe_api_key,
-        model=settings.typesafe_model,
-        retry=RetryPolicy(max_retries=0),
-        timeout=settings.typesafe_timeout_sec,
-    )
+    try:
+        client = AsyncTypeSafeClient(
+            api_key=settings.typesafe_api_key,
+            model=settings.typesafe_model,
+            retry=RetryPolicy(max_retries=0),
+            timeout=settings.typesafe_timeout_sec,
+        )
+    except TypeSafeError as error:
+        logger.error("jev: could not create the client: %r", error)
+        return None
     return JevLineChecker(client.system_one, settings.typesafe_timeout_sec, client=client)

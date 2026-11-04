@@ -590,7 +590,12 @@ async def test_create_review_falls_back_when_the_line_is_flagged(
     assert review.is_fallback
     assert review.script == expected.script
     assert [o.label for o in review.options] == [o.label for o in expected.options]
-    assert any("flagged" in r.message and r.levelname == "WARNING" for r in caplog.records)
+    flagged_logs = [r for r in caplog.records if "flagged" in r.message]
+    assert [r.levelname for r in flagged_logs] == ["WARNING"]
+    # 名前と確率を残し、セリフは残さない
+    name, yes = ("pushes_harder", "0.80") if check.pushes_harder else ("medical_advice", "0.35")
+    assert f"{name}={yes}" in flagged_logs[0].getMessage()
+    assert WRITTEN.script not in flagged_logs[0].getMessage()
 
 
 async def test_create_review_falls_back_when_the_line_cannot_be_checked(

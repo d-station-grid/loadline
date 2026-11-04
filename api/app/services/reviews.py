@@ -215,7 +215,8 @@ async def _write(
     if risks := flagged(check):
         logger.warning(
             "review: the line was flagged (%s); falling back to the fixed script for user %s",
-            ", ".join(risks),
+            # 境目ぎりぎりか、はっきり「はい」かを見分けられるように確率も残す。セリフは残さない
+            ", ".join(f"{name}={yes:.2f}" for name, yes in risks.items()),
             user.id,
         )
         return None
