@@ -29,6 +29,10 @@ function App() {
   const [view, setView] = useState<View>({ name: "dashboard" });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // アカウントを消したあとのログアウト。終わるまでどのページも描かず、api を呼ばせない
+  const [signingOut, setSigningOut] = useState<"pending" | "failed" | null>(
+    null,
+  );
   // Firebase の通知の連番。api の応答を待つ間に次の通知が来たら、古い処理は状態を触らない
   const latest = useRef(0);
 
@@ -40,6 +44,7 @@ function App() {
 
       if (next === null) {
         setUser(null);
+        setSigningOut(null);
         setLoading(false);
         return;
       }
@@ -75,8 +80,46 @@ function App() {
     }
   }
 
+  async function signOutAfterDelete() {
+    setSigningOut("pending");
+    try {
+      await signOut(auth);
+    } catch {
+      setSigningOut("failed");
+      return;
+    }
+    // ふつうは null の通知で戻る。通知を待たずにここでも戻す
+    setUser(null);
+    setSigningOut(null);
+  }
+
+  function handleDeleted() {
+    // 古い ID トークンはまだ期限内なので、隠した一覧も含めてページを外してから抜ける
+    latest.current += 1;
+    setView({ name: "dashboard" });
+    void signOutAfterDelete();
+  }
+
   if (loading) {
     return <p>Loading…</p>;
+  }
+
+  if (signingOut) {
+    return (
+      <main>
+        <h1>loadline</h1>
+        {signingOut === "pending" ? (
+          <p>Signing out…</p>
+        ) : (
+          <>
+            <p role="alert">Couldn't sign out. Please try again.</p>
+            <button type="button" onClick={signOutAfterDelete}>
+              Sign out
+            </button>
+          </>
+        )}
+      </main>
+    );
   }
 
   if (!user) {
@@ -135,7 +178,9 @@ function App() {
           onBack={() => setView({ name: "workouts" })}
         />
       )}
-      {view.name === "settings" && <SettingsPage user={user} />}
+      {view.name === "settings" && (
+        <SettingsPage user={user} onDeleted={handleDeleted} />
+      )}
     </main>
   );
 }

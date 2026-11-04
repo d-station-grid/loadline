@@ -165,6 +165,12 @@ export function deleteNote(id: number, idToken: string): Promise<void> {
   return request<void>(`/notes/${id}`, { method: "DELETE" }, idToken);
 }
 
+/** 本人のアカウントとデータを消す。Firebase で失敗したら何も消さずに 502、ゲストは 403。
+ * 消したあとは同じ ID トークンで api を呼ばない。 */
+export function deleteAccount(idToken: string): Promise<void> {
+  return request<void>("/me", { method: "DELETE" }, idToken);
+}
+
 /** 今の週の振り返り。まだなければ null（api は 404）。 */
 export async function getCurrentReview(
   idToken: string,
