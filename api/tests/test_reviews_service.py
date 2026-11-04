@@ -905,3 +905,32 @@ async def test_offering_more_is_fine_in_a_steady_week(session: AsyncSession) -> 
     )
 
     assert not review.is_fallback
+
+
+async def _fatigued_user() -> User:
+    """10-12〜10-18 の週が「疲労が溜まっている」になる人。体調のメモはない。"""
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), MONDAY - timedelta(days=1))
+    for i in range(7):
+        await _ride(user, f"{(MONDAY + timedelta(days=i)).isoformat()}T07:00", 150, 165)
+    return user
+
+
+@pytest.mark.parametrize(
+    ("offers_more", "is_fallback"),
+    [pytest.param(0.8, True, id="offers_more"), pytest.param(0.1, False, id="does_not")],
+)
+async def test_offering_more_is_stopped_in_a_fatigued_week_without_the_health_flag(
+    session: AsyncSession, offers_more: float, is_fallback: bool
+) -> None:
+    """疲労が高い週は、体調のフラグがなくても増やす文を止める。状況の判定だけで決まる。"""
+    user = await _fatigued_user()
+    writer = FakeWriter(WRITTEN)
+    checker = FakeChecker(replace(SAFE, offers_more=offers_more))
+
+    review, _ = await create_review(session, user, writer, checker, today=TODAY)
+
+    assert review.situation == Situation.FATIGUED
+    assert writer.data()["may_offer_more"] is False
+    assert checker.notes == []
+    assert review.is_fallback is is_fallback
