@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.calendar import start_of_day, today_for
 from app.domain.fallback_review import ReviewContent, ReviewOption, fallback_review
+from app.domain.line_check import LineCheck, flagged
 from app.domain.load import FitnessPoint
 from app.domain.review_material import ReviewMaterial
 from app.domain.review_prompt import NoteForReview, review_prompt
@@ -39,6 +40,12 @@ class ReviewWriter(Protocol):
     """LLM で振り返りを書く。書けなければ None（定型に切り替える）。adapter の Gemini が実体。"""
 
     async def write(self, contents: str) -> ReviewContent | None: ...
+
+
+class LineChecker(Protocol):
+    """LLM が書いたセリフを話してよいか確かめる。確かめられなければ None。adapter の Jev が実体。"""
+
+    async def check(self, content: ReviewContent) -> LineCheck | None: ...
 
 
 class HeartRateSettingsMissingError(Exception):
@@ -169,18 +176,50 @@ async def _write(
     user: User,
     material: ReviewMaterial,
     writer: ReviewWriter | None,
+    checker: LineChecker | None,
 ) -> ReviewContent | None:
-    """LLM に書いてもらう。writer がない（設定で切っている）か、書けなければ None。"""
+    """LLM に書いてもらい、Jev で確かめる。話してよいと確かめられた文だけを返す。
+
+    writer がない（設定で切っている）、書けない、確かめて引っかかった、確かめられなかった、
+    のどれでも None（定型にする）。checker がなければ、確かめられない文を書かせても
+    話さないので、LLM も呼ばない。メモも送らずに済む。
+    """
     if writer is None:
+        return None
+    if checker is None:
+        logger.warning(
+            "review: no line checker, so not asking the writer; "
+            "falling back to the fixed script for user %s",
+            user.id,
+        )
         return None
     week = material.week
     notes = await notes_for_review(session, user, week.start, week.end)
-    # LLM を待つ 10〜60 秒のあいだ、読み込みのトランザクションを閉じて DB の接続を手放す。
-    # 読んだだけなので何も書かない。expire_on_commit=False なので、読んだ行はそのまま使える
+    # LLM と Jev を待つ 10〜75 秒のあいだ、読み込みのトランザクションを閉じて DB の接続を
+    # 手放す。読んだだけなので何も書かない。expire_on_commit=False なので、読んだ行はそのまま使える
     await session.commit()
     content = await writer.write(review_prompt(material, notes))
     if content is None:
-        logger.warning("review: falling back to the fixed script for user %s", user.id)
+        logger.warning(
+            "review: the writer could not write; falling back to the fixed script for user %s",
+            user.id,
+        )
+        return None
+    check = await checker.check(content)
+    if check is None:
+        logger.warning(
+            "review: could not check the line; falling back to the fixed script for user %s",
+            user.id,
+        )
+        return None
+    if risks := flagged(check):
+        logger.warning(
+            "review: the line was flagged (%s); falling back to the fixed script for user %s",
+            # 境目ぎりぎりか、はっきり「はい」かを見分けられるように確率も残す。セリフは残さない
+            ", ".join(f"{name}={yes:.2f}" for name, yes in risks.items()),
+            user.id,
+        )
+        return None
     return content
 
 
@@ -212,11 +251,14 @@ async def create_review(
     session: AsyncSession,
     user: User,
     writer: ReviewWriter | None = None,
+    checker: LineChecker | None = None,
     today: date | None = None,
 ) -> tuple[WeeklyReviewOut, bool]:
     """今の振り返りの週の振り返りを作る。作ったら True、もうあればそれと False。
 
-    writer があれば LLM に書いてもらい、なければ（または書けなければ）定型で作る。
+    writer と checker の両方があれば LLM に書いてもらい、Jev で話してよいと確かめられた
+    ときだけその文で作る。それ以外（どちらかがない、書けない、引っかかった、確かめられ
+    なかった）は定型で作る。
 
     週は、今日以前でいちばん近い振り返りの曜日の前日までの 7 日間（利用者のタイムゾーン）。
     一度作った週は作り直さない。作った時点の記録で書いた、その週の 1 通にする。選択肢を
@@ -233,7 +275,7 @@ async def create_review(
         return await _out(session, existing), False
 
     material = await review_material(session, user, start, today)
-    written = await _write(session, user, material, writer)
+    written = await _write(session, user, material, writer, checker)
     # 定型は前の週の選択とメモを読まない
     content = written or fallback_review(material.week)
     review = await session.scalar(

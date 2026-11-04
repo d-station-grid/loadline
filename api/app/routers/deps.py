@@ -6,12 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.cloud_tasks import review_queue
 from app.adapters.gemini import gemini_writer
+from app.adapters.jev import jev_checker
 from app.core.auth import Identity, get_identity
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.models import User
 from app.services.auto_reviews import ReviewQueue
-from app.services.reviews import ReviewWriter
+from app.services.reviews import LineChecker, ReviewWriter
 from app.services.users import get_or_create_user
 
 
@@ -34,6 +35,15 @@ def get_review_writer() -> ReviewWriter | None:
 
 
 ReviewWriterDep = Annotated[ReviewWriter | None, Depends(get_review_writer)]
+
+
+@lru_cache
+def get_line_checker() -> LineChecker | None:
+    """セリフを確かめる Jev。プロセスで 1 つ。TYPESAFE_API_KEY が空なら None（定型だけ）。"""
+    return jev_checker(get_settings())
+
+
+LineCheckerDep = Annotated[LineChecker | None, Depends(get_line_checker)]
 
 
 @lru_cache

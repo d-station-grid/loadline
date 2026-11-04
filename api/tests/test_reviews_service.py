@@ -8,6 +8,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.domain.fallback_review import ReviewContent, ReviewOption, fallback_review
+from app.domain.line_check import LineCheck
 from app.domain.situation import Situation
 from app.models import User, WeeklyReview, WeeklyReviewOption, Workout
 from app.services.dashboard import build_dashboard
@@ -456,14 +457,32 @@ class FakeWriter:
         return json.loads(text[text.index("{") :])
 
 
+SAFE = LineCheck(pushes_harder=0.02, medical_advice=0.01)
+
+
+class FakeChecker:
+    """受け取ったセリフを控え、決めた結果を返す。"""
+
+    def __init__(self, result: LineCheck | None) -> None:
+        self.result = result
+        self.contents: list[ReviewContent] = []
+
+    async def check(self, content: ReviewContent) -> LineCheck | None:
+        self.contents.append(content)
+        return self.result
+
+
 async def test_create_review_saves_what_the_writer_wrote(session: AsyncSession) -> None:
+    """Jev で話してよいと確かめられたら、Gemini の文を保存する。"""
     user = await _user()
     await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
     writer = FakeWriter(WRITTEN)
+    checker = FakeChecker(SAFE)
 
-    review, created = await create_review(session, user, writer, today=TODAY)
+    review, created = await create_review(session, user, writer, checker, today=TODAY)
 
     assert created
+    assert checker.contents == [WRITTEN]
     assert review.script == WRITTEN.script
     assert not review.is_fallback
     assert [(o.position, o.label, o.description) for o in review.options] == [
@@ -477,16 +496,18 @@ async def test_create_review_saves_what_the_writer_wrote(session: AsyncSession) 
 async def test_create_review_falls_back_when_the_writer_cannot_write(
     session: AsyncSession,
 ) -> None:
-    """Gemini が書けなければ（失敗、時間切れ）、定型で作る。"""
+    """Gemini が書けなければ（失敗、時間切れ）、確かめずに定型で作る。"""
     user = await _user()
     await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
     writer = FakeWriter(None)
+    checker = FakeChecker(SAFE)
 
-    review, created = await create_review(session, user, writer, today=TODAY)
+    review, created = await create_review(session, user, writer, checker, today=TODAY)
 
     expected = fallback_review(await judge_review_week(session, user, MONDAY, TODAY))
     assert created
     assert len(writer.prompts) == 1
+    assert checker.contents == []
     assert review.is_fallback
     assert review.script == expected.script
 
@@ -494,14 +515,18 @@ async def test_create_review_falls_back_when_the_writer_cannot_write(
 async def test_existing_review_does_not_call_the_writer_again(session: AsyncSession) -> None:
     """作った週は作り直さないので、LLM も呼ばない。"""
     user = await _user()
-    first, _ = await create_review(session, user, FakeWriter(WRITTEN), today=TODAY)
+    first, _ = await create_review(
+        session, user, FakeWriter(WRITTEN), FakeChecker(SAFE), today=TODAY
+    )
     writer = FakeWriter(None)
+    checker = FakeChecker(SAFE)
 
-    second, created = await create_review(session, user, writer, today=TODAY)
+    second, created = await create_review(session, user, writer, checker, today=TODAY)
 
     assert not created
     assert second == first
     assert writer.prompts == []
+    assert checker.contents == []
 
 
 async def test_writer_gets_the_notes_of_the_week_and_the_previous_choice(
@@ -517,7 +542,7 @@ async def test_writer_gets_the_notes_of_the_week_and_the_previous_choice(
     await _review_with_options(user, MONDAY - timedelta(weeks=1), chosen=1)
     writer = FakeWriter(WRITTEN)
 
-    await create_review(session, user, writer, today=TODAY)
+    await create_review(session, user, writer, FakeChecker(SAFE), today=TODAY)
 
     data = writer.data()
     # その週の 7 日の、本人のメモだけを日付順に
@@ -534,9 +559,76 @@ async def test_notes_are_not_sent_when_the_user_turned_it_off(session: AsyncSess
     await NoteFactory.create_async(user_id=user.id, date=MONDAY, body="Back pain again")
     writer = FakeWriter(WRITTEN)
 
-    review, _ = await create_review(session, user, writer, today=TODAY)
+    review, _ = await create_review(session, user, writer, FakeChecker(SAFE), today=TODAY)
 
     assert writer.data()["notes"] == []
     assert "Back pain" not in writer.prompts[-1]
     assert not review.is_fallback
     assert await notes_for_review(session, user, MONDAY, SUNDAY) == []
+
+
+@pytest.mark.parametrize(
+    "check",
+    [
+        pytest.param(LineCheck(pushes_harder=0.8, medical_advice=0.0), id="pushes_harder"),
+        pytest.param(LineCheck(pushes_harder=0.0, medical_advice=0.35), id="medical_advice"),
+    ],
+)
+async def test_create_review_falls_back_when_the_line_is_flagged(
+    session: AsyncSession, check: LineCheck, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Jev で引っかかったら、Gemini の文は話さずに定型で作る。"""
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+    checker = FakeChecker(check)
+
+    review, created = await create_review(session, user, FakeWriter(WRITTEN), checker, today=TODAY)
+
+    expected = fallback_review(await judge_review_week(session, user, MONDAY, TODAY))
+    assert created
+    assert checker.contents == [WRITTEN]
+    assert review.is_fallback
+    assert review.script == expected.script
+    assert [o.label for o in review.options] == [o.label for o in expected.options]
+    flagged_logs = [r for r in caplog.records if "flagged" in r.message]
+    assert [r.levelname for r in flagged_logs] == ["WARNING"]
+    # 名前と確率を残し、セリフは残さない
+    name, yes = ("pushes_harder", "0.80") if check.pushes_harder else ("medical_advice", "0.35")
+    assert f"{name}={yes}" in flagged_logs[0].getMessage()
+    assert WRITTEN.script not in flagged_logs[0].getMessage()
+
+
+async def test_create_review_falls_back_when_the_line_cannot_be_checked(
+    session: AsyncSession, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Jev で確かめられなければ（失敗、時間切れ、想定外の応答）、定型で作る。"""
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+    checker = FakeChecker(None)
+
+    review, _ = await create_review(session, user, FakeWriter(WRITTEN), checker, today=TODAY)
+
+    expected = fallback_review(await judge_review_week(session, user, MONDAY, TODAY))
+    assert checker.contents == [WRITTEN]
+    assert review.is_fallback
+    assert review.script == expected.script
+    assert any("could not check" in r.message for r in caplog.records)
+
+
+async def test_create_review_without_a_checker_does_not_speak_what_gemini_writes(
+    session: AsyncSession, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Jev がなければ（キーが空）、確かめていない文は話さない。Gemini も呼ばずに定型で作る。"""
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+    await NoteFactory.create_async(user_id=user.id, date=MONDAY, body="Back pain again")
+    writer = FakeWriter(WRITTEN)
+
+    review, created = await create_review(session, user, writer, None, today=TODAY)
+
+    expected = fallback_review(await judge_review_week(session, user, MONDAY, TODAY))
+    assert created
+    assert writer.prompts == []
+    assert review.is_fallback
+    assert review.script == expected.script
+    assert any("no line checker" in r.message for r in caplog.records)

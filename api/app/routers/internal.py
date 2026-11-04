@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from app.core.internal_auth import require_internal_caller
-from app.routers.deps import DbSession, ReviewQueueDep, ReviewWriterDep
+from app.routers.deps import DbSession, LineCheckerDep, ReviewQueueDep, ReviewWriterDep
 from app.services.auto_reviews import (
     AutoReviewResult,
     UserNotFoundError,
@@ -61,7 +61,11 @@ async def dispatch_reviews(session: DbSession, queue: ReviewQueueDep) -> Dispatc
 
 @router.post("/reviews/users/{user_id}/weeks/{period_start}")
 async def create_review_for_user(
-    user_id: int, period_start: date, session: DbSession, writer: ReviewWriterDep
+    user_id: int,
+    period_start: date,
+    session: DbSession,
+    writer: ReviewWriterDep,
+    checker: LineCheckerDep,
 ) -> AutoReviewOut:
     """Tasks が 1 人ずつ呼ぶ。探したときの週（period_start に始まる 7 日間）の振り返りを作る。
 
@@ -69,7 +73,7 @@ async def create_review_for_user(
     period_start でなくなった）はやり直しても変わらないので 200 の skipped にする。
     """
     try:
-        done = await create_for_user(session, user_id, period_start, writer)
+        done = await create_for_user(session, user_id, period_start, writer, checker)
     except UserNotFoundError as e:
         raise HTTPException(status.HTTP_404_NOT_FOUND) from e
     logger.info(

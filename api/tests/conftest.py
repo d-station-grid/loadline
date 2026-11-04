@@ -11,7 +11,7 @@ from app.core.config import get_settings
 from app.core.db import get_session
 from app.main import app
 from app.models import Base
-from app.routers.deps import get_review_queue, get_review_writer
+from app.routers.deps import get_line_checker, get_review_queue, get_review_writer
 from tests.factories import BaseFactory
 
 
@@ -69,6 +69,8 @@ async def client(session: AsyncSession) -> AsyncIterator[AsyncClient]:
     app.dependency_overrides[get_session] = _override
     # API のテストでは Gemini を呼ばない。呼ぶテストは個別に差し替える
     app.dependency_overrides[get_review_writer] = lambda: None
+    # Jev も呼ばない。確かめるテストは個別に差し替える
+    app.dependency_overrides[get_line_checker] = lambda: None
     # Cloud Tasks にも積まない。積むテストは個別に差し替える
     app.dependency_overrides[get_review_queue] = lambda: None
     transport = ASGITransport(app=app)

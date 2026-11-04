@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     gemini_models: list[str] = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-2.5-flash"]
     # 振り返り 1 通に待つ上限。超えたら定型にする
     gemini_timeout_sec: float = 60.0
+    # Gemini が書いたセリフを確かめる Jev（TypeSafe AI）。キーが空なら確かめられないので、
+    # Gemini が書いても話さずに定型にする
+    typesafe_api_key: str = ""
+    typesafe_model: str = "jev-latest"
+    # 確かめるのに待つ上限。超えたら定型にする
+    typesafe_timeout_sec: float = 15.0
     # 内部の窓口（/internal）を呼べるのは、Cloud Scheduler と Cloud Tasks が付ける OIDC
     # トークンだけ。宛先（audience）と、トークンを出すサービスアカウントのメールアドレス。
     # どちらかが空なら、内部の窓口はすべて 401 にする
