@@ -2,7 +2,13 @@ import type { User } from "firebase/auth";
 import { type SubmitEvent, useEffect, useRef, useState } from "react";
 
 import type { SettingsIn, SettingsOut } from "../api";
-import { getSettings, issueIngestToken, putSettings } from "../lib/api";
+import {
+  ApiError,
+  deleteAccount,
+  getSettings,
+  issueIngestToken,
+  putSettings,
+} from "../lib/api";
 
 const WEEKDAYS = [
   "Monday",
@@ -76,9 +82,21 @@ function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Something went wrong";
 }
 
-type Props = { user: User };
+/** 消すのに失敗したときの文言。api は Firebase で失敗したら何も消さずに 502 を返す。 */
+function deleteErrorMessage(e: unknown): string {
+  if (e instanceof ApiError && e.status === 403) {
+    return "Guests can't delete the account.";
+  }
+  return "Could not delete your account. Nothing was deleted. Please try again.";
+}
 
-export default function SettingsPage({ user }: Props) {
+type Props = {
+  user: User;
+  /** 消せたあとに呼ぶ。ここから先は api を呼ばない */
+  onDeleted: () => void;
+};
+
+export default function SettingsPage({ user, onDeleted }: Props) {
   const [form, setForm] = useState<SettingsIn | null>(null);
   const [lastFour, setLastFour] = useState<string | null>(null);
   const [freshToken, setFreshToken] = useState<string | null>(null);
@@ -88,6 +106,11 @@ export default function SettingsPage({ user }: Props) {
   const issuingNow = useRef(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  // 削除の連打よけ。発行と同じく、描画を待たずにここで止める
+  const deletingNow = useRef(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -151,6 +174,23 @@ export default function SettingsPage({ user }: Props) {
       issuingNow.current = false;
       setIssuing(false);
     }
+  }
+
+  async function handleDelete() {
+    if (deletingNow.current) return;
+    deletingNow.current = true;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteAccount(await user.getIdToken());
+    } catch (e) {
+      setDeleteError(deleteErrorMessage(e));
+      deletingNow.current = false;
+      setDeleting(false);
+      return;
+    }
+    // 消せたら止めたまま App に渡す。この画面はすぐ外れる
+    onDeleted();
   }
 
   if (!form) {
@@ -247,6 +287,36 @@ export default function SettingsPage({ user }: Props) {
       </section>
 
       {error && <p role="alert">{error}</p>}
+
+      <section>
+        <h3>Delete account</h3>
+        {confirmingDelete ? (
+          <>
+            <p>
+              This deletes your workouts, notes, weekly reviews, ingest token,
+              and your sign-in account. It can't be undone.
+            </p>
+            <button type="button" onClick={handleDelete} disabled={deleting}>
+              {deleting ? "Deleting…" : "Delete my account"}
+            </button>{" "}
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmingDelete(false);
+                setDeleteError(null);
+              }}
+              disabled={deleting}
+            >
+              Cancel
+            </button>
+            {deleteError && <p role="alert">{deleteError}</p>}
+          </>
+        ) : (
+          <button type="button" onClick={() => setConfirmingDelete(true)}>
+            Delete account…
+          </button>
+        )}
+      </section>
     </section>
   );
 }

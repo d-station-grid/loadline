@@ -16,8 +16,20 @@ vi.mock("firebase/auth", () => firebaseAuth);
 vi.mock("./lib/firebase", () => ({ auth: {}, googleProvider: {} }));
 vi.mock("./lib/api", () => ({ login: vi.fn() }));
 // 設定ページは自分のテストで見る。ここではログインの流れだけ
-vi.mock("./pages/SettingsPage", () => ({ default: () => <p>settings</p> }));
-vi.mock("./pages/WorkoutsPage", () => ({ default: () => <p>workouts</p> }));
+vi.mock("./pages/SettingsPage", () => ({
+  default: ({ onDeleted }: { onDeleted: () => void }) => (
+    <button type="button" onClick={onDeleted}>
+      settings
+    </button>
+  ),
+}));
+const workoutsPage = vi.hoisted(() => vi.fn());
+vi.mock("./pages/WorkoutsPage", () => ({
+  default: () => {
+    workoutsPage();
+    return <p>workouts</p>;
+  },
+}));
 vi.mock("./pages/WorkoutPage", () => ({ default: () => <p>workout</p> }));
 vi.mock("./pages/DashboardPage", () => ({
   default: ({ onOpenSettings }: { onOpenSettings: () => void }) => (
@@ -151,8 +163,48 @@ test("ダッシュボードから設定の画面を開ける", async () => {
 
   fireEvent.click(await screen.findByRole("button", { name: "dashboard" }));
 
-  expect(screen.getByText("settings")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "settings" })).toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: "dashboard" }),
   ).not.toBeInTheDocument();
+});
+
+test("アカウントを消せたら、ほかの画面を描かずにログアウトし、ログイン前の画面に戻る", async () => {
+  restoredUser(taro);
+  vi.mocked(login).mockResolvedValue({ id: 1, email: "taro@example.com" });
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+  workoutsPage.mockClear();
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "settings" }));
+  });
+
+  expect(firebaseAuth.signOut).toHaveBeenCalledTimes(1);
+  expect(
+    screen.getByRole("button", { name: "Sign in with Google" }),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("Signed in as Taro")).not.toBeInTheDocument();
+  // 消したあとに api を呼ぶ画面を描き直さない
+  expect(workoutsPage).not.toHaveBeenCalled();
+  expect(
+    screen.queryByRole("button", { name: "dashboard" }),
+  ).not.toBeInTheDocument();
+  expect(login).toHaveBeenCalledTimes(1);
+});
+
+test("消したあとにもう一度ログインすると、ダッシュボードから始まる", async () => {
+  restoredUser(taro);
+  vi.mocked(login).mockResolvedValue({ id: 1, email: "taro@example.com" });
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "settings" }));
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Sign in with Google" }));
+
+  expect(
+    await screen.findByRole("button", { name: "dashboard" }),
+  ).toBeInTheDocument();
 });

@@ -75,6 +75,14 @@ function App() {
     }
   }
 
+  async function handleDeleted() {
+    // 先に画面を外し、隠した一覧も含めて api を呼ばせない。古い ID トークンはまだ期限内なため
+    latest.current += 1;
+    setUser(null);
+    setView({ name: "dashboard" });
+    await signOut(auth);
+  }
+
   if (loading) {
     return <p>Loading…</p>;
   }
@@ -135,7 +143,9 @@ function App() {
           onBack={() => setView({ name: "workouts" })}
         />
       )}
-      {view.name === "settings" && <SettingsPage user={user} />}
+      {view.name === "settings" && (
+        <SettingsPage user={user} onDeleted={handleDeleted} />
+      )}
     </main>
   );
 }
