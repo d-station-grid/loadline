@@ -96,11 +96,12 @@ async function tryDelete(user: User): Promise<DeleteOutcome> {
   try {
     idToken = await user.getIdToken();
   } catch (e) {
-    // 通信の失敗なら消えたかは分からない。それ以外は Firebase の利用者が消えている
+    // 利用者が消えていると、Firebase はトークンの更新を user-token-expired で断る。
+    // このときは SDK もログアウトする。ほかの失敗は一時的なこともあるので決めつけない
     const code = (e as { code?: unknown } | null)?.code;
-    return code === "auth/network-request-failed"
-      ? { deleted: false, message: UNCONFIRMED }
-      : { deleted: true };
+    return code === "auth/user-token-expired"
+      ? { deleted: true }
+      : { deleted: false, message: UNCONFIRMED };
   }
   try {
     await deleteAccount(idToken);

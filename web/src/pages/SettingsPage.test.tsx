@@ -358,7 +358,7 @@ test("消したあとのやり直しで 401 なら、消えたものとして知
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
 
-test("ID トークンを取れなければ、Firebase の利用者は消えているので知らせる", async () => {
+test("ID トークンの更新が user-token-expired なら、利用者は消えているので知らせる", async () => {
   const gone = {
     getIdToken: vi
       .fn()
@@ -400,25 +400,41 @@ test.each([
   },
 );
 
-test("ID トークンを取るときの通信の失敗は、消えたか分からないと出す", async () => {
-  const offline = {
-    getIdToken: vi
-      .fn()
-      .mockResolvedValueOnce("token")
-      .mockRejectedValue({ code: "auth/network-request-failed" }),
-  } as unknown as User;
-  render(<SettingsPage user={offline} onDeleted={onDeleted} />);
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Delete account…" }),
-  );
+test.each([
+  { name: "internal-error", error: { code: "auth/internal-error" } },
+  { name: "too-many-requests", error: { code: "auth/too-many-requests" } },
+  {
+    name: "network-request-failed",
+    error: { code: "auth/network-request-failed" },
+  },
+  { name: "user-disabled", error: { code: "auth/user-disabled" } },
+  { name: "code のないエラー", error: new Error("boom") },
+])(
+  "ID トークンを取るときの $name は、消さずに分からないと出し、もう一度押せる",
+  async ({ error }) => {
+    const flaky = {
+      getIdToken: vi
+        .fn()
+        .mockResolvedValueOnce("token")
+        .mockRejectedValue(error),
+    } as unknown as User;
+    render(<SettingsPage user={flaky} onDeleted={onDeleted} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Delete account…" }),
+    );
 
-  fireEvent.click(screen.getByRole("button", { name: "Delete my account" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete my account" }));
 
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Couldn't confirm whether your account was deleted.",
-  );
-  expect(onDeleted).not.toHaveBeenCalled();
-});
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't confirm whether your account was deleted. Please try again.",
+    );
+    expect(deleteAccount).not.toHaveBeenCalled();
+    expect(onDeleted).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "Delete my account" }),
+    ).toBeEnabled();
+  },
+);
 
 test("設定を読めなくても、削除の節は出る", async () => {
   vi.mocked(getSettings).mockRejectedValue(new Error("API returned 500"));
