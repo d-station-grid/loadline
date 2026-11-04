@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Response, status
 
-from app.routers.deps import CurrentUser, DbSession, ReviewWriterDep
+from app.routers.deps import CurrentUser, DbSession, LineCheckerDep, ReviewWriterDep
 from app.schemas.reviews import SelectionIn, WeeklyReviewOut
 from app.services.reviews import (
     HeartRateSettingsMissingError,
@@ -25,20 +25,25 @@ router = APIRouter(prefix="/reviews", tags=["reviews"])
     },
 )
 async def add_review(
-    user: CurrentUser, session: DbSession, writer: ReviewWriterDep, response: Response
+    user: CurrentUser,
+    session: DbSession,
+    writer: ReviewWriterDep,
+    checker: LineCheckerDep,
+    response: Response,
 ) -> WeeklyReviewOut:
     """今の振り返りの週の振り返りを作る。週は、今日以前でいちばん近い振り返りの曜日の
     前日までの 7 日間（利用者のタイムゾーン）。
 
     その週の振り返りがもうあれば、作り直さずにそれを 200 で返す。後から届いた記録も
-    入れない。GEMINI_PROJECT が設定されていればセリフと選択肢を Gemini が書き、書けなければ
-    （60 秒を超えたときも）定型にする。設定がなければ定型だけ。どちらだったかは
-    is_fallback で分かる。
+    入れない。GEMINI_PROJECT と TYPESAFE_API_KEY が設定されていればセリフと選択肢を
+    Gemini が書き、Jev で話してよいと確かめられたときだけその文にする。書けない、
+    引っかかった、確かめられなかった（時間切れも）ときは定型にする。設定がなければ
+    定型だけ。どちらだったかは is_fallback で分かる。
     """
     if user.is_demo:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "guests cannot create reviews")
     try:
-        review, created = await create_review(session, user, writer)
+        review, created = await create_review(session, user, writer, checker)
     except HeartRateSettingsMissingError as e:
         raise HTTPException(status.HTTP_409_CONFLICT, "set max and resting heart rate first") from e
     if not created:

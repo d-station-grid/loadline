@@ -8,11 +8,12 @@ import pytest
 from httpx import AsyncClient
 
 from app.adapters.gemini import GeminiReviewWriter
+from app.adapters.jev import JevLineChecker
 from app.core.auth import Identity, InvalidTokenError, get_token_verifier
 from app.domain.review_week import review_period
 from app.main import app
 from app.models import User
-from app.routers.deps import get_review_writer
+from app.routers.deps import get_line_checker, get_review_writer
 from tests.factories import (
     UserFactory,
     WeeklyReviewFactory,
@@ -20,6 +21,7 @@ from tests.factories import (
     WorkoutFactory,
 )
 from tests.test_gemini_adapter import FakeGenerate, busy, recorded
+from tests.test_jev_adapter import FakeSystemOne, answered
 
 HEADERS = {"Authorization": "Bearer good"}
 
@@ -249,19 +251,26 @@ async def test_reviews_need_login(client: AsyncClient, method: str, path: str) -
 
 
 @pytest.mark.parametrize(
-    ("results", "is_fallback"),
+    ("results", "pushes_harder", "is_fallback"),
     [
-        pytest.param([recorded("steady")], False, id="written_by_gemini"),
-        pytest.param([busy(), busy()], True, id="every_model_busy"),
+        pytest.param([recorded("steady")], 0.02, False, id="written_by_gemini"),
+        pytest.param([busy(), busy()], 0.02, True, id="every_model_busy"),
+        pytest.param([recorded("steady")], 0.9, True, id="flagged_by_jev"),
+        pytest.param([recorded("steady")], None, True, id="no_jev"),
     ],
 )
 async def test_post_writes_with_gemini_and_falls_back_to_the_fixed_script(
-    client: AsyncClient, results: list[Any], is_fallback: bool
+    client: AsyncClient, results: list[Any], pushes_harder: float | None, is_fallback: bool
 ) -> None:
-    """記録した Gemini の応答で作る。どのモデルも混雑していれば定型で 201。"""
+    """記録した Gemini の応答を Jev で確かめて作る。どのモデルも混雑している、Jev で
+    引っかかった、Jev がない（キーが空）のどれでも定型で 201。"""
     await _me()
     writer = GeminiReviewWriter(FakeGenerate(*results), ["model-a", "model-b"], 5.0)
     app.dependency_overrides[get_review_writer] = lambda: writer
+    if pushes_harder is not None:
+        answer = answered(pushes_harder=pushes_harder, medical_advice=0.01)
+        checker = JevLineChecker(FakeSystemOne(answer), 5.0)
+        app.dependency_overrides[get_line_checker] = lambda: checker
 
     res = await client.post("/reviews", headers=HEADERS)
 

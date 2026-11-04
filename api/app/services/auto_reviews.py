@@ -17,7 +17,12 @@ from app.domain.auto_review import is_auto_review_time
 from app.domain.calendar import today_for
 from app.domain.review_week import review_period
 from app.models import User, WeeklyReview
-from app.services.reviews import HeartRateSettingsMissingError, ReviewWriter, create_review
+from app.services.reviews import (
+    HeartRateSettingsMissingError,
+    LineChecker,
+    ReviewWriter,
+    create_review,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +134,7 @@ async def create_for_user(
     user_id: int,
     period_start: date,
     writer: ReviewWriter | None,
+    checker: LineChecker | None,
     now: datetime | None = None,
 ) -> AutoReview:
     """1 人分の、period_start に始まる週の振り返りを作る。作り方は本人がボタンで作るときと同じ。
@@ -148,7 +154,7 @@ async def create_for_user(
     if review_period(today, user.review_weekday)[0] != period_start:
         return AutoReview(AutoReviewResult.SKIPPED)
     try:
-        review, created = await create_review(session, user, writer, today=today)
+        review, created = await create_review(session, user, writer, checker, today=today)
     except HeartRateSettingsMissingError:
         return AutoReview(AutoReviewResult.SKIPPED)
     return AutoReview(AutoReviewResult.CREATED if created else AutoReviewResult.EXISTS, review.id)

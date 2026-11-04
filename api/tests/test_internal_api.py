@@ -15,7 +15,7 @@ from app.domain.review_week import review_period
 from app.main import app
 from app.models import User, WeeklyReview
 from app.routers import internal
-from app.routers.deps import get_review_queue
+from app.routers.deps import get_line_checker, get_review_queue, get_review_writer
 from app.services.auto_reviews import (
     AutoReview,
     AutoReviewResult,
@@ -26,6 +26,7 @@ from app.services.auto_reviews import (
     due_reviews,
 )
 from tests.factories import UserFactory, WeeklyReviewFactory
+from tests.test_reviews_service import SAFE, WRITTEN, FakeChecker, FakeWriter
 
 HEADERS = {"Authorization": "Bearer from-google"}
 TOKYO = ZoneInfo("Asia/Tokyo")
@@ -257,6 +258,24 @@ async def test_task_creates_the_review_once(client: AsyncClient, session: AsyncS
     assert await _review_count(session, user) == 1
 
 
+async def test_task_checks_what_gemini_wrote_with_jev(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """自動で作るときも、本人がボタンで作るときと同じく Jev で確かめた文だけを使う。"""
+    user = await _runner()
+    checker = FakeChecker(SAFE)
+    app.dependency_overrides[get_review_writer] = lambda: FakeWriter(WRITTEN)
+    app.dependency_overrides[get_line_checker] = lambda: checker
+
+    res = await client.post(_task_path(user, _current_week()), headers=HEADERS)
+
+    review = await session.get(WeeklyReview, res.json()["review_id"])
+    assert review is not None
+    assert checker.contents == [WRITTEN]
+    assert not review.is_fallback
+    assert review.script == WRITTEN.script
+
+
 @pytest.mark.parametrize(
     "fields", [{"max_heart_rate": None}, {"is_demo": True}], ids=["no-heart-rate", "guest"]
 )
@@ -322,7 +341,7 @@ async def test_task_with_a_broken_date_is_422(client: AsyncClient) -> None:
 async def test_late_task_within_the_same_week_creates(session: AsyncSession, now: datetime) -> None:
     user = await _runner()
 
-    done = await create_for_user(session, user.id, date(2026, 10, 26), None, now=now)
+    done = await create_for_user(session, user.id, date(2026, 10, 26), None, None, now=now)
 
     assert done.result == AutoReviewResult.CREATED
     review = await session.get(WeeklyReview, done.review_id)
@@ -346,7 +365,7 @@ async def test_task_late_into_the_next_review_day_is_skipped(
     # 作れば次の週を記録を待つ 6 時より前に確定してしまうので、作らない
     user = await _runner()
 
-    done = await create_for_user(session, user.id, date(2026, 10, 26), None, now=now)
+    done = await create_for_user(session, user.id, date(2026, 10, 26), None, None, now=now)
 
     assert done == AutoReview(AutoReviewResult.SKIPPED)
     assert await _review_count(session, user) == 0
