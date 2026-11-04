@@ -955,6 +955,16 @@
         "title": "DayPoint",
         "description": "その日の終わりの体力・疲労・余力と、その日の負荷。\n\nload が None の日は、心拍の記録がないワークアウトを含む（負荷を 0 として計算を続けている）。"
       },
+      "Expression": {
+        "type": "string",
+        "enum": [
+          "happy",
+          "relaxed",
+          "sad",
+          "surprised"
+        ],
+        "title": "Expression"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1661,6 +1671,9 @@
             "type": "boolean",
             "title": "Is Fallback"
           },
+          "expression": {
+            "$ref": "#/components/schemas/Expression"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -1683,11 +1696,12 @@
           "script",
           "status",
           "is_fallback",
+          "expression",
           "created_at",
           "options"
         ],
         "title": "WeeklyReviewOut",
-        "description": "週に 1 回の振り返り。期間は利用者のタイムゾーンでの日付で、両端を含む。\n\nscript はアバターのセリフで、字幕にも使う。is_fallback が true なら人が書いた定型。\noptions は position の順。音声は声にする機能で足す。"
+        "description": "週に 1 回の振り返り。期間は利用者のタイムゾーンでの日付で、両端を含む。\n\nscript はアバターのセリフで、字幕にも使う。is_fallback が true なら人が書いた定型。\nexpression はセリフを話すときのアバターの表情。定型なら relaxed。\noptions は position の順。音声は声にする機能で足す。"
       },
       "WorkoutDetail": {
         "properties": {

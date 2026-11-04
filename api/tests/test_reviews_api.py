@@ -21,7 +21,7 @@ from tests.factories import (
     WorkoutFactory,
 )
 from tests.test_gemini_adapter import FakeGenerate, busy, recorded
-from tests.test_jev_adapter import FakeSystemOne, answered
+from tests.test_jev_adapter import FakeSystemOne, line_answer
 
 HEADERS = {"Authorization": "Bearer good"}
 
@@ -268,7 +268,7 @@ async def test_post_writes_with_gemini_and_falls_back_to_the_fixed_script(
     writer = GeminiReviewWriter(FakeGenerate(*results), ["model-a", "model-b"], 5.0)
     app.dependency_overrides[get_review_writer] = lambda: writer
     if pushes_harder is not None:
-        answer = answered(pushes_harder=pushes_harder, medical_advice=0.01)
+        answer = line_answer(pushes_harder=pushes_harder, medical_advice=0.01)
         checker = JevLineChecker(FakeSystemOne(answer), 5.0)
         app.dependency_overrides[get_line_checker] = lambda: checker
 

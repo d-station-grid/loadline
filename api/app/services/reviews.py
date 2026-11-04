@@ -6,6 +6,7 @@
 
 import logging
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Protocol
 from zoneinfo import ZoneInfo
@@ -15,12 +16,13 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.calendar import start_of_day, today_for
+from app.domain.expression import DEFAULT_EXPRESSION, Expression, expression_for
 from app.domain.fallback_review import ReviewContent, ReviewOption, fallback_review
 from app.domain.line_check import LineCheck, flagged
 from app.domain.load import FitnessPoint
 from app.domain.note_check import NoteCheck, health_flag
 from app.domain.review_material import ReviewMaterial
-from app.domain.review_prompt import NoteForReview, review_prompt
+from app.domain.review_prompt import NoteForReview, may_offer_more, review_prompt
 from app.domain.review_week import review_period
 from app.domain.situation import (
     DAYS_IN_WEEK,
@@ -176,15 +178,27 @@ async def notes_for_review(
     return [NoteForReview(day=r.date, label=r.label, body=r.body) for r in rows]
 
 
+@dataclass(frozen=True)
+class _Written:
+    """_write の結果。content は話してよいと確かめられた LLM の文（なければ定型にする）。
+
+    expression は content に合う表情。content がなければ使わない（定型は relaxed）。
+    """
+
+    content: ReviewContent | None
+    health_flag: bool
+    expression: Expression = DEFAULT_EXPRESSION
+
+
 async def _write(
     session: AsyncSession,
     user: User,
     material: ReviewMaterial,
     writer: ReviewWriter | None,
     checker: LineChecker | None,
-) -> tuple[ReviewContent | None, bool]:
+) -> _Written:
     """メモを Jev で確かめて体調のフラグを決め、LLM に書いてもらい、Jev で確かめる。
-    話してよいと確かめられた文と、体調のフラグを返す。
+    話してよいと確かめられた文と、体調のフラグと、文に合う表情を返す。
 
     文は、writer がない（設定で切っている）、書けない、確かめて引っかかった、確かめられ
     なかった、のどれでも None（定型にする）。checker がなければ、確かめられない文を書かせても
@@ -195,6 +209,9 @@ async def _write(
     定型にも量や強度を上げる選択肢を出させない。メモを確かめられなければ LLM は呼ばず、
     フラグを立てた側（安全側）にして定型にする。メモを読んでいない（checker がない、送らない
     設定、メモがない）ときは立てない。
+
+    増やす選択肢を出してはいけない週（状況とフラグからコードで決める）は、LLM の文が
+    増やすことを勧めていれば、押し付けない提案でも引っかけて定型にする。
     """
     if checker is None:
         if writer is not None:
@@ -203,7 +220,7 @@ async def _write(
                 "falling back to the fixed script for user %s",
                 user.id,
             )
-        return None, False
+        return _Written(None, False)
     week = material.week
     notes = await notes_for_review(session, user, week.start, week.end)
     # LLM と Jev を待つ 10〜90 秒のあいだ、読み込みのトランザクションを閉じて DB の接続を
@@ -217,7 +234,7 @@ async def _write(
                 "review: could not check the notes; falling back to the fixed script for user %s",
                 user.id,
             )
-            return None, True
+            return _Written(None, True)
         flag = health_flag(note_check)
         if flag:
             logger.info(
@@ -228,30 +245,30 @@ async def _write(
                 user.id,
             )
     if writer is None:
-        return None, flag
+        return _Written(None, flag)
     content = await writer.write(review_prompt(material, notes, health_flag=flag))
     if content is None:
         logger.warning(
             "review: the writer could not write; falling back to the fixed script for user %s",
             user.id,
         )
-        return None, flag
+        return _Written(None, flag)
     check = await checker.check(content)
     if check is None:
         logger.warning(
             "review: could not check the line; falling back to the fixed script for user %s",
             user.id,
         )
-        return None, flag
-    if risks := flagged(check):
+        return _Written(None, flag)
+    if risks := flagged(check, may_offer_more(week.situation, flag)):
         logger.warning(
             "review: the line was flagged (%s); falling back to the fixed script for user %s",
             # 境目ぎりぎりか、はっきり「はい」かを見分けられるように確率も残す。セリフは残さない
             ", ".join(f"{name}={yes:.2f}" for name, yes in risks.items()),
             user.id,
         )
-        return None, flag
-    return content, flag
+        return _Written(None, flag)
+    return _Written(content, flag, expression_for(check.expression))
 
 
 async def _options(session: AsyncSession, review_id: int) -> list[WeeklyReviewOption]:
@@ -273,6 +290,7 @@ async def _out(session: AsyncSession, review: WeeklyReview) -> WeeklyReviewOut:
         script=review.script,
         status=ReviewStatus(review.status),
         is_fallback=review.is_fallback,
+        expression=Expression(review.expression),
         created_at=review.created_at,
         options=[ReviewOptionOut.model_validate(o) for o in options],
     )
@@ -306,9 +324,10 @@ async def create_review(
         return await _out(session, existing), False
 
     material = await review_material(session, user, start, today)
-    written, flag = await _write(session, user, material, writer, checker)
-    # 定型は前の週の選択とメモを読まない。メモを Jev で確かめたフラグだけを使う
-    content = written or fallback_review(material.week, flag)
+    written = await _write(session, user, material, writer, checker)
+    # 定型は前の週の選択とメモを読まない。メモを Jev で確かめたフラグだけを使う。
+    # 定型のときの表情は relaxed（_Written の既定）
+    content = written.content or fallback_review(material.week, written.health_flag)
     review = await session.scalar(
         insert(WeeklyReview)
         .values(
@@ -318,7 +337,8 @@ async def create_review(
             situation=material.week.situation.value,
             script=content.script,
             status=ReviewStatus.COMPLETED.value,
-            is_fallback=written is None,
+            is_fallback=written.content is None,
+            expression=written.expression.value,
         )
         .on_conflict_do_nothing(index_elements=[WeeklyReview.user_id, WeeklyReview.period_start])
         .returning(WeeklyReview)

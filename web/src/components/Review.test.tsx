@@ -36,6 +36,7 @@ function review(chosen: number | null = null): WeeklyReviewOut {
     script: "A heavy week. Your fatigue is well above your fitness.",
     status: "completed",
     is_fallback: true,
+    expression: "relaxed",
     created_at: "2026-10-26T00:00:00Z",
     options: options.map(([label, description], i) => ({
       id: 100 + i,

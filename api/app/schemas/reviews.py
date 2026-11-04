@@ -2,6 +2,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from app.domain.expression import Expression
 from app.domain.situation import Situation
 from app.models.weekly_review import ReviewStatus
 
@@ -22,6 +23,7 @@ class WeeklyReviewOut(BaseModel):
     """週に 1 回の振り返り。期間は利用者のタイムゾーンでの日付で、両端を含む。
 
     script はアバターのセリフで、字幕にも使う。is_fallback が true なら人が書いた定型。
+    expression はセリフを話すときのアバターの表情。定型なら relaxed。
     options は position の順。音声は声にする機能で足す。
     """
 
@@ -32,6 +34,7 @@ class WeeklyReviewOut(BaseModel):
     script: str
     status: ReviewStatus
     is_fallback: bool
+    expression: Expression
     created_at: datetime
     options: list[ReviewOptionOut]
 

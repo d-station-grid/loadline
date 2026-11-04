@@ -1,5 +1,6 @@
 import json
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -8,6 +9,7 @@ import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from app.domain.expression import ExpressionAnswer
 from app.domain.fallback_review import ReviewContent, ReviewOption, fallback_review
 from app.domain.line_check import LineCheck
 from app.domain.note_check import NoteCheck
@@ -460,7 +462,12 @@ class FakeWriter:
         return json.loads(text[text.index("{") :])
 
 
-SAFE = LineCheck(pushes_harder=0.02, medical_advice=0.01)
+SAFE = LineCheck(
+    pushes_harder=0.02,
+    medical_advice=0.01,
+    offers_more=0.01,
+    expression=ExpressionAnswer("happy", 0.9),
+)
 NO_HEALTH_NOTE = NoteCheck(mentions_health=0.03)
 
 
@@ -582,8 +589,14 @@ async def test_notes_are_not_sent_when_the_user_turned_it_off(session: AsyncSess
 @pytest.mark.parametrize(
     "check",
     [
-        pytest.param(LineCheck(pushes_harder=0.8, medical_advice=0.0), id="pushes_harder"),
-        pytest.param(LineCheck(pushes_harder=0.0, medical_advice=0.35), id="medical_advice"),
+        pytest.param(
+            LineCheck(pushes_harder=0.8, medical_advice=0.0, offers_more=0.0, expression=None),
+            id="pushes_harder",
+        ),
+        pytest.param(
+            LineCheck(pushes_harder=0.0, medical_advice=0.35, offers_more=0.0, expression=None),
+            id="medical_advice",
+        ),
     ],
 )
 async def test_create_review_falls_back_when_the_line_is_flagged(
@@ -686,7 +699,9 @@ async def test_health_flag_also_removes_more_from_the_fixed_options(session: Asy
     user = await _user()
     await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
     await NoteFactory.create_async(user_id=user.id, date=MONDAY, body="Caught a cold")
-    flagged_line = LineCheck(pushes_harder=0.9, medical_advice=0.0)
+    flagged_line = LineCheck(
+        pushes_harder=0.9, medical_advice=0.0, offers_more=0.0, expression=None
+    )
     checker = FakeChecker(flagged_line, NoteCheck(mentions_health=0.8))
 
     review, _ = await create_review(session, user, FakeWriter(WRITTEN), checker, today=TODAY)
@@ -806,3 +821,116 @@ async def test_without_the_writer_the_fixed_options_follow_the_note_check(
 
     assert review.is_fallback
     assert (_adds_load([o.label for o in review.options]) != []) is adds_load
+
+
+async def test_the_expression_jev_chose_is_saved_with_the_written_line(
+    session: AsyncSession,
+) -> None:
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+
+    review, _ = await create_review(
+        session, user, FakeWriter(WRITTEN), FakeChecker(SAFE), today=TODAY
+    )
+
+    stored = await session.get(WeeklyReview, review.id)
+    assert stored is not None
+    assert review.expression == "happy"
+    assert stored.expression == "happy"
+
+
+async def test_an_unsure_expression_falls_back_to_relaxed(session: AsyncSession) -> None:
+    """確信度が低ければ、Gemini の文は話しても表情は relaxed にする。"""
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+    unsure = replace(SAFE, expression=ExpressionAnswer("surprised", 0.4))
+
+    review, _ = await create_review(
+        session, user, FakeWriter(WRITTEN), FakeChecker(unsure), today=TODAY
+    )
+
+    assert not review.is_fallback
+    assert review.expression == "relaxed"
+
+
+@pytest.mark.parametrize(
+    ("writer", "check"),
+    [
+        pytest.param(None, SAFE, id="no_writer"),
+        pytest.param(FakeWriter(WRITTEN), replace(SAFE, pushes_harder=0.9), id="flagged_line"),
+    ],
+)
+async def test_the_fixed_script_is_spoken_relaxed(
+    session: AsyncSession, writer: FakeWriter | None, check: LineCheck
+) -> None:
+    """定型のときは、Jev が選んだ表情があっても relaxed にする。"""
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+
+    review, _ = await create_review(session, user, writer, FakeChecker(check), today=TODAY)
+
+    assert review.is_fallback
+    assert review.expression == "relaxed"
+
+
+async def test_offering_more_is_stopped_in_a_week_with_the_health_flag(
+    session: AsyncSession, caplog: pytest.LogCaptureFixture
+) -> None:
+    """増やす選択肢を出してはいけない週に、Gemini の文が増やすことを勧めていたら定型にする。
+    押し付けない提案（pushes_harder は低い）でも止める。"""
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+    await NoteFactory.create_async(user_id=user.id, date=MONDAY, body="Knee hurts on stairs")
+    offers_more = replace(SAFE, offers_more=0.8)
+    checker = FakeChecker(offers_more, NoteCheck(mentions_health=0.9))
+
+    review, _ = await create_review(session, user, FakeWriter(WRITTEN), checker, today=TODAY)
+
+    assert review.is_fallback
+    assert _adds_load([o.label for o in review.options]) == []
+    assert any("offers_more=0.80" in r.getMessage() for r in caplog.records)
+
+
+async def test_offering_more_is_fine_in_a_steady_week(session: AsyncSession) -> None:
+    """順調な週で、痛みに触れたメモもなければ、増やすことを勧めても話してよい。"""
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+
+    review, _ = await create_review(
+        session,
+        user,
+        FakeWriter(WRITTEN),
+        FakeChecker(replace(SAFE, offers_more=0.8)),
+        today=TODAY,
+    )
+
+    assert not review.is_fallback
+
+
+async def _fatigued_user() -> User:
+    """10-12〜10-18 の週が「疲労が溜まっている」になる人。体調のメモはない。"""
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), MONDAY - timedelta(days=1))
+    for i in range(7):
+        await _ride(user, f"{(MONDAY + timedelta(days=i)).isoformat()}T07:00", 150, 165)
+    return user
+
+
+@pytest.mark.parametrize(
+    ("offers_more", "is_fallback"),
+    [pytest.param(0.8, True, id="offers_more"), pytest.param(0.1, False, id="does_not")],
+)
+async def test_offering_more_is_stopped_in_a_fatigued_week_without_the_health_flag(
+    session: AsyncSession, offers_more: float, is_fallback: bool
+) -> None:
+    """疲労が高い週は、体調のフラグがなくても増やす文を止める。状況の判定だけで決まる。"""
+    user = await _fatigued_user()
+    writer = FakeWriter(WRITTEN)
+    checker = FakeChecker(replace(SAFE, offers_more=offers_more))
+
+    review, _ = await create_review(session, user, writer, checker, today=TODAY)
+
+    assert review.situation == Situation.FATIGUED
+    assert writer.data()["may_offer_more"] is False
+    assert checker.notes == []
+    assert review.is_fallback is is_fallback

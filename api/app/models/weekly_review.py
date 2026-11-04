@@ -53,6 +53,8 @@ class WeeklyReview(Base):
     status: Mapped[str] = mapped_column(String(16))
     # 人が書いた定型のセリフなら true
     is_fallback: Mapped[bool] = mapped_column(Boolean)
+    # アバターの表情。app.domain.expression.Expression の値。定型と、表情を足す前の行は relaxed
+    expression: Mapped[str] = mapped_column(String(16), server_default="relaxed")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

@@ -18,6 +18,7 @@ export type {
   EditNoteNotesNoteIdPatchErrors,
   EditNoteNotesNoteIdPatchResponse,
   EditNoteNotesNoteIdPatchResponses,
+  Expression,
   HealthHealthGetData,
   HealthHealthGetResponse,
   HealthHealthGetResponses,

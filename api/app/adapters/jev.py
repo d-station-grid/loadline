@@ -1,7 +1,8 @@
 """TypeSafe AI の Jev に、LLM が書いたセリフを話してよいか、その週のメモが痛みや病気に
 触れているかを確かめてもらう。
 
-セリフは 1 回の呼び出しで、無理強いと医療の助言の 2 つを Noul（はい・いいえの確率）で聞く。
+セリフは 1 回の呼び出しで、無理強い、医療の助言、増やすことを勧めているかの 3 つを Noul
+（はい・いいえの確率）で、セリフに合う表情を Choice で聞く。
 メモは別の 1 回で、痛みや病気に触れているかを聞く。セリフより先に、LLM に書かせる前に聞く。
 話してよいか、体調のフラグを立てるか（境目との比較）は domain の line_check と note_check で
 行う。ここは聞いて、答えを LineCheck と NoteCheck に写すだけ。
@@ -18,6 +19,7 @@ from typing import Protocol
 
 from typesafe_sdk import (
     AsyncTypeSafeClient,
+    Choice,
     Content,
     Noul,
     Question,
@@ -32,6 +34,7 @@ from typesafe_sdk import (
 )
 
 from app.core.config import Settings
+from app.domain.expression import ExpressionAnswer
 from app.domain.fallback_review import ReviewContent
 from app.domain.line_check import LineCheck, text_to_check
 from app.domain.note_check import NoteCheck, notes_to_check
@@ -49,8 +52,9 @@ _OUR_MISTAKES = (
     TypeSafeUnprocessableEntityError,
 )
 
-# 問いは試作で危ないセリフをすべて止められた言い方のまま。変えるときは試作で確かめ直す。
-# 表情などの問いも、ここに足せば同じ 1 回の呼び出しで聞ける
+# pushes_harder と medical_advice は、試作で危ないセリフをすべて止められた言い方のまま。
+# offers_more と expression は 3 本目で足した。変えたら scripts/check_line_questions.py で
+# 本物の Jev に聞き、期待どおりか確かめる。4 つとも同じ 1 回の呼び出しで聞く
 QUESTIONS: dict[str, Question] = {
     "pushes_harder": Noul(
         instructions=(
@@ -67,6 +71,32 @@ QUESTIONS: dict[str, Question] = {
             "or says that a symptom is nothing to worry about. "
             "Simply suggesting rest or suggesting to see a doctor does not count."
         ),
+    ),
+    # 増やす選択肢を出してはいけない週だけで使う。pushes_harder が通す、押し付けない提案も拾う
+    "offers_more": Noul(
+        instructions=(
+            "`line` suggests or invites the listener to train more than before: more sessions, "
+            "longer sessions, harder sessions or higher intensity. "
+            "It counts even if the suggestion is gentle and optional. "
+            "Keeping the same amount, going easier, resting, or one short easy session to get "
+            "moving again after time off does not count."
+        ),
+    ),
+    # relaxed は表情が決まらないときの顔でもあるので、説明を狭くして寄りすぎないようにする。
+    # ほめる、祝う文は、軽く過ごす提案が入っていても happy
+    "expression": Choice(
+        instructions="Which facial expression fits an avatar saying `line` aloud?",
+        criteria={
+            "happy": "Cheerful: it praises or celebrates something the listener did, such as "
+            "a good week, a personal best or coming back after a break. Choose this even if "
+            "it also suggests keeping things easy.",
+            "relaxed": "Calm: it is mostly about resting, recovering or a quiet, ordinary week, "
+            "and it does not praise or celebrate anything.",
+            "sad": "Sympathetic: it acknowledges something hard, such as pain, sickness "
+            "or being unable to train.",
+            "surprised": "Amazed: it reacts to something unexpected or remarkable, such as "
+            "a sudden big jump in training.",
+        },
     ),
 }
 
@@ -169,7 +199,21 @@ def _parse(response: SystemOneResponse) -> LineCheck:
     return LineCheck(
         pushes_harder=_yes(response, "pushes_harder"),
         medical_advice=_yes(response, "medical_advice"),
+        offers_more=_yes(response, "offers_more"),
+        expression=_expression(response),
     )
+
+
+def _expression(response: SystemOneResponse) -> ExpressionAnswer | None:
+    """表情の答え。なければ None。名前と確信度は domain の expression_for で確かめる。
+
+    表情が分からなくても、話してよいかの答えは使えるので、ここでは止めない。
+    """
+    answer = response.choices.get("expression")
+    if answer is None:
+        logger.warning("jev: no answer for expression")
+        return None
+    return ExpressionAnswer(choice=answer.choice, confidence=answer.confidence)
 
 
 def jev_checker(settings: Settings) -> JevLineChecker | None:
