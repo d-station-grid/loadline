@@ -3,11 +3,11 @@ import { expect, test } from "vitest";
 
 import type { DayPoint, NoteOut, Vo2MaxPoint, WorkoutPoint } from "../api";
 import {
-  axisMaxForPins,
   loadOption,
+  trendOption,
   vo2maxOption,
   workoutsOption,
-  zonesOption,
+  zoneRows,
 } from "./charts";
 
 function seriesOf(option: EChartsOption | null): SeriesOption[] {
@@ -111,14 +111,33 @@ test("VO2max は測定値と 30 日平均を別の series にする", () => {
   ]);
 });
 
-test("強度ごとの時間は分に直し、低・中・高の順に並べる", () => {
-  const [time] = seriesOf(zonesOption({ low: 3600, mid: 1530, high: 89 }));
+test("強度ごとの時間は低・中・高の順に並べ、合計に占める割合を添える", () => {
+  const rows = zoneRows({ low: 3600, mid: 1530, high: 89 });
 
-  expect(time.data).toEqual([60, 26, 1]);
+  expect(rows?.map((r) => [r.key, r.sec, r.percent])).toEqual([
+    ["low", 3600, 69],
+    ["mid", 1530, 29],
+    ["high", 89, 2],
+  ]);
 });
 
-test("境目が未設定で zones が null なら、チャートを出さない", () => {
-  expect(zonesOption(null)).toBeNull();
+test("帯の幅は丸めない割合にして、合計を 100 にする", () => {
+  // 丸めた % は 33 + 33 + 33 = 99 になる
+  const rows = zoneRows({ low: 100, mid: 100, high: 100 });
+
+  expect(rows?.map((r) => r.percent)).toEqual([33, 33, 33]);
+  const sum = rows?.reduce((a, r) => a + r.width, 0) ?? 0;
+  expect(sum).toBeCloseTo(100, 10);
+});
+
+test("時間が全部 0 なら、割合は 0 にする", () => {
+  const rows = zoneRows({ low: 0, mid: 0, high: 0 });
+
+  expect(rows?.map((r) => r.percent)).toEqual([0, 0, 0]);
+});
+
+test("境目が未設定で zones が null なら、出さない", () => {
+  expect(zoneRows(null)).toBeNull();
 });
 
 test("散布図は種目ごとに分け、負荷か高強度の時間が null の回は除く", () => {
@@ -158,76 +177,119 @@ function memo(date: string, label: string | null, body = "x"): NoteOut {
   };
 }
 
-type MarkPoint = {
-  data: { name: string; coord: [string, number] }[];
-  label: { formatter: string; backgroundColor: string };
+type MarkLine = {
+  data: { name: string; xAxis: string }[];
+  label: { show: boolean; formatter?: string };
+  lineStyle: { type: string };
 };
 
-function markPointOf(option: EChartsOption): MarkPoint | undefined {
-  const [fitness] = seriesOf(option) as (SeriesOption & {
-    markPoint?: MarkPoint;
+function markLineOf(option: EChartsOption, index = 0): MarkLine | undefined {
+  const series = seriesOf(option) as (SeriesOption & {
+    markLine?: MarkLine;
   })[];
-  return fitness.markPoint;
+  return series[index].markLine;
 }
 
-test("ラベルのあるメモの日に、体力と疲労の高いほうの 1.1 倍の高さで吹き出しを立てる", () => {
+test("ラベルのあるメモの日に、縦の点線とラベルを出す", () => {
   const days = [day("2026-10-01", 30, 50), day("2026-10-02", 40, 20)];
   const notes = [memo("2026-10-01", "Race"), memo("2026-10-02", "大会")];
 
-  const mark = markPointOf(loadOption(days, notes));
+  const line = markLineOf(loadOption(days, notes));
 
-  expect(mark?.data).toEqual([
-    { name: "Race", coord: ["2026-10-01", 55], value: "Race" },
-    { name: "大会", coord: ["2026-10-02", 44], value: "大会" },
+  expect(line?.data).toEqual([
+    { name: "Race", xAxis: "2026-10-01" },
+    { name: "大会", xAxis: "2026-10-02" },
   ]);
-  // 文字は吹き出しに重ね、はみ出しても読めるよう同じ色の帯を敷く
-  expect(mark?.label.formatter).toBe("{b}");
-  expect(mark?.label.backgroundColor).toBeTruthy();
+  expect(line?.lineStyle.type).toBe("dashed");
+  expect(line?.label).toMatchObject({ show: true, formatter: "{b}" });
 });
 
-test("ラベルのないメモと、チャートの期間の外のメモには印を出さない", () => {
+test("ラベルのないメモと、チャートの期間の外のメモには線を出さない", () => {
   const days = [day("2026-10-01", 30, 50)];
   const notes = [memo("2026-10-01", null), memo("2026-09-01", "Old")];
 
-  const option = loadOption(days, notes);
-
-  expect(markPointOf(option)).toBeUndefined();
-  // 印がない間は、軸の上の余白も足さない
-  const [axis] = option.yAxis as { max?: unknown }[];
-  expect(axis.max).toBeUndefined();
+  expect(markLineOf(loadOption(days, notes))).toBeUndefined();
 });
 
-test("印がある間は、いちばん高い吹き出しの先から上に吹き出しの分を空ける", () => {
-  const option = loadOption(
-    [day("2026-10-01", 30, 50)],
-    [memo("2026-10-01", "Race")],
+const period = { since: "2026-10-01", until: "2026-10-02" };
+
+test("上下 2 段のチャートは、上に体力・疲労・負荷、下に VO2max を置き、横の期間をそろえる", () => {
+  const option = trendOption(
+    [day("2026-10-01", 30, 50), day("2026-10-02", 31, 45)],
+    [{ day: "2026-10-02", value: 48, average: 47.5 }],
+    [],
+    period,
   );
 
-  // 先は 50 × 1.1 = 55。グリッドの高さ 150px のうち上の 42px を空けると 76.4、切り上げて 80
-  const [axis] = option.yAxis as { max: (v: { max: number }) => number }[];
-  expect(axis.max({ max: 50 })).toBe(80);
-  // 実際に描いて収まるかは charts.render.test.ts で確かめる
-});
-
-test("軸の上端は、データの最大のほうが高ければそちらを使い、目盛りがそろうよう切り上げる", () => {
-  expect(axisMaxForPins(200, 55)).toBe(200);
-  expect(axisMaxForPins(203, 55)).toBe(210);
-  // 50 未満は 5 刻み
-  expect(axisMaxForPins(7, 7.7)).toBe(15);
-});
-
-test("吹き出しにはツールチップを出さず、軸のツールチップは標準の表示のまま", () => {
-  const option = loadOption(
-    [day("2026-10-01", 30, 50)],
-    [memo("2026-10-01", "Race", "Hill climb")],
-  );
-
-  // ラベルは吹き出しの上に出ていて、本文はチャートの下の一覧で読める
-  const [fitness] = seriesOf(option) as (SeriesOption & {
-    markPoint?: { tooltip?: { show?: boolean } };
+  const series = seriesOf(option) as (SeriesOption & {
+    xAxisIndex?: number;
+    yAxisIndex?: number;
   })[];
-  expect(fitness.markPoint?.tooltip?.show).toBe(false);
-  expect(option.tooltip).toEqual({ trigger: "axis" });
+  expect(series.map((s) => s.name)).toEqual([
+    "Fitness",
+    "Fatigue",
+    "Load",
+    "No heart rate",
+    "VO2max",
+    "30-day average",
+    // 上下の段の日付をそろえる見えない棒。凡例に載らないので、Load を消しても残る
+    undefined,
+    undefined,
+  ]);
+  // VO2max は下の段の軸に載せる
+  expect(series[4]).toMatchObject({ xAxisIndex: 1, yAxisIndex: 2 });
+  // 見えない棒は上下の段に 1 本ずつ。上の段の棒は Load と重ねて、Load の幅を変えない
+  expect(series[6]).toMatchObject({
+    xAxisIndex: 0,
+    yAxisIndex: 1,
+    barGap: "-100%",
+  });
+  expect(series[7]).toMatchObject({ xAxisIndex: 1, yAxisIndex: 2 });
+  // 横の軸は 2 本とも api の期間にする。日付の位置がそろう
+  for (const axis of option.xAxis as object[]) {
+    expect(axis).toMatchObject({
+      type: "time",
+      min: "2026-10-01",
+      max: "2026-10-02",
+    });
+  }
+  // 凡例は上下ぶんをまとめる。心拍のない日がなければ No heart rate は出さない
+  expect((option.legend as { data: string[] }).data).toEqual([
+    "Fitness",
+    "Fatigue",
+    "Load",
+    "VO2max",
+    "30-day average",
+  ]);
+});
+
+test("メモの点線は下の段にも引き、ラベルは上の段だけに出す", () => {
+  const option = trendOption(
+    [day("2026-10-01", 30, 50)],
+    [],
+    [memo("2026-10-01", "Race")],
+    period,
+  );
+
+  expect(markLineOf(option, 0)?.label.show).toBe(true);
+  const bottom = markLineOf(option, 4);
+  expect(bottom?.data).toEqual([{ name: "Race", xAxis: "2026-10-01" }]);
+  expect(bottom?.label.show).toBe(false);
+});
+
+test("心拍の設定がなく days が空なら、VO2max の段だけにする", () => {
+  const option = trendOption(
+    [],
+    [{ day: "2026-10-02", value: 48, average: 47.5 }],
+    [],
+    period,
+  );
+
+  expect(seriesOf(option).map((s) => s.name)).toEqual([
+    "VO2max",
+    "30-day average",
+  ]);
+  expect(option.xAxis).toMatchObject({ min: "2026-10-01", max: "2026-10-02" });
 });
 
 test("時間の軸は、重なった日付の文字を間引く", () => {

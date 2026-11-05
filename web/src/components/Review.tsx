@@ -152,7 +152,7 @@ export default function Review({ user, onOpenSettings }: Props) {
       {review && (
         <>
           {/* 期間は振り返った週。下の質問はこれから過ごす週なので、取り違えないようラベルを付ける */}
-          <p>
+          <p className="muted small">
             Week reviewed: {review.period_start} – {review.period_end}
           </p>
           {/* 字幕。アバターと声は後から重ねる */}

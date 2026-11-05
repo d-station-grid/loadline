@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type { User } from "firebase/auth";
 import { beforeEach, expect, test, vi } from "vitest";
 
@@ -37,10 +37,21 @@ vi.mock("./pages/WorkoutsPage", () => ({
 }));
 vi.mock("./pages/WorkoutPage", () => ({ default: () => <p>workout</p> }));
 vi.mock("./pages/DashboardPage", () => ({
-  default: ({ onOpenSettings }: { onOpenSettings: () => void }) => (
-    <button type="button" onClick={onOpenSettings}>
-      dashboard
-    </button>
+  default: ({
+    onOpenSettings,
+    onOpenWorkout,
+  }: {
+    onOpenSettings: () => void;
+    onOpenWorkout: (id: number) => void;
+  }) => (
+    <>
+      <button type="button" onClick={onOpenSettings}>
+        dashboard
+      </button>
+      <button type="button" onClick={() => onOpenWorkout(1)}>
+        open workout
+      </button>
+    </>
   ),
 }));
 
@@ -85,14 +96,56 @@ test("未ログインならログインのボタンが出る", () => {
   ).toBeInTheDocument();
 });
 
-test("復元した利用者を api に登録してから、名前とメールが出る", async () => {
+test("復元した利用者を api に登録してから、ログイン後のヘッダーが出る", async () => {
   restoredUser(taro);
   vi.mocked(login).mockResolvedValue({ id: 1, email: "taro@example.com" });
   render(<App />);
 
-  expect(await screen.findByText("Signed in as Taro")).toBeInTheDocument();
-  expect(screen.getByText("taro@example.com")).toBeInTheDocument();
+  expect(
+    await screen.findByRole("button", { name: "Log out" }),
+  ).toBeInTheDocument();
   expect(login).toHaveBeenCalledWith("token");
+  // ゲストでなければ、見るだけの案内は出さない
+  expect(
+    screen.queryByText(/Viewing demo data as a guest/),
+  ).not.toBeInTheDocument();
+});
+
+test("ヘッダーは今の画面に印を付け、詳細を開いている間は Workouts に付ける", async () => {
+  restoredUser(taro);
+  vi.mocked(login).mockResolvedValue({ id: 1, email: "taro@example.com" });
+  render(<App />);
+  const nav = await screen.findByRole("navigation", { name: "Main" });
+  const item = (name: string) => within(nav).getByRole("button", { name });
+
+  expect(item("Dashboard")).toHaveAttribute("aria-current", "page");
+  expect(item("Workouts")).not.toHaveAttribute("aria-current");
+
+  fireEvent.click(item("Settings"));
+  expect(item("Settings")).toHaveAttribute("aria-current", "page");
+  expect(item("Dashboard")).not.toHaveAttribute("aria-current");
+
+  // ダッシュボードの Recent workouts から詳細を開く
+  fireEvent.click(item("Dashboard"));
+  fireEvent.click(screen.getByRole("button", { name: "open workout" }));
+  expect(screen.getByText("workout")).toBeInTheDocument();
+  expect(item("Workouts")).toHaveAttribute("aria-current", "page");
+});
+
+test("Log out を押すとログアウトして、ログイン前の画面に戻る", async () => {
+  restoredUser(taro);
+  vi.mocked(login).mockResolvedValue({ id: 1, email: "taro@example.com" });
+  render(<App />);
+
+  const logOut = await screen.findByRole("button", { name: "Log out" });
+  await act(async () => {
+    fireEvent.click(logOut);
+  });
+
+  expect(firebaseAuth.signOut).toHaveBeenCalledTimes(1);
+  expect(
+    screen.getByRole("button", { name: "Sign in with Google" }),
+  ).toBeInTheDocument();
 });
 
 test("ボタンを押すと Google でログインし、api に登録してから名前が出る", async () => {
@@ -102,7 +155,9 @@ test("ボタンを押すと Google でログインし、api に登録してか�
 
   fireEvent.click(screen.getByRole("button", { name: "Sign in with Google" }));
 
-  expect(await screen.findByText("Signed in as Taro")).toBeInTheDocument();
+  expect(
+    await screen.findByRole("button", { name: "Log out" }),
+  ).toBeInTheDocument();
   expect(login).toHaveBeenCalledWith("token");
   expect(firebaseAuth.signOut).not.toHaveBeenCalled();
 });
@@ -118,7 +173,9 @@ test("api で失敗したらログアウトしてエラーを出す", async () =
     "API returned 500",
   );
   expect(firebaseAuth.signOut).toHaveBeenCalled();
-  expect(screen.queryByText("Signed in as Taro")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("navigation", { name: "Main" }),
+  ).not.toBeInTheDocument();
 });
 
 test("api の応答待ちの間にログアウトされたら、古い処理は画面を戻さない", async () => {
@@ -141,7 +198,9 @@ test("api の応答待ちの間にログアウトされたら、古い処理は�
   await act(async () => {
     finishLogin({ id: 1, email: "taro@example.com" });
   });
-  expect(screen.queryByText("Signed in as Taro")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("navigation", { name: "Main" }),
+  ).not.toBeInTheDocument();
   expect(
     screen.getByRole("button", { name: "Sign in with Google" }),
   ).toBeInTheDocument();
@@ -193,7 +252,9 @@ test("アカウントを消せたら、ほかの画面を描かずにログア�
   expect(
     screen.getByRole("button", { name: "Sign in with Google" }),
   ).toBeInTheDocument();
-  expect(screen.queryByText("Signed in as Taro")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("navigation", { name: "Main" }),
+  ).not.toBeInTheDocument();
   // 消したあとに api を呼ぶ画面を描き直さない
   expect(workoutsPage).not.toHaveBeenCalled();
   expect(
@@ -239,11 +300,13 @@ test("ログアウトが終わるまでは、ログイン画面もページも�
     fireEvent.click(screen.getByRole("button", { name: "settings" }));
   });
 
-  expect(screen.getByText("Signing out…")).toBeInTheDocument();
+  expect(screen.getByText("Logging out…")).toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: "Sign in with Google" }),
   ).not.toBeInTheDocument();
-  expect(screen.queryByText("Signed in as Taro")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("navigation", { name: "Main" }),
+  ).not.toBeInTheDocument();
   expect(workoutsPage).not.toHaveBeenCalled();
 
   await act(async () => {
@@ -269,13 +332,15 @@ test("消したあとのログアウトに失敗したら、やり直せる", as
   });
 
   expect(screen.getByRole("alert")).toHaveTextContent(
-    "Couldn't sign out. Please try again.",
+    "Couldn't log out. Please try again.",
   );
-  expect(screen.queryByText("Signed in as Taro")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("navigation", { name: "Main" }),
+  ).not.toBeInTheDocument();
   expect(workoutsPage).not.toHaveBeenCalled();
 
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
   });
 
   expect(firebaseAuth.signOut).toHaveBeenCalledTimes(2);
