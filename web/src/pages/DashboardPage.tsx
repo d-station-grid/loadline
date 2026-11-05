@@ -1,5 +1,5 @@
 import type { User } from "firebase/auth";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { Dashboard, NoteOut, WorkoutSummary } from "../api";
 import Chart from "../components/Chart";
@@ -46,57 +46,82 @@ function weeksOf(range: Range): number | null {
   return RANGES.find((r) => r.key === range)?.weeks ?? null;
 }
 
-/** 取ってきた結果。どの条件の結果かを一緒に持ち、今の条件と違えば表示に使わない。 */
-type Result = { key: string; data: Dashboard };
+type Query = { weeks: number | null; sport: Sport };
+/** 読んだ結果か、失敗の文。まだ読んでいない条件は置き場にない */
+type Entry = { data: Dashboard | null; error: string | null };
+
+function keyOf({ weeks, sport }: Query): string {
+  return `${weeks ?? "all"}|${sport}`;
+}
+
+function queryOf(key: string): Query {
+  const [weeks, sport] = key.split("|");
+  return {
+    weeks: weeks === "all" ? null : Number(weeks),
+    sport: sport as Sport,
+  };
+}
 
 /**
- * GET /dashboard を条件ごとに読む。期間は週の数だけ渡し、始まりの日は api が設定の
- * タイムゾーンで決める。「すべて」は何も渡さず、api が最初の記録の日から返す。
- * 条件を変えた直後は、前の条件の結果を返さない（data は null）。
- * enabled が false の間は読まない。ほかの欄と同じ条件で、その結果を使い回すとき。
+ * GET /dashboard を条件ごとに読み、ダッシュボードを開いている間は結果を条件ごとに持つ。
+ * 期間は週の数だけ渡し、始まりの日は api が設定のタイムゾーンで決める。「すべて」は
+ * 何も渡さず、api が最初の記録の日から返す。
+ *
+ * 上の期間と Intensity は同じ置き場を見る。同じ条件は 1 回だけ読み、片方の条件を
+ * 変えても、もう片方は持っている結果をそのまま使う。前に読んだ条件に戻したときも
+ * 読み直さない。ほかの画面から戻れば、ページごと作り直すので読み直す。
  */
-function useDashboard(
-  user: User,
-  weeks: number | null,
-  sport: Sport,
-  enabled = true,
-) {
-  const [result, setResult] = useState<Result | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  // Retry で進める。条件が同じでも effect を走らせ直すため
-  const [attempt, setAttempt] = useState(0);
-  const key = `${weeks ?? "all"}|${sport}`;
+function useDashboards(user: User, queries: Query[]) {
+  const [entries, setEntries] = useState<Record<string, Entry>>({});
+  // 読んでいる最中の条件。同じ条件を 2 か所から頼んでも、重ねて読まない
+  const loading = useRef(new Set<string>());
+  const mounted = useRef(true);
+  const wanted = [...new Set(queries.map(keyOf))].join(",");
 
   useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const dashboard = await getDashboard(
-          { weeks: weeks ?? undefined, sport },
-          await user.getIdToken(),
-        );
-        if (cancelled) return;
-        setError(null);
-        setResult({ key: `${weeks ?? "all"}|${sport}`, data: dashboard });
-      } catch (e) {
-        if (!cancelled) setError(errorMessage(e));
-      }
-    })();
+    mounted.current = true;
     return () => {
-      cancelled = true;
+      mounted.current = false;
     };
-  }, [user, weeks, sport, attempt, enabled]);
+  }, []);
 
-  return {
-    data: result && result.key === key ? result.data : null,
-    // メモの欄は、読み込み直す間も前の結果の期間で出し続ける
-    last: result?.data ?? null,
-    error,
-    retry: () => {
-      setError(null);
-      setAttempt((n) => n + 1);
-    },
+  useEffect(() => {
+    for (const key of wanted.split(",")) {
+      if (key in entries || loading.current.has(key)) continue;
+      loading.current.add(key);
+      const { weeks, sport } = queryOf(key);
+      void (async () => {
+        let entry: Entry;
+        try {
+          const data = await getDashboard(
+            { weeks: weeks ?? undefined, sport },
+            await user.getIdToken(),
+          );
+          entry = { data, error: null };
+        } catch (e) {
+          entry = { data: null, error: errorMessage(e) };
+        }
+        loading.current.delete(key);
+        if (mounted.current) setEntries((prev) => ({ ...prev, [key]: entry }));
+      })();
+    }
+  }, [user, wanted, entries]);
+
+  return (query: Query) => {
+    const key = keyOf(query);
+    const entry = entries[key];
+    return {
+      key,
+      data: entry?.data ?? null,
+      error: entry?.error ?? null,
+      // 置き場から外すと、effect がその条件だけを読み直す
+      retry: () =>
+        setEntries((prev) => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        }),
+    };
   };
 }
 
@@ -169,17 +194,21 @@ export default function DashboardPage({
   const [notes, setNotes] = useState<NoteOut[]>([]);
 
   // 数字のカードとチャートは全種目。体力と疲労は種目で絞らないため（api も同じ）
-  const main = useDashboard(user, weeksOf(range), "all");
-  // Intensity の条件が上と同じ間は、上の結果を使い、もう 1 回は読まない
-  const sameAsMain = intensityRange === range && intensitySport === "all";
-  const own = useDashboard(
-    user,
-    weeksOf(intensityRange),
-    intensitySport,
-    !sameAsMain,
-  );
-  const intensity = sameAsMain ? main : own;
+  const mainQuery: Query = { weeks: weeksOf(range), sport: "all" };
+  const intensityQuery: Query = {
+    weeks: weeksOf(intensityRange),
+    sport: intensitySport,
+  };
+  const dashboardOf = useDashboards(user, [mainQuery, intensityQuery]);
+  const main = dashboardOf(mainQuery);
+  const intensity = dashboardOf(intensityQuery);
   const data = main.data;
+
+  // 上の期間を切り替えて読み込む間も、メモの欄と Recent workouts の負荷は前の結果で出す
+  // 描画の中で前の結果を覚える（React の「前の描画の情報を持つ」書き方）
+  const [previous, setPrevious] = useState<Dashboard | null>(null);
+  if (data && data !== previous) setPrevious(data);
+  const last = data ?? previous;
 
   // option は応答が変わったときだけ作り直す。毎回作ると Chart が描き直してしまう
   const trend = useMemo(
@@ -279,18 +308,18 @@ export default function DashboardPage({
       <RecentWorkouts
         user={user}
         // 期間を切り替えて読み込み直す間も、前の結果の負荷で出し続ける
-        loads={main.last?.workouts ?? []}
+        loads={last?.workouts ?? []}
         onOpenWorkouts={onOpenWorkouts}
         onOpenWorkout={onOpenWorkout}
       />
 
       {/* 期間を切り替えて読み込み直す間も、前の結果で出し続ける。書きかけのメモを消さないため */}
-      {main.last && (
+      {last && (
         <div className="card">
           <Notes
             user={user}
-            since={main.last.since}
-            today={main.last.until}
+            since={last.since}
+            today={last.until}
             onNotesChange={setNotes}
           />
         </div>

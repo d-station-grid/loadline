@@ -101,8 +101,8 @@ test("期間を切り替えて読み込み直す間も、Recent workouts の負�
   const period = screen.getByRole("group", { name: "Period" });
   fireEvent.click(within(period).getByRole("button", { name: "All" }));
 
-  // 上の期間が All になり、Intensity（12 週）とは条件が分かれるので、2 つとも読み直す
-  await vi.waitFor(() => expect(getDashboard).toHaveBeenCalledTimes(3));
+  // 読み直すのは上の All だけ。Intensity（12 週）は持っている結果を使う
+  await vi.waitFor(() => expect(getDashboard).toHaveBeenCalledTimes(2));
   expect(screen.getByText("82")).toBeInTheDocument();
 });
 
@@ -130,4 +130,39 @@ test("数字のカードは小数 1 桁で、0 に近い負の値を -0.0 と出
   expect(within(stats).getByText("0.0")).toBeInTheDocument();
   expect(within(stats).queryByText("-0.0")).toBeNull();
   expect(within(stats).getByText(/26/)).toBeInTheDocument();
+});
+
+test("上の期間だけを変えても、Intensity は持っている結果を使い、Loading にならず読み直さない", async () => {
+  vi.mocked(getDashboard).mockResolvedValue(dashboard([point(1, 50)]));
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
+  render(<DashboardPage {...props} />);
+  await screen.findByText("Time in each zone");
+  expect(getDashboard).toHaveBeenCalledTimes(1);
+
+  // 上の 4 週の読み込みは終わらせない
+  vi.mocked(getDashboard).mockReturnValue(new Promise(() => {}));
+  const period = screen.getByRole("group", { name: "Period" });
+  fireEvent.click(within(period).getByRole("button", { name: "4 weeks" }));
+
+  await vi.waitFor(() => expect(getDashboard).toHaveBeenCalledTimes(2));
+  expect(vi.mocked(getDashboard).mock.calls[1][0]).toMatchObject({ weeks: 4 });
+  // Intensity（12 週）は前の結果のまま
+  expect(screen.getByText("Time in each zone")).toBeInTheDocument();
+  const card = screen.getByRole("region", { name: "Intensity" });
+  expect(within(card).queryByText("Loading…")).toBeNull();
+});
+
+test("前に読んだ期間に戻したときは、読み直さない", async () => {
+  vi.mocked(getDashboard).mockResolvedValue(dashboard([point(1, 50)]));
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
+  render(<DashboardPage {...props} />);
+  await screen.findByText("Time in each zone");
+
+  const period = screen.getByRole("group", { name: "Period" });
+  fireEvent.click(within(period).getByRole("button", { name: "4 weeks" }));
+  await vi.waitFor(() => expect(getDashboard).toHaveBeenCalledTimes(2));
+  fireEvent.click(within(period).getByRole("button", { name: "12 weeks" }));
+
+  await screen.findByText("Fitness, fatigue and VO2max");
+  expect(getDashboard).toHaveBeenCalledTimes(2);
 });
