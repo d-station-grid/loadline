@@ -9,7 +9,14 @@ import DashboardPage from "./DashboardPage";
 vi.mock("../lib/api", () => ({ getDashboard: vi.fn(), getWorkouts: vi.fn() }));
 // 振り返り、メモ、チャートは、それぞれのテストで見る。ここでは読み方と表だけを見る
 vi.mock("../components/Review", () => ({ default: () => null }));
-vi.mock("../components/Notes", () => ({ default: () => null }));
+vi.mock("../components/Notes", () => ({
+  default: ({ pick }: { pick?: { date: string } }) => (
+    <>
+      <p>notes for {pick?.date ?? "none"}</p>
+      <button type="button">Add</button>
+    </>
+  ),
+}));
 vi.mock("../components/Chart", () => ({ default: () => null }));
 
 const user = { getIdToken: async () => "token" } as unknown as User;
@@ -165,4 +172,55 @@ test("前に読んだ期間に戻したときは、読み直さない", async ()
 
   await screen.findByText("Fitness, fatigue and VO2max");
   expect(getDashboard).toHaveBeenCalledTimes(2);
+});
+
+test("「+ Note」でメモのモーダルを今日の日で開き、Esc と Close で閉じる", async () => {
+  vi.mocked(getDashboard).mockResolvedValue(dashboard([]));
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
+  render(<DashboardPage {...props} />);
+
+  // 閉じている間も中身は外さず、隠すだけ
+  await screen.findByText("Fitness, fatigue and VO2max");
+  expect(screen.queryByRole("dialog")).toBeNull();
+
+  fireEvent.click(screen.getByRole("button", { name: "+ Note" }));
+  const dialog = screen.getByRole("dialog");
+  expect(within(dialog).getByText("notes for 2026-11-01")).toBeInTheDocument();
+
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+
+  fireEvent.click(screen.getByRole("button", { name: "+ Note" }));
+  fireEvent.click(
+    within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }),
+  );
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("メモのモーダルは Tab を中で回し、外にフォーカスがあっても Esc で閉じ、開いたボタンに戻す", async () => {
+  vi.mocked(getDashboard).mockResolvedValue(dashboard([]));
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
+  render(<DashboardPage {...props} />);
+  await screen.findByText("Fitness, fatigue and VO2max");
+
+  const opener = screen.getByRole("button", { name: "+ Note" });
+  opener.focus();
+  fireEvent.click(opener);
+  const dialog = screen.getByRole("dialog");
+  expect(dialog).toHaveFocus();
+
+  // 最後の Close から Tab で先頭に、先頭から Shift+Tab で Close に回る
+  const add = within(dialog).getByRole("button", { name: "Add" });
+  const close = within(dialog).getByRole("button", { name: "Close" });
+  close.focus();
+  fireEvent.keyDown(close, { key: "Tab" });
+  expect(add).toHaveFocus();
+  fireEvent.keyDown(add, { key: "Tab", shiftKey: true });
+  expect(close).toHaveFocus();
+
+  // フォーカスがモーダルの外に出ていても、Esc で閉じる
+  (document.activeElement as HTMLElement).blur();
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(opener).toHaveFocus();
 });

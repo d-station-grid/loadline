@@ -129,64 +129,94 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
   }
 
   return (
-    <section>
-      <h2>Workouts</h2>
-      <div role="group" aria-label="Period">
-        {RANGES.map((r) => (
-          <button
-            key={r.key}
-            type="button"
-            aria-pressed={range === r.key}
-            onClick={() => setRange(r.key)}
-          >
-            {r.label}
-          </button>
-        ))}
-      </div>
-
-      {error && (
-        <p role="alert">
-          {error}{" "}
-          <button type="button" onClick={retry}>
-            Retry
-          </button>
-        </p>
-      )}
-      {items === null && !error && <p>Loading…</p>}
-      {items && items.length === 0 && <p>No workouts in this period.</p>}
-      {items && items.length > 0 && (
-        <table>
-          <thead>
-            <tr>
-              <th>Sport</th>
-              <th>Start</th>
-              <th>Duration</th>
-              <th>Avg HR</th>
-              <th>Max HR</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((w) => (
-              <tr key={w.id}>
-                <td>
-                  <button type="button" onClick={() => onSelect(w.id)}>
-                    {SPORT_LABEL[w.sport] ?? w.sport}
-                  </button>
-                </td>
-                <td>{formatDateTime(w.started_at)}</td>
-                <td>{formatDuration(w.duration_sec)}</td>
-                <td>{w.avg_heart_rate ?? "–"}</td>
-                <td>{w.max_heart_rate ?? "–"}</td>
-              </tr>
+    <section className="page" aria-labelledby="workouts-heading">
+      <h2 id="workouts-heading">Workouts</h2>
+      <section className="card">
+        <div className="card-head">
+          <div role="group" aria-label="Period" className="segmented compact">
+            {RANGES.map((r) => (
+              <button
+                key={r.key}
+                type="button"
+                aria-pressed={range === r.key}
+                onClick={() => setRange(r.key)}
+              >
+                {r.label}
+              </button>
             ))}
-          </tbody>
-        </table>
-      )}
-      {hasMore && (
-        <button type="button" onClick={loadMore} disabled={loadingMore}>
-          {loadingMore ? "Loading…" : "Load more"}
-        </button>
-      )}
+          </div>
+          {items && items.length > 0 && (
+            <p className="muted small">
+              {items.length}
+              {hasMore ? "+" : ""}{" "}
+              {items.length === 1 && !hasMore ? "workout" : "workouts"}
+            </p>
+          )}
+        </div>
+
+        {error && (
+          <p role="alert">
+            {error}{" "}
+            <button type="button" onClick={retry}>
+              Retry
+            </button>
+          </p>
+        )}
+        {items === null && !error && <p className="muted">Loading…</p>}
+        {items && items.length === 0 && (
+          <p className="muted">No workouts in this period.</p>
+        )}
+        {items && items.length > 0 && (
+          <div className="table-scroll">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Sport</th>
+                  <th className="num">Time</th>
+                  <th className="num">Avg HR</th>
+                  <th className="num">Max HR</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((w) => (
+                  // 行のどこを押しても詳細へ。キーボードでは種目のボタンで開く
+                  <tr
+                    key={w.id}
+                    className="clickable"
+                    onClick={() => onSelect(w.id)}
+                  >
+                    <td>{formatDateTime(w.started_at)}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="row-link strong"
+                        onClick={(e) => {
+                          // 行の onClick と 2 回呼ばない
+                          e.stopPropagation();
+                          onSelect(w.id);
+                        }}
+                      >
+                        {SPORT_LABEL[w.sport] ?? w.sport}
+                      </button>
+                    </td>
+                    <td className="num">{formatDuration(w.duration_sec)}</td>
+                    <td className="num">{w.avg_heart_rate ?? "–"}</td>
+                    <td className="num">{w.max_heart_rate ?? "–"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {hasMore && (
+          <div className="card-foot">
+            <button type="button" onClick={loadMore} disabled={loadingMore}>
+              {loadingMore ? "Loading…" : "Load more"}
+            </button>
+          </div>
+        )}
+      </section>
     </section>
   );
 }

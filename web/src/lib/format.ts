@@ -24,3 +24,21 @@ export function formatDateTime(iso: string): string {
 }
 
 export const SPORT_LABEL: Record<string, string> = { ride: "Ride", run: "Run" };
+
+/** その時刻が、そのタイムゾーンで何日か（YYYY-MM-DD）。 */
+export function dayInZone(iso: string, timeZone: string): string {
+  // en-CA は YYYY-MM-DD の形で出す
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+}
+
+/** "2026-10-31" → "2026-11-01"。日付だけを UTC で数えるので、夏時間でずれない。 */
+export function nextDay(day: string): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}

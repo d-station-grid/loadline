@@ -82,6 +82,49 @@ function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Something went wrong";
 }
 
+/** 心拍の幅の上に、強度の 3 つの帯を並べた見本。4 つの値がそろって順に並んでいるときだけ出す。
+ * 帯の幅は心拍の幅に比べた長さ。数字は入力欄の値をそのまま使う */
+function ZonePreview({ form }: { form: SettingsIn }) {
+  const {
+    resting_heart_rate: resting,
+    zone_boundary_1: low,
+    zone_boundary_2: high,
+    max_heart_rate: max,
+  } = form;
+  if (resting == null || low == null || high == null || max == null) {
+    return null;
+  }
+  if (!(resting < low && low < high && high < max)) return null;
+  const span = max - resting;
+  const parts = [
+    { name: "Low", from: resting, to: low, className: "low" },
+    { name: "Mid", from: low, to: high, className: "mid" },
+    { name: "High", from: high, to: max, className: "high" },
+  ];
+  return (
+    <div className="zone-preview" aria-hidden="true">
+      <div className="zone-preview-bar">
+        {parts.map((p) => (
+          <span
+            key={p.name}
+            className={p.className}
+            style={{ width: `${((p.to - p.from) / span) * 100}%` }}
+          >
+            {p.name}
+          </span>
+        ))}
+      </div>
+      <div className="zone-preview-ticks">
+        {[resting, low, high, max].map((v, i) => (
+          <span key={i} style={{ left: `${((v - resting) / span) * 100}%` }}>
+            {v}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const NOT_DELETED =
   "Could not delete your account. Nothing was deleted. Please try again.";
 const UNCONFIRMED =
@@ -255,97 +298,137 @@ export default function SettingsPage({ user, onDeleted }: Props) {
   const ingestUrl = `${import.meta.env.VITE_API_URL || window.location.origin}/ingest`;
 
   return (
-    <section>
-      <h2>Settings</h2>
-      {guest && <p>Guests can view the demo settings but can't change them.</p>}
+    <section className="page narrow" aria-labelledby="settings-heading">
+      <h2 id="settings-heading">Settings</h2>
+      {guest && (
+        <p className="muted">
+          Guests can view the demo settings but can't change them.
+        </p>
+      )}
       {/* 設定を読めなくても、削除の節は出す */}
       {form ? (
         <>
           {/* 確かめるのは settingsProblem に任せる。ブラウザの吹き出しで止めると、文言が
               ブラウザごとに違い、テストでも確かめられないため。min と max は矢印の範囲の目安 */}
-          <form onSubmit={handleSave} noValidate>
-            <fieldset disabled={guest} className="plain">
-              <fieldset>
-                <legend>Heart rate</legend>
-                {HEART_RATE_FIELDS.map(({ field, label, min, max }) => (
-                  <label key={field}>
-                    {label}
-                    <input
-                      type="number"
-                      min={min}
-                      max={max}
-                      step={1}
-                      value={form[field] ?? ""}
-                      onChange={(e) => update(field, toInt(e.target.value))}
-                    />
-                  </label>
-                ))}
+          <form onSubmit={handleSave} noValidate className="stack">
+            <fieldset disabled={guest} className="plain stack">
+              <fieldset className="card">
+                <legend className="card-title">Heart rate</legend>
+                <p className="muted small">
+                  Your zones and daily load are calculated from these. Changing
+                  them recalculates your history.
+                </p>
+                <div className="field-grid">
+                  {HEART_RATE_FIELDS.map(({ field, label, min, max }) => (
+                    <div className="field" key={field}>
+                      <label htmlFor={`settings-${field}`}>{label}</label>
+                      <div className="with-unit">
+                        <input
+                          id={`settings-${field}`}
+                          type="number"
+                          min={min}
+                          max={max}
+                          step={1}
+                          value={form[field] ?? ""}
+                          onChange={(e) => update(field, toInt(e.target.value))}
+                        />
+                        <span className="muted small">bpm</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <ZonePreview form={form} />
               </fieldset>
 
-              <fieldset>
-                <legend>Weekly review</legend>
-                <label>
-                  Time zone
-                  <select
-                    value={form.timezone}
-                    onChange={(e) => update("timezone", e.target.value)}
-                  >
-                    {timezones().map((tz) => (
-                      <option key={tz} value={tz}>
-                        {tz}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Review day
-                  <select
-                    value={form.review_weekday}
-                    onChange={(e) =>
-                      update("review_weekday", Number(e.target.value))
-                    }
-                  >
-                    {WEEKDAYS.map((name, i) => (
-                      <option key={name} value={i}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
+              <fieldset className="card">
+                <legend className="card-title">Weekly review</legend>
+                <div className="field-grid">
+                  <div className="field">
+                    <label htmlFor="settings-timezone">Time zone</label>
+                    <select
+                      id="settings-timezone"
+                      value={form.timezone}
+                      onChange={(e) => update("timezone", e.target.value)}
+                    >
+                      {timezones().map((tz) => (
+                        <option key={tz} value={tz}>
+                          {tz}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label htmlFor="settings-review-day">Review day</label>
+                    <select
+                      id="settings-review-day"
+                      value={form.review_weekday}
+                      onChange={(e) =>
+                        update("review_weekday", Number(e.target.value))
+                      }
+                    >
+                      {WEEKDAYS.map((name, i) => (
+                        <option key={name} value={i}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <label className="switch-row">
+                  <span>
+                    Let the AI read my notes
+                    <span className="muted small">
+                      Turn this off and your weekly review uses your numbers
+                      only, not what you wrote in notes.
+                    </span>
+                  </span>
                   <input
                     type="checkbox"
+                    role="switch"
+                    className="switch"
                     checked={form.send_notes_to_ai}
                     onChange={(e) =>
                       update("send_notes_to_ai", e.target.checked)
                     }
                   />
-                  Let the AI read my notes
                 </label>
               </fieldset>
 
-              <button type="submit">Save</button>
+              <div>
+                <button type="submit" className="primary">
+                  Save
+                </button>
+              </div>
             </fieldset>
             {status && <p role="status">{status}</p>}
           </form>
 
-          <section>
-            <h3>Health Auto Export</h3>
-            <p>
-              Send workouts and metrics to <code>{ingestUrl}</code> with the
-              header <code>Authorization: Bearer &lt;token&gt;</code>.
-            </p>
-            {freshToken ? (
-              <p>
-                Your new token (shown only once): <code>{freshToken}</code>
-              </p>
-            ) : (
-              <p>
-                {lastFour
-                  ? `Current token ends with …${lastFour}`
-                  : "No token yet."}
-              </p>
-            )}
+          <section className="card" aria-labelledby="connection-heading">
+            <h3 id="connection-heading">iPhone connection</h3>
+            <dl className="rows">
+              <dt>App</dt>
+              <dd>Health Auto Export</dd>
+              <dt>URL</dt>
+              <dd>
+                <code>{ingestUrl}</code>
+              </dd>
+              <dt>Header</dt>
+              <dd>
+                <code>Authorization: Bearer &lt;token&gt;</code>
+              </dd>
+              <dt>Token</dt>
+              <dd>
+                {freshToken ? (
+                  <>
+                    Your new token (shown only once): <code>{freshToken}</code>
+                  </>
+                ) : lastFour ? (
+                  `Current token ends with …${lastFour}`
+                ) : (
+                  "No token yet."
+                )}
+              </dd>
+            </dl>
             <button
               type="button"
               onClick={handleIssueToken}
@@ -356,13 +439,25 @@ export default function SettingsPage({ user, onDeleted }: Props) {
           </section>
         </>
       ) : (
-        !error && <p>Loading…</p>
+        !error && <p className="muted">Loading…</p>
       )}
 
       {error && <p role="alert">{error}</p>}
 
-      <section>
-        <h3>Delete account</h3>
+      <section className="card" aria-labelledby="account-heading">
+        <h3 id="account-heading">Account</h3>
+        <dl className="rows">
+          <dt>Signed in with</dt>
+          <dd>
+            {guest
+              ? "Guest (demo data)"
+              : `Google${user.email ? ` · ${user.email}` : ""}`}
+          </dd>
+        </dl>
+      </section>
+
+      <section className="card danger" aria-labelledby="delete-heading">
+        <h3 id="delete-heading">Delete account</h3>
         {confirmingDelete ? (
           <>
             <p>
@@ -372,6 +467,7 @@ export default function SettingsPage({ user, onDeleted }: Props) {
             <button
               ref={confirmRef}
               type="button"
+              className="danger"
               onClick={handleDelete}
               disabled={deleting}
             >
@@ -388,14 +484,21 @@ export default function SettingsPage({ user, onDeleted }: Props) {
             {deleteError && <p role="alert">{deleteError}</p>}
           </>
         ) : (
-          <button
-            ref={openRef}
-            type="button"
-            onClick={openDelete}
-            disabled={guest}
-          >
-            Delete account…
-          </button>
+          <>
+            <p className="muted small">
+              Deletes your account and all your data: workouts, notes, weekly
+              reviews and your token.
+            </p>
+            <button
+              ref={openRef}
+              type="button"
+              className="danger"
+              onClick={openDelete}
+              disabled={guest}
+            >
+              Delete account…
+            </button>
+          </>
         )}
       </section>
     </section>

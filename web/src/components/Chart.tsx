@@ -10,6 +10,8 @@ import { CanvasRenderer } from "echarts/renderers";
 import type { EChartsOption } from "echarts";
 import { useEffect, useRef } from "react";
 
+import { dayAt } from "../lib/charts";
+
 // 使う種類だけを登録して、配る JS を小さくする。
 echarts.use([
   BarChart,
@@ -25,12 +27,20 @@ echarts.use([
 type Props = {
   option: EChartsOption;
   height?: number;
+  /** 描いてある範囲の中を押したとき、その位置の日（YYYY-MM-DD）を知らせる。
+   * 横の軸が日付のチャートだけで使う */
+  onDayClick?: (day: string) => void;
 };
 
 /** option を受け取って描くだけの部品。option の組み立ては lib/charts.ts でやる。 */
-export default function Chart({ option, height = 280 }: Props) {
+export default function Chart({ option, height = 280, onDayClick }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const chart = useRef<echarts.ECharts | null>(null);
+  // 押したときに呼ぶ関数は、描き直さずに差し替える
+  const dayClick = useRef(onDayClick);
+  useEffect(() => {
+    dayClick.current = onDayClick;
+  }, [onDayClick]);
 
   // 作るのと片づけるのは、画面に出たときと消えたときの 1 回ずつ。
   useEffect(() => {
@@ -39,6 +49,11 @@ export default function Chart({ option, height = 280 }: Props) {
     chart.current = instance;
     const resize = () => instance.resize();
     window.addEventListener("resize", resize);
+    // 線の点だけでなく、描いてある範囲のどこを押しても、その位置の日を拾う
+    instance.getZr().on("click", (e) => {
+      const day = dayAt(instance, [e.offsetX, e.offsetY]);
+      if (day && dayClick.current) dayClick.current(day);
+    });
     return () => {
       window.removeEventListener("resize", resize);
       instance.dispose();
@@ -51,5 +66,14 @@ export default function Chart({ option, height = 280 }: Props) {
     chart.current?.setOption(option, { notMerge: true });
   }, [option]);
 
-  return <div ref={ref} style={{ width: "100%", height }} />;
+  return (
+    <div
+      ref={ref}
+      style={{
+        width: "100%",
+        height,
+        cursor: onDayClick ? "pointer" : undefined,
+      }}
+    />
+  );
 }

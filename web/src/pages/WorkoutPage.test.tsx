@@ -3,10 +3,14 @@ import type { User } from "firebase/auth";
 import { beforeEach, expect, test, vi } from "vitest";
 
 import type { WorkoutDetail } from "../api";
-import { getWorkout } from "../lib/api";
+import { getNotes, getSettings, getWorkout } from "../lib/api";
 import WorkoutPage from "./WorkoutPage";
 
-vi.mock("../lib/api", () => ({ getWorkout: vi.fn() }));
+vi.mock("../lib/api", () => ({
+  getWorkout: vi.fn(),
+  getSettings: vi.fn(),
+  getNotes: vi.fn(),
+}));
 
 const user = { getIdToken: async () => "token" } as unknown as User;
 
@@ -43,6 +47,17 @@ const detail: WorkoutDetail = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getSettings).mockResolvedValue({
+    max_heart_rate: 185,
+    resting_heart_rate: 52,
+    zone_boundary_1: 148,
+    zone_boundary_2: 166,
+    timezone: "Asia/Tokyo",
+    review_weekday: 0,
+    send_notes_to_ai: true,
+    ingest_token_last_four: null,
+  });
+  vi.mocked(getNotes).mockResolvedValue({ items: [] });
 });
 
 test("数値と心拍の推移と強度の内訳が出る", async () => {
@@ -56,7 +71,8 @@ test("数値と心拍の推移と強度の内訳が出る", async () => {
   expect(
     screen.getByRole("img", { name: "Heart rate over time" }),
   ).toBeInTheDocument();
-  expect(screen.getByText("Low: 1m (33%)")).toBeInTheDocument();
+  const zones = screen.getByRole("list", { name: "Time in each zone" });
+  expect(zones).toHaveTextContent("Low1m33%");
   expect(getWorkout).toHaveBeenCalledWith(7, "token");
 });
 
@@ -94,7 +110,7 @@ test("戻るボタンで onBack を呼ぶ", async () => {
   const onBack = vi.fn();
   render(<WorkoutPage user={user} workoutId={7} onBack={onBack} />);
 
-  fireEvent.click(await screen.findByRole("button", { name: "← Workouts" }));
+  fireEvent.click(await screen.findByRole("button", { name: "‹ Workouts" }));
 
   expect(onBack).toHaveBeenCalled();
 });
@@ -107,6 +123,69 @@ test("api が失敗したらエラーと戻るボタンを出す", async () => {
     "API returned 404",
   );
   expect(
-    screen.getByRole("button", { name: "← Workouts" }),
+    screen.getByRole("button", { name: "‹ Workouts" }),
   ).toBeInTheDocument();
+});
+
+test("強度の境目を点線で引き、その日のメモを利用者のタイムゾーンの日付で読む", async () => {
+  vi.mocked(getWorkout).mockResolvedValue(detail);
+  vi.mocked(getNotes).mockResolvedValue({
+    items: [
+      {
+        id: 1,
+        date: "2026-09-13",
+        label: "Hill ride",
+        body: "Rode the hill route.",
+      },
+    ],
+  } as Awaited<ReturnType<typeof getNotes>>);
+  render(<WorkoutPage user={user} workoutId={7} onBack={vi.fn()} />);
+
+  expect(await screen.findByText("Rode the hill route.")).toBeInTheDocument();
+  expect(screen.getByText("Low | Mid 148")).toBeInTheDocument();
+  expect(screen.getByText("Mid | High 166")).toBeInTheDocument();
+  // 9/13 05:10 UTC は東京でも 9/13
+  expect(getNotes).toHaveBeenCalledWith(
+    { since: "2026-09-13", until: "2026-09-14" },
+    "token",
+  );
+});
+
+test("設定が読めなくても、詳細は出す", async () => {
+  vi.mocked(getWorkout).mockResolvedValue(detail);
+  vi.mocked(getSettings).mockRejectedValue(new Error("API returned 500"));
+  render(<WorkoutPage user={user} workoutId={7} onBack={vi.fn()} />);
+
+  expect(
+    await screen.findByRole("heading", { name: "Ride" }),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.queryByText(/Low \| Mid/)).toBeNull();
+});
+
+test("心拍の横の目盛りは、サンプルの数ではなく経過時間で打つ（一時停止があってもずれない）", async () => {
+  const sample = (at: string, bpm: number) => ({
+    recorded_at: at,
+    min_bpm: bpm,
+    avg_bpm: bpm,
+    max_bpm: bpm,
+  });
+  // サンプルは 3 つだけだが、途中で 28 分止まっていて、全体は 30 分
+  vi.mocked(getWorkout).mockResolvedValue({
+    ...detail,
+    heart_rates: [
+      sample("2026-09-13T05:10:00+00:00", 110),
+      sample("2026-09-13T05:11:00+00:00", 120),
+      sample("2026-09-13T05:40:00+00:00", 130),
+    ],
+  });
+  render(<WorkoutPage user={user} workoutId={7} onBack={vi.fn()} />);
+
+  const chart = await screen.findByRole("img", {
+    name: "Heart rate over time",
+  });
+  const ticks = Array.from(chart.querySelectorAll("text.tick"))
+    .map((t) => t.textContent)
+    .filter((t) => t?.endsWith("'"));
+  expect(ticks).toEqual(["0'", "10'", "20'", "30'"]);
 });
