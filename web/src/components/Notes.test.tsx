@@ -687,3 +687,40 @@ test("ゲストはメモを読めるが、書く欄とボタンは押せない",
   expect(editNote).not.toHaveBeenCalled();
   expect(deleteNote).not.toHaveBeenCalled();
 });
+
+test("外から日を選ぶと、その日を選び直す。同じ選び方を渡し直しても変えない", async () => {
+  vi.mocked(getNotes).mockResolvedValue({ items: [] });
+  const { rerender } = render(
+    <Notes
+      user={user}
+      since="2026-09-01"
+      today="2026-10-18"
+      pick={{ date: "2026-10-01", at: 1 }}
+    />,
+  );
+  const dateInput = await screen.findByLabelText("Date");
+  expect(dateInput).toHaveValue("2026-10-01");
+
+  // 利用者が日付欄で選び直したあと、同じ pick を渡し直しても戻さない
+  fireEvent.change(dateInput, { target: { value: "2026-10-05" } });
+  rerender(
+    <Notes
+      user={user}
+      since="2026-09-01"
+      today="2026-10-18"
+      pick={{ date: "2026-10-01", at: 1 }}
+    />,
+  );
+  expect(dateInput).toHaveValue("2026-10-05");
+
+  // 新しく選ばれたら、その日にする
+  rerender(
+    <Notes
+      user={user}
+      since="2026-09-01"
+      today="2026-10-18"
+      pick={{ date: "2026-10-10", at: 2 }}
+    />,
+  );
+  expect(dateInput).toHaveValue("2026-10-10");
+});

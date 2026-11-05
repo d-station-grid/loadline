@@ -7,6 +7,7 @@ import {
   trendOption,
   vo2maxOption,
   workoutsOption,
+  dayFromTime,
   zoneRows,
 } from "./charts";
 
@@ -300,4 +301,13 @@ test("時間の軸は、重なった日付の文字を間引く", () => {
       axisLabel: { hideOverlap: true },
     });
   }
+});
+
+test("時間の軸の位置は、いちばん近い日にする", () => {
+  const midnight = new Date(2026, 9, 26).getTime();
+  expect(dayFromTime(midnight)).toBe("2026-10-26");
+  // 日の真ん中より手前は同じ日、過ぎたら次の日
+  expect(dayFromTime(midnight + 11 * 3600 * 1000)).toBe("2026-10-26");
+  expect(dayFromTime(midnight - 11 * 3600 * 1000)).toBe("2026-10-26");
+  expect(dayFromTime(midnight + 13 * 3600 * 1000)).toBe("2026-10-27");
 });

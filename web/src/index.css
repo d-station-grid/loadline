@@ -586,3 +586,528 @@ fieldset.plain {
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
 }
+
+/* ---- ページの共通 ---- */
+
+/* 見出しとカードを縦に積むページ */
+.page,
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.page > button.link {
+  align-self: flex-start;
+}
+
+/* 設定のように、幅を絞って読みやすくするページ */
+.page.narrow {
+  max-width: 600px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.card h3 {
+  margin-bottom: var(--space-1);
+}
+
+.card-foot {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-3);
+}
+
+/* 差し色で塗ったボタン。いちばん押してほしいもの */
+button.primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+/* 取り返しのつかない操作 */
+button.danger {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.card.danger h3 {
+  color: var(--color-danger);
+}
+
+/* 表の種目のように、太字で見せる行のボタン */
+button.row-link.strong {
+  font-weight: 700;
+}
+
+/* 狭い画面では表を横に動かせるようにする */
+.table-scroll {
+  overflow-x: auto;
+}
+
+.split.divided {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+/* ---- 入力欄 ---- */
+
+select {
+  font: inherit;
+  color: var(--color-text-strong);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: 6px var(--space-2);
+  width: 100%;
+}
+
+/* fieldset を枠つきのカードにしたときの見出し */
+fieldset.card {
+  margin: 0;
+  min-width: 0;
+}
+
+legend.card-title {
+  float: left;
+  width: 100%;
+  padding: 0;
+  margin-bottom: var(--space-1);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--color-text-strong);
+}
+
+legend.card-title + * {
+  clear: both;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+  margin-top: var(--space-2);
+}
+
+.field label {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  color: var(--color-text-strong);
+}
+
+.with-unit {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.with-unit input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px var(--space-2);
+}
+
+/* 強度の帯の見本。入力した心拍の幅に比べた長さで並べる */
+.zone-preview {
+  margin-top: var(--space-4);
+}
+
+.zone-preview-bar {
+  display: flex;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  font-size: var(--font-size-2xs);
+  color: #fff;
+}
+
+.zone-preview-bar span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.zone-preview-bar .low {
+  background: var(--color-zone-low);
+  color: var(--color-text-strong);
+}
+
+.zone-preview-bar .mid {
+  background: var(--color-form);
+}
+
+.zone-preview-bar .high {
+  background: var(--color-accent);
+}
+
+.zone-preview-ticks {
+  position: relative;
+  height: 18px;
+  font-size: var(--font-size-2xs);
+  color: var(--color-text-muted);
+}
+
+.zone-preview-ticks span {
+  position: absolute;
+  top: 2px;
+  transform: translateX(-50%);
+}
+
+.zone-preview-ticks span:first-child {
+  transform: none;
+}
+
+.zone-preview-ticks span:last-child {
+  transform: translateX(-100%);
+}
+
+/* チェックボックスをスイッチの形にする */
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-strong);
+}
+
+.switch-row > span {
+  display: flex;
+  flex-direction: column;
+}
+
+input.switch {
+  appearance: none;
+  flex: none;
+  position: relative;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-border-strong);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+input.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+
+input.switch:checked {
+  background: var(--color-accent);
+}
+
+input.switch:checked::after {
+  transform: translateX(16px);
+}
+
+/* 名前と値の 2 列。設定の接続やアカウント */
+dl.rows {
+  display: grid;
+  grid-template-columns: 8em minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-2) 0 var(--space-3);
+}
+
+dl.rows dt {
+  color: var(--color-text-muted);
+}
+
+dl.rows dd {
+  margin: 0;
+  color: var(--color-text-strong);
+  min-width: 0;
+}
+
+/* ---- メモのモーダル ---- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: rgba(14, 21, 25, 0.35);
+}
+
+.modal-backdrop[hidden] {
+  display: none;
+}
+
+.modal {
+  width: min(520px, 100%);
+  max-height: calc(100svh - var(--space-8));
+  overflow-y: auto;
+  background: var(--color-surface);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
+  padding: var(--space-5);
+  outline: none;
+}
+
+.modal fieldset:not(.plain) {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.modal fieldset.plain {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.modal label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  color: var(--color-text-strong);
+}
+
+.modal textarea,
+.modal input[type="text"] {
+  width: 100%;
+}
+
+.modal ul {
+  margin: var(--space-3) 0 0;
+  padding-left: var(--space-4);
+  font-size: var(--font-size-sm);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-4);
+}
+
+/* ---- ワークアウトの詳細 ---- */
+
+.hr-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: var(--space-2) 0;
+}
+
+.hr-chart .grid {
+  stroke: var(--color-border);
+}
+
+.hr-chart .boundary {
+  stroke: var(--color-text);
+  stroke-dasharray: 4 3;
+}
+
+.hr-chart .tick {
+  font-size: 11px;
+  fill: var(--color-text-muted);
+}
+
+.hr-chart .line {
+  fill: none;
+  stroke: var(--color-text);
+  stroke-width: 1.5;
+}
+
+/* 数字の札を 2 列に */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  align-content: start;
+}
+
+.tile {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+
+.tile dt {
+  font-size: var(--font-size-2xs);
+  color: var(--color-text-muted);
+}
+
+.tile dd {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  color: var(--color-text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.tile .unit {
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.note-body {
+  white-space: pre-wrap;
+  color: var(--color-text-strong);
+}
+
+/* ---- トップ ---- */
+
+.landing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.landing h2 {
+  margin-bottom: var(--space-1);
+}
+
+.hero {
+  max-width: 560px;
+  padding-top: var(--space-6);
+}
+
+.hero h2 {
+  font-size: 36px;
+  line-height: 1.15;
+  margin: var(--space-2) 0 var(--space-3);
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.lead {
+  font-size: var(--font-size-md);
+  color: var(--color-text);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 var(--space-2);
+}
+
+.actions button {
+  font-size: var(--font-size-md);
+  padding: var(--space-2) var(--space-4);
+}
+
+.feature-grid {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--gap);
+}
+
+.feature-grid h3 {
+  margin: var(--space-2) 0 var(--space-1);
+}
+
+.step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 16px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: #fff;
+  font-size: var(--font-size-2xs);
+  font-weight: 700;
+}
+
+/* 約束の 3 つは、左に差し色の線を引いて並べる */
+.promises li {
+  background: var(--color-surface);
+  border-left: 3px solid var(--color-accent);
+  padding: var(--space-3) var(--space-4);
+}
+
+.disclaimer {
+  margin: 0;
+}
+
+/* ---- 狭い画面（スマートフォン） ---- */
+
+@media (max-width: 640px) {
+  .app-header-inner {
+    flex-wrap: wrap;
+    padding: var(--space-2) var(--space-4);
+    gap: var(--space-2);
+  }
+
+  .app-nav {
+    gap: var(--space-3);
+  }
+
+  .app-main {
+    padding: var(--space-4) var(--space-4) var(--space-6);
+  }
+
+  .guest-banner {
+    padding: var(--space-2) var(--space-4) 0;
+  }
+
+  /* 数字のカードは 2 枚ずつ */
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* 左右に並べていたものは縦に積む */
+  .split,
+  .field-grid,
+  .feature-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hero h2 {
+    font-size: 28px;
+  }
+
+  dl.rows {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  dl.rows dd {
+    margin-bottom: var(--space-2);
+  }
+}

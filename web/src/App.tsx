@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { ApiError, login } from "./lib/api";
 import { auth, googleProvider } from "./lib/firebase";
+import Landing from "./components/Landing";
 import DashboardPage from "./pages/DashboardPage";
 import SettingsPage from "./pages/SettingsPage";
 import WorkoutPage from "./pages/WorkoutPage";
@@ -146,19 +147,7 @@ function App() {
 
   if (!user) {
     return (
-      <main className="app-main">
-        <h1 className="logo">
-          load<span>line</span>
-        </h1>
-        <button type="button" onClick={handleSignIn}>
-          Sign in with Google
-        </button>{" "}
-        <button type="button" onClick={handleGuest}>
-          Try as a guest
-        </button>
-        <p>Guests can look around demo data without signing up.</p>
-        {error && <p role="alert">{error}</p>}
-      </main>
+      <Landing onSignIn={handleSignIn} onGuest={handleGuest} error={error} />
     );
   }
 

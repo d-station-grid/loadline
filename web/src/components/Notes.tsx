@@ -36,6 +36,8 @@ type Props = {
   today: string;
   /** 読み込んだ一覧を渡す。チャートにラベルの印を出すため。保存や削除のあとも呼ぶ */
   onNotesChange?: (notes: NoteOut[]) => void;
+  /** 外から日を選ぶ（チャートの日付や「+ Note」）。at が変わるたびに、その日を選び直す */
+  pick?: { date: string; at: number };
 };
 
 /** ラベルの幅が上限に収まるか。半角 1、全角 2 で数える */
@@ -88,12 +90,24 @@ function withoutDraft(drafts: EditDrafts, id: number): EditDrafts {
  * 書いてある日を選ぶと、同じ欄でそのメモを直したり消したりできる。
  * ゲストは読むだけ。日付は選べるが、書く欄とボタンは押せない。
  */
-export default function Notes({ user, since, today, onNotesChange }: Props) {
+export default function Notes({
+  user,
+  since,
+  today,
+  onNotesChange,
+  pick,
+}: Props) {
   // どの since で読んだ一覧かを組で持つ。今の since と違う間は読み込み中として扱う
   const [list, setList] = useState<NoteList | null>(null);
   // 保存のあとに一覧を読み直すために進める
   const [reload, setReload] = useState(0);
-  const [date, setDate] = useState(today);
+  const [date, setDate] = useState(pick?.date ?? today);
+  // 外から選ばれた日。描画の中で前の値と比べ、変わったときだけ選び直す
+  const [pickedAt, setPickedAt] = useState(pick?.at);
+  if (pick && pick.at !== pickedAt) {
+    setPickedAt(pick.at);
+    setDate(pick.date);
+  }
   // 新しく書く本文。書いてある日を選んで直している間も残しておく
   const [body, setBody] = useState("");
   const [label, setLabel] = useState("");

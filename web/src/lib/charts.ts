@@ -255,6 +255,19 @@ export function trendOption(
   };
 }
 
+/**
+ * 時間の軸の位置（ミリ秒）を、いちばん近い日（YYYY-MM-DD）にする。ECharts は日付だけの
+ * 値を端末の時刻の 0 時として置くので、端末の時刻で読む。
+ */
+export function dayFromTime(ms: number): string {
+  const d = new Date(ms + 12 * 3600 * 1000);
+  d.setHours(0, 0, 0, 0);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export type ZoneRow = {
   key: "low" | "mid" | "high";
   label: string;

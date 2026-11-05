@@ -1,13 +1,13 @@
 import type { User } from "firebase/auth";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Dashboard, NoteOut, WorkoutSummary } from "../api";
 import Chart from "../components/Chart";
 import Notes from "../components/Notes";
 import Review from "../components/Review";
+import ZoneBreakdown from "../components/ZoneBreakdown";
 import { getDashboard, getWorkouts, type DashboardQuery } from "../lib/api";
 import {
-  type ZoneRow,
   TREND_CHART_HEIGHT,
   trendOption,
   workoutsOption,
@@ -192,6 +192,9 @@ export default function DashboardPage({
   const [intensitySport, setIntensitySport] = useState<Sport>("all");
   // Notes が読んだ期間のメモ。ラベルのある日にチャートの点線を出す
   const [notes, setNotes] = useState<NoteOut[]>([]);
+  // メモのモーダル。閉じても Notes は外さない。チャートの印のために一覧を読み続けるため
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [notePick, setNotePick] = useState<{ date: string; at: number }>();
 
   // 数字のカードとチャートは全種目。体力と疲労は種目で絞らないため（api も同じ）
   const mainQuery: Query = { weeks: weeksOf(range), sport: "all" };
@@ -209,6 +212,12 @@ export default function DashboardPage({
   const [previous, setPrevious] = useState<Dashboard | null>(null);
   if (data && data !== previous) setPrevious(data);
   const last = data ?? previous;
+
+  /** メモのモーダルを、その日を選んで開く */
+  function openNote(day: string) {
+    setNotePick({ date: day, at: Date.now() });
+    setNoteOpen(true);
+  }
 
   // option は応答が変わったときだけ作り直す。毎回作ると Chart が描き直してしまう
   const trend = useMemo(
@@ -233,12 +242,21 @@ export default function DashboardPage({
     <section className="dashboard" aria-labelledby="dashboard-heading">
       <div className="page-head">
         <h2 id="dashboard-heading">Dashboard</h2>
-        <Segmented
-          label="Period"
-          options={RANGES}
-          value={range}
-          onChange={setRange}
-        />
+        <div className="card-tools">
+          <Segmented
+            label="Period"
+            options={RANGES}
+            value={range}
+            onChange={setRange}
+          />
+          <button
+            type="button"
+            disabled={!last}
+            onClick={() => last && openNote(last.until)}
+          >
+            + Note
+          </button>
+        </div>
       </div>
 
       {/* 振り返りは期間の切り替えに左右されない。#41 でアバターと右下に重ねるまで、ここに置く */}
@@ -276,10 +294,17 @@ export default function DashboardPage({
               </p>
             ) : (
               <p className="muted small">
+                Click a day to add a note. Notes with a label show on the chart.
                 Fitness and fatigue include every sport.
               </p>
             )}
-            {trend && <Chart option={trend} height={TREND_CHART_HEIGHT} />}
+            {trend && (
+              <Chart
+                option={trend}
+                height={TREND_CHART_HEIGHT}
+                onDayClick={openNote}
+              />
+            )}
             {data.vo2max.length === 0 && (
               <p className="muted small">No VO2max in this period.</p>
             )}
@@ -315,16 +340,62 @@ export default function DashboardPage({
 
       {/* 期間を切り替えて読み込み直す間も、前の結果で出し続ける。書きかけのメモを消さないため */}
       {last && (
-        <div className="card">
+        <NoteDialog open={noteOpen} onClose={() => setNoteOpen(false)}>
           <Notes
             user={user}
             since={last.since}
             today={last.until}
             onNotesChange={setNotes}
+            pick={notePick}
           />
-        </div>
+        </NoteDialog>
       )}
     </section>
+  );
+}
+
+type NoteDialogProps = {
+  open: boolean;
+  onClose: () => void;
+  children: ReactNode;
+};
+
+/**
+ * メモのモーダル。閉じている間も中身は外さずに隠すだけにする（Notes が一覧を読み続け、
+ * 書きかけの本文も残る）。Esc、Close、外側を押すと閉じる。
+ */
+function NoteDialog({ open, onClose, children }: NoteDialogProps) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (open) box.current?.focus();
+  }, [open]);
+  return (
+    <div
+      className="modal-backdrop"
+      hidden={!open}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={box}
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="notes-heading"
+        tabIndex={-1}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onClose();
+        }}
+      >
+        {children}
+        <div className="modal-actions">
+          <button type="button" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -439,32 +510,6 @@ function IntensityCard({
           </div>
         ))}
     </section>
-  );
-}
-
-/** 1 本の帯を強度ごとに塗り分け、下に時間と割合を並べる */
-function ZoneBreakdown({ rows }: { rows: ZoneRow[] }) {
-  return (
-    <>
-      <div className="zone-bar" aria-hidden="true">
-        {rows.map((r) => (
-          <span
-            key={r.key}
-            style={{ width: `${r.width}%`, background: r.color }}
-          />
-        ))}
-      </div>
-      <ul className="zone-list" aria-label="Time in each zone">
-        {rows.map((r) => (
-          <li key={r.key}>
-            <span className="swatch" style={{ background: r.color }} />
-            <span>{r.label}</span>
-            <span className="num">{formatDuration(r.sec)}</span>
-            <span className="num share">{r.percent}%</span>
-          </li>
-        ))}
-      </ul>
-    </>
   );
 }
 
