@@ -238,16 +238,19 @@ export function trendOption(
             },
           }),
       })) as SeriesOption[]),
-      // 見えない棒。ECharts は棒のある時間の軸を棒の幅の半分だけ広げるので、
-      // 下の段にも同じ日付の棒を置いて、上の段と同じだけ広げる
-      {
+      // 見えない棒。ECharts は棒のある時間の軸を棒の幅の半分だけ広げる。上の段の Load は
+      // 凡例で消せるので、凡例に載らない見えない棒を上下の段の両方に置き、Load の表示に
+      // かかわらず両段を同じだけ広げる
+      ...[0, 1].map((i): SeriesOption => ({
         type: "bar",
-        xAxisIndex: 1,
-        yAxisIndex: 2,
+        xAxisIndex: i,
+        yAxisIndex: i === 0 ? 1 : 2,
+        // 上の段では Load の棒と同じ場所に重ね、Load の棒を細くしない
+        barGap: "-100%",
         silent: true,
         tooltip: { show: false },
         data: days.map((d) => [d.day, null]),
-      },
+      })),
     ],
   };
 }
@@ -256,8 +259,10 @@ export type ZoneRow = {
   key: "low" | "mid" | "high";
   label: string;
   sec: number;
-  /** 3 つの合計に占める割合（%、整数）。合計が 0 なら 0 */
+  /** 3 つの合計に占める割合（%、整数）。表に出す。丸めるので合計が 100 にならないことがある */
   percent: number;
+  /** 3 つの合計に占める割合（%、丸めない）。帯の幅に使う。合計は 100（時間が全部 0 なら 0） */
+  width: number;
   color: string;
 };
 
@@ -273,6 +278,7 @@ export function zoneRows(zones: ZoneSeconds | null): ZoneRow[] | null {
   return rows.map((r, i) => ({
     ...r,
     percent: total === 0 ? 0 : Math.round((r.sec / total) * 100),
+    width: total === 0 ? 0 : (r.sec / total) * 100,
     color: CHART_COLORS.zones[i],
   }));
 }

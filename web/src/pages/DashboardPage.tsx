@@ -13,7 +13,12 @@ import {
   workoutsOption,
   zoneRows,
 } from "../lib/charts";
-import { formatDateTime, formatDuration, SPORT_LABEL } from "../lib/format";
+import {
+  formatDateTime,
+  formatDay,
+  formatDuration,
+  SPORT_LABEL,
+} from "../lib/format";
 
 type Range = "4w" | "12w" | "all";
 type Sport = NonNullable<DashboardQuery["sport"]>;
@@ -48,8 +53,14 @@ type Result = { key: string; data: Dashboard };
  * GET /dashboard を条件ごとに読む。期間は週の数だけ渡し、始まりの日は api が設定の
  * タイムゾーンで決める。「すべて」は何も渡さず、api が最初の記録の日から返す。
  * 条件を変えた直後は、前の条件の結果を返さない（data は null）。
+ * enabled が false の間は読まない。ほかの欄と同じ条件で、その結果を使い回すとき。
  */
-function useDashboard(user: User, weeks: number | null, sport: Sport) {
+function useDashboard(
+  user: User,
+  weeks: number | null,
+  sport: Sport,
+  enabled = true,
+) {
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Retry で進める。条件が同じでも effect を走らせ直すため
@@ -57,6 +68,7 @@ function useDashboard(user: User, weeks: number | null, sport: Sport) {
   const key = `${weeks ?? "all"}|${sport}`;
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     (async () => {
       try {
@@ -74,7 +86,7 @@ function useDashboard(user: User, weeks: number | null, sport: Sport) {
     return () => {
       cancelled = true;
     };
-  }, [user, weeks, sport, attempt]);
+  }, [user, weeks, sport, attempt, enabled]);
 
   return {
     data: result && result.key === key ? result.data : null,
@@ -158,7 +170,15 @@ export default function DashboardPage({
 
   // 数字のカードとチャートは全種目。体力と疲労は種目で絞らないため（api も同じ）
   const main = useDashboard(user, weeksOf(range), "all");
-  const intensity = useDashboard(user, weeksOf(intensityRange), intensitySport);
+  // Intensity の条件が上と同じ間は、上の結果を使い、もう 1 回は読まない
+  const sameAsMain = intensityRange === range && intensitySport === "all";
+  const own = useDashboard(
+    user,
+    weeksOf(intensityRange),
+    intensitySport,
+    !sameAsMain,
+  );
+  const intensity = sameAsMain ? main : own;
   const data = main.data;
 
   // option は応答が変わったときだけ作り直す。毎回作ると Chart が描き直してしまう
@@ -200,7 +220,7 @@ export default function DashboardPage({
 
       {data && (
         <>
-          <dl className="stats" aria-label="Today">
+          <dl className="stats" aria-label="Latest">
             <Stat kind="fitness" label="Fitness" value={today?.fitness} />
             <Stat kind="fatigue" label="Fatigue" value={today?.fatigue} />
             {/* api の headroom を、画面では Form と呼ぶ */}
@@ -209,7 +229,8 @@ export default function DashboardPage({
               kind="vo2max"
               label="VO2max"
               value={latestVo2max?.value}
-              digits={1}
+              // 期間の最新の測定。今日の値ではないので、測った日を添える
+              note={latestVo2max && formatDay(latestVo2max.day)}
             />
           </dl>
 
@@ -257,7 +278,8 @@ export default function DashboardPage({
 
       <RecentWorkouts
         user={user}
-        loads={data?.workouts ?? []}
+        // 期間を切り替えて読み込み直す間も、前の結果の負荷で出し続ける
+        loads={main.last?.workouts ?? []}
         onOpenWorkouts={onOpenWorkouts}
         onOpenWorkout={onOpenWorkout}
       />
@@ -282,16 +304,25 @@ type StatProps = {
   kind: "fitness" | "fatigue" | "form" | "vo2max";
   label: string;
   value: number | undefined;
-  /** 小数点以下の桁。Figma に合わせ、体力・疲労・Form は整数、VO2max は 1 桁 */
-  digits?: number;
+  /** 数字の下に小さく添える文 */
+  note?: string;
 };
 
+/** 小数 1 桁。チャートと同じ桁にする。-0.04 を「-0.0」と出さない */
+function formatStat(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  return (rounded === 0 ? 0 : rounded).toFixed(1);
+}
+
 /** 小さなラベルの下に大きな数字。値がなければ – */
-function Stat({ kind, label, value, digits = 0 }: StatProps) {
+function Stat({ kind, label, value, note }: StatProps) {
   return (
     <div className={`stat ${kind}`}>
       <dt>{label}</dt>
-      <dd>{value === undefined ? "–" : value.toFixed(digits)}</dd>
+      <dd>
+        {value === undefined ? "–" : formatStat(value)}
+        {note && <span className="stat-note">{note}</span>}
+      </dd>
     </div>
   );
 }
@@ -390,7 +421,7 @@ function ZoneBreakdown({ rows }: { rows: ZoneRow[] }) {
         {rows.map((r) => (
           <span
             key={r.key}
-            style={{ width: `${r.percent}%`, background: r.color }}
+            style={{ width: `${r.width}%`, background: r.color }}
           />
         ))}
       </div>
@@ -410,7 +441,7 @@ function ZoneBreakdown({ rows }: { rows: ZoneRow[] }) {
 
 type RecentProps = {
   user: User;
-  /** ダッシュボードの期間にある回の負荷。id で引き、期間の外の回は – にする */
+  /** ダッシュボードの期間にある回の負荷。id で引く。期間の外の回は –、心拍のない回は No HR */
   loads: Dashboard["workouts"];
   onOpenWorkouts: () => void;
   onOpenWorkout: (id: number) => void;
@@ -498,9 +529,7 @@ function RecentWorkouts({
                   <td>{formatDuration(w.duration_sec)}</td>
                   <td className="num">{w.avg_heart_rate ?? "–"}</td>
                   <td className="num">
-                    {load === undefined || load === null
-                      ? "–"
-                      : load.toFixed(0)}
+                    <LoadCell load={load} />
                   </td>
                 </tr>
               );
@@ -510,4 +539,19 @@ function RecentWorkouts({
       )}
     </section>
   );
+}
+
+/** 負荷の欄。期間の外で分からない回と、心拍がなくて計算できない回を分けて出す */
+function LoadCell({ load }: { load: number | null | undefined }) {
+  if (load === undefined) {
+    return <span title="Outside the dashboard period">–</span>;
+  }
+  if (load === null) {
+    return (
+      <span className="muted" title="No heart rate, so load can't be computed">
+        No HR
+      </span>
+    );
+  }
+  return <>{load.toFixed(0)}</>;
 }

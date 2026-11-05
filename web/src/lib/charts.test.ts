@@ -121,6 +121,15 @@ test("強度ごとの時間は低・中・高の順に並べ、合計に占め�
   ]);
 });
 
+test("帯の幅は丸めない割合にして、合計を 100 にする", () => {
+  // 丸めた % は 33 + 33 + 33 = 99 になる
+  const rows = zoneRows({ low: 100, mid: 100, high: 100 });
+
+  expect(rows?.map((r) => r.percent)).toEqual([33, 33, 33]);
+  const sum = rows?.reduce((a, r) => a + r.width, 0) ?? 0;
+  expect(sum).toBeCloseTo(100, 10);
+});
+
 test("時間が全部 0 なら、割合は 0 にする", () => {
   const rows = zoneRows({ low: 0, mid: 0, high: 0 });
 
@@ -223,10 +232,19 @@ test("上下 2 段のチャートは、上に体力・疲労・負荷、下に V
     "No heart rate",
     "VO2max",
     "30-day average",
-    undefined, // 下の段の日付を上の段とそろえる見えない棒
+    // 上下の段の日付をそろえる見えない棒。凡例に載らないので、Load を消しても残る
+    undefined,
+    undefined,
   ]);
   // VO2max は下の段の軸に載せる
   expect(series[4]).toMatchObject({ xAxisIndex: 1, yAxisIndex: 2 });
+  // 見えない棒は上下の段に 1 本ずつ。上の段の棒は Load と重ねて、Load の幅を変えない
+  expect(series[6]).toMatchObject({
+    xAxisIndex: 0,
+    yAxisIndex: 1,
+    barGap: "-100%",
+  });
+  expect(series[7]).toMatchObject({ xAxisIndex: 1, yAxisIndex: 2 });
   // 横の軸は 2 本とも api の期間にする。日付の位置がそろう
   for (const axis of option.xAxis as object[]) {
     expect(axis).toMatchObject({
