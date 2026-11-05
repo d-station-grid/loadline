@@ -360,15 +360,69 @@ type NoteDialogProps = {
   children: ReactNode;
 };
 
+/** モーダルの中で Tab が止まるもの */
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 /**
  * メモのモーダル。閉じている間も中身は外さずに隠すだけにする（Notes が一覧を読み続け、
  * 書きかけの本文も残る）。Esc、Close、外側を押すと閉じる。
+ * 開いている間は Tab をモーダルの中で回し、閉じたら開く前の場所（「+ Note」など）にフォーカスを戻す。
  */
 function NoteDialog({ open, onClose, children }: NoteDialogProps) {
   const box = useRef<HTMLDivElement>(null);
+  // 閉じる関数が変わっても、開いている間の仕掛けは張り直さない
+  const close = useRef(onClose);
   useEffect(() => {
-    if (open) box.current?.focus();
+    close.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    const opener =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    box.current?.focus();
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      // フォーカスがどこにあっても、開いている間は Esc で閉じる
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close.current();
+        return;
+      }
+      if (e.key !== "Tab" || !box.current) return;
+      const items = Array.from(
+        box.current.querySelectorAll<HTMLElement>(FOCUSABLE),
+      );
+      if (items.length === 0) {
+        e.preventDefault();
+        box.current.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      const inside = active instanceof Node && box.current.contains(active);
+      if (
+        e.shiftKey &&
+        (!inside || active === first || active === box.current)
+      ) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (!inside || active === last)) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      if (opener?.isConnected) opener.focus();
+    };
   }, [open]);
+
   return (
     <div
       className="modal-backdrop"
@@ -384,9 +438,6 @@ function NoteDialog({ open, onClose, children }: NoteDialogProps) {
         aria-modal="true"
         aria-labelledby="notes-heading"
         tabIndex={-1}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") onClose();
-        }}
       >
         {children}
         <div className="modal-actions">

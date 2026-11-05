@@ -268,6 +268,29 @@ export function dayFromTime(ms: number): string {
   return `${y}-${m}-${day}`;
 }
 
+/** ECharts のインスタンスのうち、dayAt が使う分だけ */
+type PixelFinder = {
+  containPixel: (finder: { gridIndex: number }, point: number[]) => boolean;
+  convertFromPixel: (
+    finder: { gridIndex: number },
+    point: number[],
+  ) => number | number[];
+};
+
+/**
+ * 上下 2 段のどちらかの描画範囲の中なら、その位置の日を返す。範囲の外なら null。
+ * 軸（xAxisIndex）で問い合わせると、ECharts は範囲の中かを判定できず、値も NaN になる。段（gridIndex）で聞く。
+ */
+export function dayAt(instance: PixelFinder, point: number[]): string | null {
+  for (const gridIndex of [0, 1]) {
+    if (!instance.containPixel({ gridIndex }, point)) continue;
+    const value = instance.convertFromPixel({ gridIndex }, point);
+    const time = Array.isArray(value) ? value[0] : NaN;
+    if (Number.isFinite(time)) return dayFromTime(time);
+  }
+  return null;
+}
+
 export type ZoneRow = {
   key: "low" | "mid" | "high";
   label: string;

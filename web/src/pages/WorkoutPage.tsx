@@ -22,7 +22,8 @@ type Boundaries = { low: number | null; high: number | null };
 
 /**
  * 1 分ごとの平均心拍を折れ線に。ライブラリは入れず、SVG だけで描く。
- * 強度の境目は点線で引く。縦の目盛りは 10 bpm ごと、横は 10 分ごと。
+ * 強度の境目は点線で引く。縦の目盛りは 10 bpm ごと。
+ * 横は最初のサンプルからの経過時間（分）。サンプルの番号で並べると、一時停止のぶんだけ Time とずれる。
  */
 function HeartRateChart({
   samples,
@@ -47,17 +48,24 @@ function HeartRateChart({
   // 境目の線も入るように、縦の範囲を 10 bpm 刻みで広げる
   const min = Math.floor((Math.min(...values, ...lines) - 5) / 10) * 10;
   const max = Math.ceil((Math.max(...values, ...lines) + 5) / 10) * 10;
-  const x = (i: number) =>
-    left + (i / (samples.length - 1)) * (width - left - right);
+  // 最初のサンプルからの経過分。一時停止で抜けた分は、線が飛んでつながる
+  const start = Date.parse(samples[0].recorded_at);
+  const minutes = samples.map(
+    (s) => (Date.parse(s.recorded_at) - start) / 60000,
+  );
+  const span = Math.max(minutes[minutes.length - 1], 1);
+  const x = (m: number) => left + (m / span) * (width - left - right);
   const y = (v: number) =>
     top + (1 - (v - min) / (max - min)) * (height - top - bottom);
   const points = values
-    .map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`)
+    .map((v, i) => `${x(minutes[i]).toFixed(1)},${y(v).toFixed(1)}`)
     .join(" ");
   const yTicks: number[] = [];
   for (let v = min; v <= max; v += max - min > 60 ? 20 : 10) yTicks.push(v);
   const xTicks: number[] = [];
-  for (let m = 0; m < samples.length; m += 10) xTicks.push(m);
+  // 長い回は目盛りを間引く
+  const step = span > 180 ? 30 : span > 90 ? 20 : 10;
+  for (let m = 0; m <= span; m += step) xTicks.push(m);
   const names = ["Low | Mid", "Mid | High"];
   return (
     <svg

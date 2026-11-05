@@ -148,7 +148,8 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
           {items && items.length > 0 && (
             <p className="muted small">
               {items.length}
-              {hasMore ? "+" : ""} workouts
+              {hasMore ? "+" : ""}{" "}
+              {items.length === 1 && !hasMore ? "workout" : "workouts"}
             </p>
           )}
         </div>

@@ -242,3 +242,17 @@ test("失敗のあと別の期間が取れたら、エラーは消える", async
   await screen.findByRole("button", { name: "Ride" });
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
+
+test("件数は、1 件なら workout、2 件からは workouts と出す", async () => {
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [ride] });
+  const { unmount } = render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
+  expect(await screen.findByText("1 workout")).toBeInTheDocument();
+  unmount();
+
+  vi.mocked(getWorkouts).mockResolvedValue({
+    since: null,
+    items: [ride, { ...ride, id: 8 }],
+  });
+  render(<WorkoutsPage user={user} onSelect={vi.fn()} />);
+  expect(await screen.findByText("2 workouts")).toBeInTheDocument();
+});

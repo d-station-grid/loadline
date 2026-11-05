@@ -124,6 +124,7 @@ button:hover:not(:disabled) {
 
 button:focus-visible,
 input:focus-visible,
+select:focus-visible,
 textarea:focus-visible {
   outline: 3px solid var(--color-focus);
   outline-offset: 1px;
@@ -132,8 +133,10 @@ textarea:focus-visible {
 /* 押せないもの。ゲストの選択肢やメモの欄が、押せないと見て分かるようにする */
 button:disabled,
 fieldset:disabled input,
+fieldset:disabled select,
 fieldset:disabled textarea,
 input:disabled,
+select:disabled,
 textarea:disabled {
   opacity: 0.5;
   cursor: not-allowed;

@@ -10,7 +10,7 @@ import { CanvasRenderer } from "echarts/renderers";
 import type { EChartsOption } from "echarts";
 import { useEffect, useRef } from "react";
 
-import { dayFromTime } from "../lib/charts";
+import { dayAt } from "../lib/charts";
 
 // 使う種類だけを登録して、配る JS を小さくする。
 echarts.use([
@@ -51,18 +51,8 @@ export default function Chart({ option, height = 280, onDayClick }: Props) {
     window.addEventListener("resize", resize);
     // 線の点だけでなく、描いてある範囲のどこを押しても、その位置の日を拾う
     instance.getZr().on("click", (e) => {
-      const point = [e.offsetX, e.offsetY];
-      if (
-        !dayClick.current ||
-        !instance.containPixel({ xAxisIndex: 0 }, point)
-      ) {
-        return;
-      }
-      const [time] = instance.convertFromPixel(
-        { xAxisIndex: 0 },
-        point,
-      ) as number[];
-      dayClick.current(dayFromTime(time));
+      const day = dayAt(instance, [e.offsetX, e.offsetY]);
+      if (day && dayClick.current) dayClick.current(day);
     });
     return () => {
       window.removeEventListener("resize", resize);

@@ -162,3 +162,30 @@ test("設定が読めなくても、詳細は出す", async () => {
   expect(screen.queryByRole("alert")).toBeNull();
   expect(screen.queryByText(/Low \| Mid/)).toBeNull();
 });
+
+test("心拍の横の目盛りは、サンプルの数ではなく経過時間で打つ（一時停止があってもずれない）", async () => {
+  const sample = (at: string, bpm: number) => ({
+    recorded_at: at,
+    min_bpm: bpm,
+    avg_bpm: bpm,
+    max_bpm: bpm,
+  });
+  // サンプルは 3 つだけだが、途中で 28 分止まっていて、全体は 30 分
+  vi.mocked(getWorkout).mockResolvedValue({
+    ...detail,
+    heart_rates: [
+      sample("2026-09-13T05:10:00+00:00", 110),
+      sample("2026-09-13T05:11:00+00:00", 120),
+      sample("2026-09-13T05:40:00+00:00", 130),
+    ],
+  });
+  render(<WorkoutPage user={user} workoutId={7} onBack={vi.fn()} />);
+
+  const chart = await screen.findByRole("img", {
+    name: "Heart rate over time",
+  });
+  const ticks = Array.from(chart.querySelectorAll("text.tick"))
+    .map((t) => t.textContent)
+    .filter((t) => t?.endsWith("'"));
+  expect(ticks).toEqual(["0'", "10'", "20'", "30'"]);
+});
