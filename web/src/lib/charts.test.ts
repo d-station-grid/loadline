@@ -7,7 +7,7 @@ import {
   trendOption,
   vo2maxOption,
   workoutsOption,
-  zonesOption,
+  zoneRows,
 } from "./charts";
 
 function seriesOf(option: EChartsOption | null): SeriesOption[] {
@@ -111,14 +111,24 @@ test("VO2max は測定値と 30 日平均を別の series にする", () => {
   ]);
 });
 
-test("強度ごとの時間は分に直し、低・中・高の順に並べる", () => {
-  const [time] = seriesOf(zonesOption({ low: 3600, mid: 1530, high: 89 }));
+test("強度ごとの時間は低・中・高の順に並べ、合計に占める割合を添える", () => {
+  const rows = zoneRows({ low: 3600, mid: 1530, high: 89 });
 
-  expect(time.data).toEqual([60, 26, 1]);
+  expect(rows?.map((r) => [r.key, r.sec, r.percent])).toEqual([
+    ["low", 3600, 69],
+    ["mid", 1530, 29],
+    ["high", 89, 2],
+  ]);
 });
 
-test("境目が未設定で zones が null なら、チャートを出さない", () => {
-  expect(zonesOption(null)).toBeNull();
+test("時間が全部 0 なら、割合は 0 にする", () => {
+  const rows = zoneRows({ low: 0, mid: 0, high: 0 });
+
+  expect(rows?.map((r) => r.percent)).toEqual([0, 0, 0]);
+});
+
+test("境目が未設定で zones が null なら、出さない", () => {
+  expect(zoneRows(null)).toBeNull();
 });
 
 test("散布図は種目ごとに分け、負荷か高強度の時間が null の回は除く", () => {

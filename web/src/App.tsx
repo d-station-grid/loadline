@@ -127,7 +127,9 @@ function App() {
   if (signingOut) {
     return (
       <main className="app-main">
-        <h1 className="logo">loadline</h1>
+        <h1 className="logo">
+          load<span>line</span>
+        </h1>
         {signingOut === "pending" ? (
           <p>Logging out…</p>
         ) : (
@@ -145,7 +147,9 @@ function App() {
   if (!user) {
     return (
       <main className="app-main">
-        <h1 className="logo">loadline</h1>
+        <h1 className="logo">
+          load<span>line</span>
+        </h1>
         <button type="button" onClick={handleSignIn}>
           Sign in with Google
         </button>{" "}
@@ -170,7 +174,9 @@ function App() {
     <>
       <header className="app-header">
         <div className="app-header-inner">
-          <h1 className="logo">loadline</h1>
+          <h1 className="logo">
+            load<span>line</span>
+          </h1>
           <nav aria-label="Main" className="app-nav">
             {navItems.map((item) => (
               <button

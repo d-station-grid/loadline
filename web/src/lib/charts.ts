@@ -14,20 +14,21 @@ import { SPORT_LABEL } from "./format";
 
 const NO_HEART_RATE = "No heart rate";
 
-// チャートの色。index.css の色の変数と同じ値にする（canvas には CSS の変数が届かないため）
+// チャートの色。index.css の色の変数と同じ値にする（canvas には CSS の変数が届かないため）。
+// 値は Figma の S08 から
 export const CHART_COLORS = {
-  fitness: "#0f766e", // 差し色の深い青緑
-  fatigue: "#9ca3af", // 灰
-  load: "#99d3cc", // 差し色を薄くしたもの。線より目立たせない
-  noHeartRate: "#4b5563",
-  vo2max: "#0f766e",
-  vo2maxAverage: "#92400e", // 茶
-  note: "#6b7280",
-  ride: "#0f766e",
-  run: "#b45309",
-  zones: ["#99d3cc", "#2a9d8f", "#0f766e"],
-  axis: "#6b7280",
-  grid: "#eef0f2",
+  fitness: "#0b6e77", // 差し色の深い青緑
+  fatigue: "#7a8791", // 灰
+  load: "#d5dde0", // 薄い灰。線より目立たせない
+  noHeartRate: "#46535b",
+  vo2max: "#46535b",
+  vo2maxAverage: "#b4731e", // 茶
+  note: "#46535b",
+  ride: "#0b6e77",
+  run: "#b4731e",
+  zones: ["#8abdc2", "#4e939a", "#0b6e77"], // Low、Mid、High
+  axis: "#79878f",
+  grid: "#e5eaec",
 };
 
 /** 体力・疲労と VO2max のチャートの高さ（px）。上の段と下の段を合わせた高さ */
@@ -51,7 +52,15 @@ const VALUE_AXIS = {
   splitLine: { lineStyle: { color: CHART_COLORS.grid } },
 } as const;
 // 共通の文字。ページの文字と合わせる
-const TEXT_STYLE = { fontFamily: "inherit" };
+const TEXT_STYLE = { fontFamily: "inherit", fontSize: 11 };
+// 凡例は右上に、丸い印で小さく出す
+const LEGEND = {
+  right: 0,
+  icon: "circle",
+  itemWidth: 10,
+  itemHeight: 10,
+  textStyle: { color: "#46535b", fontSize: 12 },
+} as const;
 
 /** ラベルのあるメモの縦の点線。チャートの期間の外の日と、ラベルのないメモは出さない */
 function noteLines(days: DayPoint[], notes: NoteOut[]) {
@@ -79,7 +88,7 @@ export function loadOption(
   return {
     textStyle: TEXT_STYLE,
     tooltip: { trigger: "axis" },
-    legend: { data: legend },
+    legend: { ...LEGEND, data: legend },
     grid: TREND_GRIDS[0],
     xAxis: TIME_AXIS,
     yAxis: [
@@ -99,10 +108,10 @@ export function loadOption(
             symbol: "none",
             silent: true,
             lineStyle: { type: "dashed", color: CHART_COLORS.note, width: 1 },
-            // ラベルは線の上の端に出す。本文はメモの一覧で読める
+            // ラベルは線の上の端に、線に沿って縦に出す。本文はメモの一覧で読める
             label: {
               show: true,
-              position: "end",
+              position: "insideEndTop",
               formatter: "{b}",
               color: CHART_COLORS.note,
               fontSize: 11,
@@ -116,7 +125,7 @@ export function loadOption(
         type: "line",
         showSymbol: false,
         color: CHART_COLORS.fatigue,
-        lineStyle: { width: 2 },
+        lineStyle: { width: 1.5 },
         data: days.map((d) => [d.day, round1(d.fatigue)]),
       },
       {
@@ -144,7 +153,7 @@ export function vo2maxOption(points: Vo2MaxPoint[]): EChartsOption {
   return {
     textStyle: TEXT_STYLE,
     tooltip: { trigger: "axis" },
-    legend: { data: ["VO2max", "30-day average"] },
+    legend: { ...LEGEND, data: ["VO2max", "30-day average"] },
     grid: TREND_GRIDS[1],
     xAxis: TIME_AXIS,
     yAxis: { ...VALUE_AXIS, name: "VO2max", scale: true },
@@ -200,7 +209,7 @@ export function trendOption(
     tooltip: { trigger: "axis" },
     // ツールチップはマウスのある段だけに出す。上下をつなぐと、下の段は近い測定の日に
     // 吸い寄せられ、別の日付の値が混ざるため
-    legend: { data: [...topLegend, ...bottomLegend], top: 0 },
+    legend: { ...LEGEND, data: [...topLegend, ...bottomLegend], top: 0 },
     grid: TREND_GRIDS,
     xAxis: [
       // 上の段の日付は下の段と同じなので、文字は下の段だけに出す
@@ -243,34 +252,29 @@ export function trendOption(
   };
 }
 
-/** 強度ごとの時間を分で、横向きの棒にする。境目が未設定で zones が null なら、チャートは出さない。 */
-export function zonesOption(zones: ZoneSeconds | null): EChartsOption | null {
+export type ZoneRow = {
+  key: "low" | "mid" | "high";
+  label: string;
+  sec: number;
+  /** 3 つの合計に占める割合（%、整数）。合計が 0 なら 0 */
+  percent: number;
+  color: string;
+};
+
+/** 強度ごとの時間を、低・中・高の順に、割合と色を添えて並べる。境目が未設定で zones が null なら null。 */
+export function zoneRows(zones: ZoneSeconds | null): ZoneRow[] | null {
   if (zones === null) return null;
-  return {
-    textStyle: TEXT_STYLE,
-    tooltip: { trigger: "axis" },
-    grid: { top: 16, bottom: 32, left: 48, right: 24 },
-    // 低い強度から上に並べる。色は強度が上がるほど濃くする
-    yAxis: {
-      type: "category",
-      data: ["Low", "Mid", "High"],
-      inverse: true,
-      axisLabel: { color: CHART_COLORS.axis },
-      axisLine: { lineStyle: { color: CHART_COLORS.grid } },
-      axisTick: { show: false },
-    },
-    xAxis: { ...VALUE_AXIS, name: "min", nameLocation: "end" },
-    color: CHART_COLORS.zones,
-    series: [
-      {
-        name: "Time",
-        type: "bar",
-        colorBy: "data",
-        barWidth: "55%",
-        data: [zones.low, zones.mid, zones.high].map(toMinutes),
-      },
-    ],
-  };
+  const total = zones.low + zones.mid + zones.high;
+  const rows = [
+    { key: "low", label: "Low", sec: zones.low },
+    { key: "mid", label: "Mid", sec: zones.mid },
+    { key: "high", label: "High", sec: zones.high },
+  ] as const;
+  return rows.map((r, i) => ({
+    ...r,
+    percent: total === 0 ? 0 : Math.round((r.sec / total) * 100),
+    color: CHART_COLORS.zones[i],
+  }));
 }
 
 /** 1 回ごとの負荷（横）と高強度の時間（縦、分）。種目ごとに色を分け、どちらかが null の回は除く。 */
@@ -279,15 +283,21 @@ export function workoutsOption(workouts: WorkoutPoint[]): EChartsOption {
   return {
     textStyle: TEXT_STYLE,
     tooltip: { trigger: "item" },
-    legend: { data: sports.map(sportLabel), top: 0 },
-    grid: { top: 40, bottom: 40, left: 48, right: 48 },
+    legend: {
+      ...LEGEND,
+      data: sports.map(sportLabel),
+      top: "bottom",
+      right: "center",
+    },
+    grid: { top: 28, bottom: 56, left: 40, right: 24 },
     xAxis: { ...VALUE_AXIS, name: "Load" },
     yAxis: { ...VALUE_AXIS, name: "High (min)" },
     series: sports.map((sport) => ({
       name: sportLabel(sport),
       type: "scatter",
-      symbolSize: 8,
+      symbolSize: 7,
       color: sportColor(sport),
+      itemStyle: { opacity: 0.75 },
       data: workouts
         .filter(
           (w) => w.sport === sport && w.load !== null && w.high_sec !== null,

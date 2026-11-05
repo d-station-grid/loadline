@@ -7,10 +7,11 @@ import Notes from "../components/Notes";
 import Review from "../components/Review";
 import { getDashboard, getWorkouts, type DashboardQuery } from "../lib/api";
 import {
+  type ZoneRow,
   TREND_CHART_HEIGHT,
   trendOption,
   workoutsOption,
-  zonesOption,
+  zoneRows,
 } from "../lib/charts";
 import { formatDateTime, formatDuration, SPORT_LABEL } from "../lib/format";
 
@@ -89,6 +90,8 @@ function useDashboard(user: User, weeks: number | null, sport: Sport) {
 
 type SegmentedProps<K extends string> = {
   label: string;
+  /** カードの中に置く小さな形 */
+  compact?: boolean;
   options: { key: K; label: string }[];
   value: K;
   onChange: (key: K) => void;
@@ -97,12 +100,17 @@ type SegmentedProps<K extends string> = {
 /** ボタンをつなげた切り替え。選んでいるものは aria-pressed で示し、黒地に白で出す */
 function Segmented<K extends string>({
   label,
+  compact = false,
   options,
   value,
   onChange,
 }: SegmentedProps<K>) {
   return (
-    <div role="group" aria-label={label} className="segmented">
+    <div
+      role="group"
+      aria-label={label}
+      className={compact ? "segmented compact" : "segmented"}
+    >
       {options.map((o) => (
         <button
           key={o.key}
@@ -193,11 +201,16 @@ export default function DashboardPage({
       {data && (
         <>
           <dl className="stats" aria-label="Today">
-            <Stat label="Fitness" value={today?.fitness} />
-            <Stat label="Fatigue" value={today?.fatigue} />
+            <Stat kind="fitness" label="Fitness" value={today?.fitness} />
+            <Stat kind="fatigue" label="Fatigue" value={today?.fatigue} />
             {/* api の headroom を、画面では Form と呼ぶ */}
-            <Stat label="Form" value={today?.headroom} />
-            <Stat label="VO2max" value={latestVo2max?.value} />
+            <Stat kind="form" label="Form" value={today?.headroom} />
+            <Stat
+              kind="vo2max"
+              label="VO2max"
+              value={latestVo2max?.value}
+              digits={1}
+            />
           </dl>
 
           <section className="card" aria-labelledby="trend-heading">
@@ -264,12 +277,21 @@ export default function DashboardPage({
   );
 }
 
+type StatProps = {
+  /** ラベルの前の線の色を決める */
+  kind: "fitness" | "fatigue" | "form" | "vo2max";
+  label: string;
+  value: number | undefined;
+  /** 小数点以下の桁。Figma に合わせ、体力・疲労・Form は整数、VO2max は 1 桁 */
+  digits?: number;
+};
+
 /** 小さなラベルの下に大きな数字。値がなければ – */
-function Stat({ label, value }: { label: string; value: number | undefined }) {
+function Stat({ kind, label, value, digits = 0 }: StatProps) {
   return (
-    <div className="stat">
+    <div className={`stat ${kind}`}>
       <dt>{label}</dt>
-      <dd>{value === undefined ? "–" : value.toFixed(1)}</dd>
+      <dd>{value === undefined ? "–" : value.toFixed(digits)}</dd>
     </div>
   );
 }
@@ -294,7 +316,7 @@ function IntensityCard({
   onRange,
   onSport,
 }: IntensityProps) {
-  const zones = useMemo(() => (data ? zonesOption(data.zones) : null), [data]);
+  const zones = data ? zoneRows(data.zones) : null;
   const scatter = useMemo(
     () => (data ? workoutsOption(data.workouts) : null),
     [data],
@@ -309,12 +331,14 @@ function IntensityCard({
         <h3 id="intensity-heading">Intensity</h3>
         <div className="card-tools">
           <Segmented
+            compact
             label="Intensity sport"
             options={SPORTS}
             value={sport}
             onChange={onSport}
           />
           <Segmented
+            compact
             label="Intensity period"
             options={RANGES}
             value={range}
@@ -331,9 +355,9 @@ function IntensityCard({
         ) : (
           <div className="split">
             <div>
-              <h4>Time by intensity</h4>
+              <h4>Time in each zone</h4>
               {zones ? (
-                <Chart option={zones} height={240} />
+                <ZoneBreakdown rows={zones} />
               ) : (
                 <p className="muted small">
                   Needs zone boundaries in settings and heart rate on every
@@ -355,6 +379,32 @@ function IntensityCard({
           </div>
         ))}
     </section>
+  );
+}
+
+/** 1 本の帯を強度ごとに塗り分け、下に時間と割合を並べる */
+function ZoneBreakdown({ rows }: { rows: ZoneRow[] }) {
+  return (
+    <>
+      <div className="zone-bar" aria-hidden="true">
+        {rows.map((r) => (
+          <span
+            key={r.key}
+            style={{ width: `${r.percent}%`, background: r.color }}
+          />
+        ))}
+      </div>
+      <ul className="zone-list" aria-label="Time in each zone">
+        {rows.map((r) => (
+          <li key={r.key}>
+            <span className="swatch" style={{ background: r.color }} />
+            <span>{r.label}</span>
+            <span className="num">{formatDuration(r.sec)}</span>
+            <span className="num share">{r.percent}%</span>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 
