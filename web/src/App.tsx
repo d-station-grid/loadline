@@ -121,20 +121,20 @@ function App() {
   }
 
   if (loading) {
-    return <p>Loading…</p>;
+    return <p className="app-loading">Loading…</p>;
   }
 
   if (signingOut) {
     return (
-      <main>
-        <h1>loadline</h1>
+      <main className="app-main">
+        <h1 className="logo">loadline</h1>
         {signingOut === "pending" ? (
-          <p>Signing out…</p>
+          <p>Logging out…</p>
         ) : (
           <>
-            <p role="alert">Couldn't sign out. Please try again.</p>
+            <p role="alert">Couldn't log out. Please try again.</p>
             <button type="button" onClick={signOutAfterDelete}>
-              Sign out
+              Log out
             </button>
           </>
         )}
@@ -144,8 +144,8 @@ function App() {
 
   if (!user) {
     return (
-      <main>
-        <h1>loadline</h1>
+      <main className="app-main">
+        <h1 className="logo">loadline</h1>
         <button type="button" onClick={handleSignIn}>
           Sign in with Google
         </button>{" "}
@@ -158,60 +158,72 @@ function App() {
     );
   }
 
+  // ヘッダーで下線を引く項目。詳細は一覧の中の画面なので Workouts に引く
+  const current = view.name === "workout" ? "workouts" : view.name;
+  const navItems: { view: View; label: string }[] = [
+    { view: { name: "dashboard" }, label: "Dashboard" },
+    { view: { name: "workouts" }, label: "Workouts" },
+    { view: { name: "settings" }, label: "Settings" },
+  ];
+
   return (
-    <main>
-      <header>
-        <h1>loadline</h1>
-        <nav aria-label="Main">
-          <button type="button" onClick={() => setView({ name: "dashboard" })}>
-            Dashboard
-          </button>
-          <button type="button" onClick={() => setView({ name: "workouts" })}>
-            Workouts
-          </button>
-          <button type="button" onClick={() => setView({ name: "settings" })}>
-            Settings
-          </button>
-        </nav>
-        <p>
-          {user.isAnonymous ? (
-            "Viewing demo data as a guest (read-only)"
-          ) : (
-            <>
-              Signed in as {user.displayName ?? user.email}{" "}
-              <span>{user.email}</span>
-            </>
-          )}{" "}
-          <button type="button" onClick={() => signOut(auth)}>
-            Sign out
-          </button>
-        </p>
+    <>
+      <header className="app-header">
+        <div className="app-header-inner">
+          <h1 className="logo">loadline</h1>
+          <nav aria-label="Main" className="app-nav">
+            {navItems.map((item) => (
+              <button
+                key={item.view.name}
+                type="button"
+                aria-current={current === item.view.name ? "page" : undefined}
+                onClick={() => setView(item.view)}
+              >
+                {item.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="button-outline"
+              onClick={() => signOut(auth)}
+            >
+              Log out
+            </button>
+          </nav>
+        </div>
       </header>
-      {/* ダッシュボードは隠さずに外す。隠した要素の中では ECharts が幅 0 で描いてしまうため */}
-      {view.name === "dashboard" && (
-        <DashboardPage
-          user={user}
-          onOpenSettings={() => setView({ name: "settings" })}
-        />
+      {user.isAnonymous && (
+        <p className="guest-banner">Viewing demo data as a guest (read-only)</p>
       )}
-      {/* 一覧はマウントしたまま隠す。詳細から戻ったときに期間と Load more の続きを残すため */}
-      <div hidden={view.name !== "workouts"}>
-        <WorkoutsPage
-          user={user}
-          onSelect={(id) => setView({ name: "workout", id })}
-        />
-      </div>
-      {view.name === "workout" && (
-        <WorkoutPage
-          user={user}
-          workoutId={view.id}
-          onBack={() => setView({ name: "workouts" })}
-        />
-      )}
-      {view.name === "settings" && (
-        <SettingsPage user={user} onDeleted={handleDeleted} />
-      )}
-    </main>
+      <main className="app-main">
+        {/* ダッシュボードは隠さずに外す。隠した要素の中では ECharts が幅 0 で描いてしまうため */}
+        {view.name === "dashboard" && (
+          <DashboardPage
+            user={user}
+            onOpenSettings={() => setView({ name: "settings" })}
+            onOpenWorkouts={() => setView({ name: "workouts" })}
+            onOpenWorkout={(id) => setView({ name: "workout", id })}
+          />
+        )}
+        {/* 一覧はマウントしたまま隠す。詳細から戻ったときに期間と Load more の続きを残すため */}
+        <div hidden={view.name !== "workouts"}>
+          <WorkoutsPage
+            user={user}
+            onSelect={(id) => setView({ name: "workout", id })}
+          />
+        </div>
+        {view.name === "workout" && (
+          <WorkoutPage
+            user={user}
+            workoutId={view.id}
+            onBack={() => setView({ name: "workouts" })}
+          />
+        )}
+        {view.name === "settings" && (
+          <SettingsPage user={user} onDeleted={handleDeleted} />
+        )}
+      </main>
+    </>
   );
 }
 

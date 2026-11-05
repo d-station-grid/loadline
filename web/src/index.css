@@ -1,130 +1,281 @@
+/* 画面の土台。色、文字、余白はここの変数から使う。
+   チャートの色は canvas に変数が届かないので、lib/charts.ts の CHART_COLORS に同じ値を書く */
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  /* 色 */
+  --color-bg: #f6f7f8;
+  --color-surface: #fff;
+  --color-border: #e5e7eb;
+  --color-border-strong: #d1d5db;
+  --color-text: #1f2937;
+  --color-text-strong: #111827;
+  --color-text-muted: #6b7280;
+  --color-accent: #0f766e; /* 差し色。深い青緑 */
+  --color-accent-hover: #115e59;
+  --color-accent-soft: #e6f4f2;
+  --color-fatigue: #9ca3af; /* 疲労 */
+  --color-vo2max-average: #92400e; /* VO2max の 30 日平均 */
+  --color-selected-bg: #111827; /* 切り替えで選んでいるもの */
+  --color-selected-text: #fff;
+  --color-danger: #b91c1c;
+  --color-row-hover: #f9fafb;
+  --color-focus: rgba(15, 118, 110, 0.35);
 
-  --sans: system-ui, "Segoe UI", Roboto, sans-serif;
-  --heading: system-ui, "Segoe UI", Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  /* 文字 */
+  --font-sans:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans",
+    "Noto Sans JP", sans-serif;
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-md: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 22px;
+  --font-size-stat: 30px;
+  --line-height: 1.5;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
+  /* 余白。4px 刻み */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* 形 */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --content-width: 1200px;
+
+  color-scheme: light;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-md);
+  line-height: var(--line-height);
+  color: var(--color-text);
+  background: var(--color-bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
+/* ---- 要素の既定 ---- */
 
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
-}
-
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
+  min-height: 100svh;
+  background: var(--color-bg);
 }
 
 h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
+h2,
+h3,
+h4 {
   margin: 0;
+  color: var(--color-text-strong);
+  font-weight: 600;
+  line-height: 1.25;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
+h2 {
+  font-size: var(--font-size-xl);
 }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+h3 {
+  font-size: var(--font-size-lg);
 }
 
-/* 振り返りの欄。下に並ぶチャートの期間と種目のボタンが、選択肢の続きに見えないよう区切る */
+h4 {
+  font-size: var(--font-size-md);
+  margin-bottom: var(--space-2);
+}
+
+p {
+  margin: 0 0 var(--space-2);
+}
+
+button {
+  font: inherit;
+  font-size: var(--font-size-md);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--color-text-muted);
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
+/* 押せないもの。ゲストの選択肢やメモの欄が、押せないと見て分かるようにする */
+button:disabled,
+fieldset:disabled input,
+fieldset:disabled textarea,
+input:disabled,
+textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+input,
+textarea {
+  font: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
+[role="alert"] {
+  color: var(--color-danger);
+}
+
+/* ---- 部品 ---- */
+
+/* 白地にうすい灰の枠のカード */
+.card,
 .review {
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 24px;
-  margin-bottom: 24px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-5) var(--space-6);
 }
 
-/* 選択肢のボタン。文字の下端でそろえると、✓ の付いたボタンだけ上下にずれるので、
-   高さをそろえて並べる。狭い画面では折り返す */
-.review-options {
+.card-head {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  align-items: stretch;
-  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.card-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.muted {
+  color: var(--color-text-muted);
+}
+
+.small {
+  font-size: var(--font-size-sm);
+}
+
+.notice {
+  background: var(--color-accent-soft);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
+/* ボタンをつなげた切り替え。選んでいるものは黒地に白 */
+.segmented {
+  display: inline-flex;
+}
+
+.segmented button {
+  border-radius: 0;
+  margin-left: -1px;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.segmented button:first-child {
+  margin-left: 0;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.segmented button:last-child {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.segmented button[aria-pressed="true"] {
+  position: relative;
+  background: var(--color-selected-bg);
+  border-color: var(--color-selected-bg);
+  color: var(--color-selected-text);
+}
+
+/* 文字だけのボタン。「See all workouts ›」など */
+button.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--color-accent);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+button.link:hover:not(:disabled) {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}
+
+button.button-outline {
+  border-color: var(--color-text-strong);
+  color: var(--color-text-strong);
+  font-weight: 600;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.table th {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.table tr.clickable {
+  cursor: pointer;
+}
+
+.table tr.clickable:hover {
+  background: var(--color-row-hover);
+}
+
+/* 行を開くボタン。見た目は表の文字のまま */
+button.row-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--color-text-strong);
+  font-weight: 600;
 }
 
 /* まとめて止めるためだけの fieldset。枠と余白は付けない */
@@ -133,4 +284,188 @@ fieldset.plain {
   margin: 0;
   padding: 0;
   min-width: 0;
+}
+
+/* ---- ヘッダー ---- */
+
+.app-header {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.app-header-inner {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.logo {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-text-strong);
+}
+
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+/* ヘッダーの移動先。今の画面に差し色の下線を引く */
+.app-nav button:not(.button-outline) {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  padding: var(--space-2) 0;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.app-nav button:not(.button-outline):hover {
+  color: var(--color-text-strong);
+}
+
+.app-nav button[aria-current="page"] {
+  color: var(--color-text-strong);
+  border-bottom-color: var(--color-accent);
+}
+
+/* ゲストの案内。ヘッダーの下に控えめに出す */
+.guest-banner {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: var(--space-2) var(--space-6) 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.app-main,
+.app-loading {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: var(--space-6);
+}
+
+/* ---- ダッシュボード ---- */
+
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* 数字のカード 4 枚。小さなラベルの下に大きな数字 */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.stat {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5);
+}
+
+.stat dt {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.stat dd {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-stat);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--color-text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Intensity の欄の左右 */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-6);
+}
+
+/* ---- 振り返り ---- */
+
+.review h3 {
+  margin-bottom: var(--space-2);
+}
+
+.review h4 {
+  margin-top: var(--space-4);
+}
+
+/* 選択肢のボタン。文字の下端でそろえると、✓ の付いたボタンだけ上下にずれるので、
+   高さをそろえて並べる。狭い画面では折り返す */
+.review-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.review-options button {
+  flex: 1 1 200px;
+  text-align: left;
+  padding: var(--space-3);
+  line-height: 1.4;
+}
+
+.review-options button span {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* 選んだ選択肢 */
+.review-options button[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+/* ---- メモ ---- */
+
+.card fieldset:not(.plain) {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.card > section > h3 {
+  margin-bottom: var(--space-3);
+}
+
+.review-options + p {
+  margin-top: var(--space-2);
+}
+
+.card label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
 }
