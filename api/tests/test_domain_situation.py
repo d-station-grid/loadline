@@ -6,11 +6,13 @@ import pytest
 from app.domain.load import DailyLoad, FitnessPoint, fitness_fatigue
 from app.domain.situation import (
     DEFAULT_THRESHOLDS,
+    Form,
     PreviousWeek,
     Situation,
     SituationThresholds,
     WeekInput,
     headroom_ratio,
+    judge_form,
     judge_week,
 )
 
@@ -308,3 +310,32 @@ def test_previous_end_must_be_the_day_before_the_week() -> None:
 
     with pytest.raises(ValueError, match="day before the week"):
         judge_week(week(prev=prev))
+
+
+@pytest.mark.parametrize(
+    ("fatigue", "form"),
+    [
+        # 体力 100 に対して、余力 −31% は疲れている、−30% ちょうどは順調
+        (131.0, Form.FATIGUED),
+        (130.0, Form.STEADY),
+        # +5% ちょうどは順調、+6% は休めている
+        (95.0, Form.STEADY),
+        (94.0, Form.FRESH),
+    ],
+)
+def test_form_uses_the_same_thresholds_as_the_week(fatigue: float, form: Form) -> None:
+    assert judge_form(point(SUNDAY, 100.0, fatigue), LONG_AGO, 0) == form
+
+
+def test_form_needs_enough_history() -> None:
+    """記録が 42 日に満たないうちは、体力が立ち上がる途中なので割合を使わない。"""
+    started = SUNDAY - timedelta(days=ENOUGH_HISTORY_DAYS - 1)
+
+    assert judge_form(point(SUNDAY, 100.0, 140.0), started, 0) == Form.NOT_ENOUGH_DATA
+    assert judge_form(point(SUNDAY, 100.0, 140.0), started - timedelta(days=1), 0) == Form.FATIGUED
+    assert judge_form(point(SUNDAY, 100.0, 140.0), None, 0) == Form.NOT_ENOUGH_DATA
+
+
+def test_form_is_not_judged_with_unknown_load_or_no_fitness() -> None:
+    assert judge_form(point(SUNDAY, 100.0, 140.0), LONG_AGO, 1) == Form.NOT_ENOUGH_DATA
+    assert judge_form(point(SUNDAY, 0.0, 0.0), LONG_AGO, 0) == Form.NOT_ENOUGH_DATA

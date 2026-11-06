@@ -16,11 +16,6 @@ class InvalidPeriodError(ValueError):
         self.value = value
 
 
-def needs_first_day(since: date | None, weeks: int | None) -> bool:
-    """期間を決めるのに最初のワークアウトの日が要るか。要らなければ DB から読まずに済む。"""
-    return since is None and weeks is None
-
-
 def dashboard_period(
     today: date,
     since: date | None,
@@ -31,10 +26,10 @@ def dashboard_period(
     """期間（両端を含む）を決める。since がなければ最初のワークアウトの日（first_day）から、
     until がなければ今日まで。
 
-    first_day は needs_first_day が True のときだけ使う。それ以外は None でよい。
+    first_day は since も weeks もないときだけ使う。
 
-    weeks を渡すと、since は until の weeks 週前の日になる。since と一緒には渡さない
-    （router で落とす）。
+    weeks を渡すと、since は until の weeks 週前の翌日になり、期間はちょうど weeks × 7 日に
+    なる。7 日ずつ区切ったときに半端な日が出ないため。since と一緒には渡さない（router で落とす）。
 
     until は今日で切る。未来の日を負荷 0 で埋めると、体力と疲労が先まで減っていく線が
     予測のように見えるため。期間の検査は既定値を決めて切った後にする。until を省いて
@@ -42,9 +37,9 @@ def dashboard_period(
     """
     until = min(until or today, today)
     if weeks is not None:
-        since = until - timedelta(weeks=weeks)
+        since = until - timedelta(weeks=weeks) + timedelta(days=1)
     if since is None:
-        # ここに来るのは needs_first_day が True のときだけ（weeks があれば上で決まる）
+        # ここに来るのは since も weeks もないときだけ（weeks があれば上で決まる）
         since = min(first_day or until, until)
     if since < EARLIEST_DAY:
         raise InvalidPeriodError("since", since, f"since must be on or after {EARLIEST_DAY}")

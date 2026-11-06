@@ -24,9 +24,10 @@ def start_of_day(day: date, tz: ZoneInfo) -> datetime:
 
 
 def since_for_weeks(weeks: int, today: date, tz: ZoneInfo) -> datetime:
-    """「直近 N 週」の始まり。利用者のタイムゾーンの今日（today）から N 週前の日の 0 時。
+    """「直近 N 週」の始まり。利用者のタイムゾーンの今日（today）の N 週前の翌日の 0 時。
+    今日を含めてちょうど N × 7 日になる。
 
     端末の日付で決めると、端末と設定のタイムゾーンがずれたときに境目の 1 日がずれるため、
     api で決める。ダッシュボードの weeks と同じ日から始まる。
     """
-    return start_of_day(today - timedelta(weeks=weeks), tz)
+    return start_of_day(today - timedelta(weeks=weeks) + timedelta(days=1), tz)

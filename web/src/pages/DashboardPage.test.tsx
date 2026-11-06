@@ -39,6 +39,28 @@ function dashboard(workouts: Dashboard["workouts"]): Dashboard {
     vo2max: [{ day: "2026-10-26", value: 48.7, average: 48.5 }],
     zones: { low: 3600, mid: 1800, high: 600 },
     workouts,
+    changes: { fitness: 5, fatigue: 5, headroom: 0, vo2max: 0.1 },
+    form: "steady",
+    zone_weeks: [],
+    totals: {
+      start: "2026-08-10",
+      end: "2026-11-01",
+      workouts: workouts.length,
+      total_sec: 3600 * workouts.length,
+      load: null,
+      load_per_workout: null,
+      workouts_without_load: 0,
+    },
+    previous_totals: {
+      start: "2026-05-18",
+      end: "2026-08-09",
+      workouts: 0,
+      total_sec: 0,
+      load: 0,
+      load_per_workout: null,
+      workouts_without_load: 0,
+    },
+    last_received_at: null,
   };
 }
 

@@ -23,8 +23,8 @@ async def read_workouts(
 ) -> WorkoutList:
     """本人のワークアウトを新しい順に。since 以上、until 未満。
 
-    weeks は「直近 N 週」。since は利用者のタイムゾーンの今日から N 週前の日の 0 時になる
-    （ダッシュボードの weeks と同じ日）。since とは一緒に渡せない。
+    weeks は「直近 N 週」。since は利用者のタイムゾーンの今日の N 週前の翌日の 0 時になる
+    （今日を含めて N × 7 日。ダッシュボードの weeks と同じ日）。since とは一緒に渡せない。
 
     続きを取るときは、前のページの最後の 1 件の started_at を until に、id を before_id に
     渡す。開始時刻が同じ記録がページの境目にあっても抜けない。before_id は until と一緒に使う。

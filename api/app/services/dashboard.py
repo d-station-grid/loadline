@@ -14,11 +14,30 @@ from app.domain.load import (
     total_zones,
     workout_load,
 )
-from app.domain.period import dashboard_period, needs_first_day
+from app.domain.period import dashboard_period
+from app.domain.situation import judge_form
+from app.domain.summary import (
+    CHANGE_DAYS,
+    WorkoutItem,
+    fitness_change,
+    previous_period,
+    totals,
+    vo2max_baseline_before,
+    weekly_zones,
+)
 from app.domain.vo2max import AVERAGE_DAYS, vo2max_trend
 from app.models import User, Vo2maxReading, Workout, WorkoutHeartRate
-from app.schemas.dashboard import Dashboard, DayPoint, Sport, Vo2maxPoint, WorkoutPoint
-from app.schemas.workouts import zone_seconds
+from app.schemas.dashboard import (
+    Changes,
+    Dashboard,
+    DayPoint,
+    Sport,
+    Totals,
+    Vo2maxPoint,
+    WorkoutPoint,
+    ZoneWeek,
+)
+from app.schemas.workouts import ZoneSeconds, zone_seconds
 from app.services.users import today_of
 
 # 表示の期間より前から計算を始める日数。体力の時定数の 6 倍で、それより前の負荷は
@@ -76,6 +95,26 @@ async def _vo2max(
     return [Vo2maxPoint(**asdict(p)) for p in vo2max_trend(readings) if p.day >= since]
 
 
+async def _vo2max_change(
+    session: AsyncSession, user_id: int, latest: Vo2maxPoint | None, until: date, tz: ZoneInfo
+) -> float | None:
+    """期間の最新の測定と、その 28 日前かそれより前の最後の測定との差。どちらかなければ None。
+
+    期間に測定がなくても読む。読む回数が記録の中身で変わらないようにするため。
+    """
+    before = vo2max_baseline_before(until if latest is None else latest.day)
+    value = await session.scalar(
+        select(Vo2maxReading.value)
+        .where(
+            Vo2maxReading.user_id == user_id,
+            Vo2maxReading.measured_at < start_of_day(before + timedelta(days=1), tz),
+        )
+        .order_by(Vo2maxReading.measured_at.desc())
+        .limit(1)
+    )
+    return None if latest is None or value is None else latest.value - float(value)
+
+
 async def build_dashboard(
     session: AsyncSession,
     user: User,
@@ -88,8 +127,8 @@ async def build_dashboard(
     """期間（両端を含む）のダッシュボード。since がなければ最初のワークアウトの日から、
     until がなければ今日まで。保存はせず、呼ばれるたびに計算する。
 
-    期間の決め方と検査は domain の dashboard_period。weeks を渡すと、since は until の
-    weeks 週前の日になる。「直近 N 週」の始まりを利用者のタイムゾーンの今日から決めるため。
+    期間の決め方と検査は domain の dashboard_period。weeks を渡すと、期間は until までの
+    ちょうど weeks × 7 日になる。「直近 N 週」の始まりを利用者のタイムゾーンの今日から決めるため。
     期間の誤りは InvalidPeriodError。
 
     today は利用者のタイムゾーンでの今日。振り返りの service が自分の決めた今日と同じ日で
@@ -98,12 +137,18 @@ async def build_dashboard(
     """
     tz = ZoneInfo(user.timezone)
     today = today or await today_of(session, user)
-    first_day = await _first_day(session, user.id, tz) if needs_first_day(since, weeks) else None
+    # 期間を決めるほか、余力の区分（記録が 42 日に満たないか）にも使う
+    first_day = await _first_day(session, user.id, tz)
     since, until = dashboard_period(today, since, until, weeks, first_day)
+    previous_since, previous_until = previous_period(since, until)
 
     warm_start = since - timedelta(days=WARMUP_DAYS)
+    # 前の期間の合計のため、期間が長いとウォームアップより前からも読む
     rows = await _workouts(
-        session, user.id, start_of_day(warm_start, tz), start_of_day(until + timedelta(days=1), tz)
+        session,
+        user.id,
+        start_of_day(min(warm_start, previous_since), tz),
+        start_of_day(until + timedelta(days=1), tz),
     )
     bpms = await _bpms(session, [w.id for w in rows])
     loads = [
@@ -124,10 +169,24 @@ async def build_dashboard(
 
     needs_settings = user.max_heart_rate is None or user.resting_heart_rate is None
     days: list[DayPoint] = []
+    change = None
+    form = None
     if not needs_settings:
         daily = daily_loads(((day, wl.load) for _, day, wl in loads), warm_start, until)
-        days = [DayPoint(**asdict(p)) for p in fitness_fatigue(daily) if p.day >= since]
+        points = fitness_fatigue(daily)
+        days = [DayPoint(**asdict(p)) for p in points if p.day >= since]
+        change = fitness_change(points, until)
+        # 負荷が分からない日は、週の判定と同じく until までの 7 日で数える
+        week_start = until - timedelta(days=CHANGE_DAYS - 1)
+        unknown_days = sum(1 for p in points if p.day >= week_start and p.load is None)
+        form = judge_form(points[-1], first_day, unknown_days)
 
+    vo2max = await _vo2max(session, user.id, since, until, tz)
+    items = [
+        WorkoutItem(day=day, duration_sec=w.duration_sec, load=wl)
+        for w, day, wl in loads
+        if sport == "all" or w.sport == sport
+    ]
     picked = [
         (w, day, wl)
         for w, day, wl in loads
@@ -140,7 +199,7 @@ async def build_dashboard(
         sport=sport,
         needs_heart_rate_settings=needs_settings,
         days=days,
-        vo2max=await _vo2max(session, user.id, since, until, tz),
+        vo2max=vo2max,
         zones=zone_seconds(total_zones([wl for _, _, wl in picked])) if has_boundaries else None,
         workouts=[
             WorkoutPoint(
@@ -153,4 +212,27 @@ async def build_dashboard(
             )
             for w, day, wl in picked
         ],
+        changes=Changes(
+            fitness=None if change is None else change.fitness,
+            fatigue=None if change is None else change.fatigue,
+            headroom=None if change is None else change.headroom,
+            vo2max=await _vo2max_change(
+                session, user.id, vo2max[-1] if vo2max else None, until, tz
+            ),
+        ),
+        form=form,
+        zone_weeks=[
+            ZoneWeek(
+                start=week.start,
+                end=week.end,
+                zones=ZoneSeconds(**asdict(week.zones)),
+                workouts_without_zones=week.workouts_without_zones,
+            )
+            for week in weekly_zones(items, since, until)
+        ]
+        if has_boundaries
+        else None,
+        totals=Totals(**asdict(totals(items, since, until))),
+        previous_totals=Totals(**asdict(totals(items, previous_since, previous_until))),
+        last_received_at=user.last_ingested_at,
     )
