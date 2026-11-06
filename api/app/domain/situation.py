@@ -215,7 +215,10 @@ def _rest_days_before(week: WeekInput) -> int | None:
 
 
 class Form(StrEnum):
-    """今日の余力の区分。カードの一言に使う。週の状況と同じ境目で分ける。"""
+    """ある日（ダッシュボードの until）の余力の区分。カードの一言に使う。
+
+    週の状況と同じ境目で分ける。
+    """
 
     NOT_ENOUGH_DATA = "not_enough_data"
     FATIGUED = "fatigued"
@@ -224,22 +227,24 @@ class Form(StrEnum):
 
 
 def judge_form(
-    today: FitnessPoint,
+    latest: FitnessPoint,
     first_workout_day: date | None,
     unknown_load_days: int,
     thresholds: SituationThresholds = DEFAULT_THRESHOLDS,
 ) -> Form:
-    """今日の余力 ÷ 体力 を、judge_week の 4〜7 と同じ境目で分ける。
+    """latest の日（ダッシュボードの until）の余力 ÷ 体力 を、judge_week の 4〜7 と
+    同じ境目で分ける。
 
-    unknown_load_days は今日までの 7 日のうち、負荷の分からないワークアウトを含む日の数。
+    unknown_load_days は latest の日までの 7 日のうち、負荷の分からないワークアウトを含む日の数。
     週の判定と同じく、max_unknown_load_days を超えたら割合を使わない。
-    走れなかった週・中断明けは週の材料が要るので、ここでは見ない。
+    走れなかった週・中断明けは週の材料が要るので、ここでは見ない。何週か休んで疲労が抜けても、
+    記録が enough_history_days 以上あれば「休めている」になる。
     """
-    ratio = headroom_ratio(today.fitness, today.fatigue)
+    ratio = headroom_ratio(latest.fitness, latest.fatigue)
     if (
         ratio is None
         or first_workout_day is None
-        or (today.day - first_workout_day).days < thresholds.enough_history_days
+        or (latest.day - first_workout_day).days < thresholds.enough_history_days
         or unknown_load_days > thresholds.max_unknown_load_days
     ):
         return Form.NOT_ENOUGH_DATA

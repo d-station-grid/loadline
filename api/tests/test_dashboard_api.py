@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import Identity, InvalidTokenError, get_token_verifier
@@ -470,28 +471,26 @@ async def test_zone_weeks_are_none_without_boundaries(
     assert body["zone_weeks"] is None
 
 
-async def test_last_received_at_is_the_latest_use_of_any_token(
+async def test_last_received_at_is_the_last_successful_ingest(
     client: AsyncClient, session: AsyncSession
 ) -> None:
     user = await _user(session)
-    other = await UserFactory.create_async(firebase_uid="uid-other")
-    latest = datetime(2026, 9, 24, 7, 12, tzinfo=JST)
-    # 再発行で無効にした古いトークンが、いちばん最近に使われていることもある
-    await IngestTokenFactory.create_async(
-        user_id=user.id, last_used_at=latest, revoked_at=latest + timedelta(hours=1)
-    )
-    await IngestTokenFactory.create_async(user_id=user.id, last_used_at=latest - timedelta(days=1))
-    await IngestTokenFactory.create_async(user_id=other.id, last_used_at=latest + timedelta(days=1))
+    ingested_at = await session.scalar(select(User.last_ingested_at).where(User.id == user.id))
 
     body = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY)
 
-    assert datetime.fromisoformat(body["last_received_at"]) == latest
+    assert ingested_at is not None
+    assert datetime.fromisoformat(body["last_received_at"]) == ingested_at
 
 
-async def test_last_received_at_is_none_before_anything_arrives(
+async def test_last_received_at_ignores_token_use(
     client: AsyncClient, session: AsyncSession
 ) -> None:
-    await _user(session)
+    """トークンの last_used_at は、取り込みに失敗した送信でも進む。それは見ない。"""
+    user = await UserFactory.create_async(firebase_uid="uid-1")
+    await IngestTokenFactory.create_async(
+        user_id=user.id, last_used_at=datetime(2026, 9, 24, 7, 12, tzinfo=JST)
+    )
 
     body = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY)
 

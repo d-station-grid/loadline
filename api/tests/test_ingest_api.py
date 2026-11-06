@@ -16,6 +16,16 @@ SAMPLE = Path(__file__).parent / "fixtures" / "sample_health-auto-export_workout
 APPLE_WATCH_ID = "EC706163-46F5-4250-916B-3909437C8064"
 
 
+async def _ingested_at(session: AsyncSession, user_id: int) -> tuple[Any, Any]:
+    """取り込みが最後に成功した日時と、設定を変えた日時。"""
+    row = (
+        await session.execute(
+            select(User.last_ingested_at, User.updated_at).where(User.id == user_id)
+        )
+    ).one()
+    return row[0], row[1]
+
+
 async def _user_with_token(session: AsyncSession) -> tuple[User, str]:
     user = await UserFactory.create_async()
     token, _ = await issue_token(session, user.id)
@@ -45,6 +55,7 @@ async def test_valid_token_ingests_and_marks_last_used(
     client: AsyncClient, session: AsyncSession
 ) -> None:
     user, token = await _user_with_token(session)
+    _, updated_before = await _ingested_at(session, user.id)
 
     res = await client.post(
         "/ingest",
@@ -53,6 +64,10 @@ async def test_valid_token_ingests_and_marks_last_used(
     )
 
     assert res.status_code == 200
+    ingested_at, updated_after = await _ingested_at(session, user.id)
+    assert ingested_at is not None
+    # 取り込みは設定の変更ではないので、updated_at は進めない
+    assert updated_after == updated_before
     assert res.json() == {
         "workouts_added": 1,
         "workouts_updated": 0,
@@ -67,13 +82,18 @@ async def test_valid_token_ingests_and_marks_last_used(
 
 
 async def test_malformed_body_is_422(client: AsyncClient, session: AsyncSession) -> None:
-    _, token = await _user_with_token(session)
+    user, token = await _user_with_token(session)
 
     res = await client.post(
         "/ingest", json={"workouts": []}, headers={"Authorization": f"Bearer {token}"}
     )
 
     assert res.status_code == 422
+    # トークンは使われたが、取り込みには失敗している。ダッシュボードの Last received は進めない
+    row = await current_token(session, user.id)
+    assert row is not None
+    assert row.last_used_at is not None
+    assert (await _ingested_at(session, user.id))[0] is None
 
 
 async def _stored(session: AsyncSession, user_id: int) -> tuple[Any, ...]:

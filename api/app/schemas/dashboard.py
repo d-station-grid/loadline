@@ -92,8 +92,9 @@ class Dashboard(BaseModel):
     changes と form も全種目。form は until の余力の区分（振り返りの週の判定と同じ境目）で、
     days が空なら None。zone_weeks は until から 7 日ずつ区切った強度の時間で、古い順。
     境目がそろわなければ None。totals は期間の合計、previous_totals は since の前の同じ
-    日数の合計。last_received_at は Health Auto Export から最後に記録が届いた日時で、
-    届いたことがなければ None。
+    日数の合計。last_received_at は Health Auto Export からの取り込みが最後に成功した日時で、
+    成功したことがなければ None（デモの利用者は常に None）。新しい記録が保存されたとは限らない
+    （同じ記録が届き直しただけでも進む）。
     """
 
     since: date

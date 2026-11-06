@@ -27,6 +27,7 @@ erDiagram
     varchar timezone "例 Asia/Tokyo"
     smallint review_weekday "0 が月曜、6 が日曜"
     boolean send_notes_to_ai
+    timestamptz last_ingested_at "取り込みが最後に成功した日時"
     timestamptz created_at
     timestamptz updated_at
   }

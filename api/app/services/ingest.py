@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.apple_health import (
@@ -178,5 +178,12 @@ async def ingest(session: AsyncSession, user_id: int, payload: IngestPayload) ->
     for metric in payload.data.metrics:
         if metric.name == "vo2_max":
             await _upsert_vo2max(session, user_id, metric, result)
+    # 保存と同じトランザクションで書くので、途中で失敗すれば一緒に巻き戻る。
+    # updated_at は設定を変えた日時なので、ここでは進めない
+    await session.execute(
+        update(User)
+        .where(User.id == user_id)
+        .values(last_ingested_at=func.now(), updated_at=User.updated_at)
+    )
     await session.commit()
     return result

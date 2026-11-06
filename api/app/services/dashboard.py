@@ -26,7 +26,7 @@ from app.domain.summary import (
     weekly_zones,
 )
 from app.domain.vo2max import AVERAGE_DAYS, vo2max_trend
-from app.models import IngestToken, User, Vo2maxReading, Workout, WorkoutHeartRate
+from app.models import User, Vo2maxReading, Workout, WorkoutHeartRate
 from app.schemas.dashboard import (
     Changes,
     Dashboard,
@@ -115,13 +115,6 @@ async def _vo2max_change(
     return None if latest is None or value is None else latest.value - float(value)
 
 
-async def _last_received_at(session: AsyncSession, user_id: int) -> datetime | None:
-    """Health Auto Export が最後に記録を送ってきた日時。再発行で無効にしたトークンも含める。"""
-    return await session.scalar(
-        select(func.max(IngestToken.last_used_at)).where(IngestToken.user_id == user_id)
-    )
-
-
 async def build_dashboard(
     session: AsyncSession,
     user: User,
@@ -183,7 +176,7 @@ async def build_dashboard(
         points = fitness_fatigue(daily)
         days = [DayPoint(**asdict(p)) for p in points if p.day >= since]
         change = fitness_change(points, until)
-        # 負荷が分からない日は、週の判定と同じく今日までの 7 日で数える
+        # 負荷が分からない日は、週の判定と同じく until までの 7 日で数える
         week_start = until - timedelta(days=CHANGE_DAYS - 1)
         unknown_days = sum(1 for p in points if p.day >= week_start and p.load is None)
         form = judge_form(points[-1], first_day, unknown_days)
@@ -241,5 +234,5 @@ async def build_dashboard(
         else None,
         totals=Totals(**asdict(totals(items, since, until))),
         previous_totals=Totals(**asdict(totals(items, previous_since, previous_until))),
-        last_received_at=await _last_received_at(session, user.id),
+        last_received_at=user.last_ingested_at,
     )
