@@ -21,7 +21,10 @@ vi.mock("../components/Chart", () => ({ default: () => null }));
 
 const user = { getIdToken: async () => "token" } as unknown as User;
 
-function dashboard(workouts: Dashboard["workouts"]): Dashboard {
+function dashboard(
+  workouts: Dashboard["workouts"],
+  extra: Partial<Dashboard> = {},
+): Dashboard {
   return {
     since: "2026-08-10",
     until: "2026-11-01",
@@ -61,6 +64,7 @@ function dashboard(workouts: Dashboard["workouts"]): Dashboard {
       workouts_without_load: 0,
     },
     last_received_at: null,
+    ...extra,
   };
 }
 
@@ -128,9 +132,9 @@ test("期間を切り替えて読み込み直す間も、Recent workouts の負�
   // 次の読み込みは終わらせない
   vi.mocked(getDashboard).mockReturnValue(new Promise(() => {}));
   const period = screen.getByRole("group", { name: "Period" });
-  fireEvent.click(within(period).getByRole("button", { name: "All" }));
+  fireEvent.click(within(period).getByRole("button", { name: "6M" }));
 
-  // 読み直すのは上の All だけ。Intensity（12 週）は持っている結果を使う
+  // 読み直すのは上の 6M だけ。Intensity（3M）は持っている結果を使う
   await vi.waitFor(() => expect(getDashboard).toHaveBeenCalledTimes(2));
   expect(screen.getByText("82")).toBeInTheDocument();
 });
@@ -168,14 +172,14 @@ test("上の期間だけを変えても、Intensity は持っている結果を�
   await screen.findByText("Time in each zone");
   expect(getDashboard).toHaveBeenCalledTimes(1);
 
-  // 上の 4 週の読み込みは終わらせない
+  // 上の 1M（4 週）の読み込みは終わらせない
   vi.mocked(getDashboard).mockReturnValue(new Promise(() => {}));
   const period = screen.getByRole("group", { name: "Period" });
-  fireEvent.click(within(period).getByRole("button", { name: "4 weeks" }));
+  fireEvent.click(within(period).getByRole("button", { name: "1M" }));
 
   await vi.waitFor(() => expect(getDashboard).toHaveBeenCalledTimes(2));
   expect(vi.mocked(getDashboard).mock.calls[1][0]).toMatchObject({ weeks: 4 });
-  // Intensity（12 週）は前の結果のまま
+  // Intensity（3M）は前の結果のまま
   expect(screen.getByText("Time in each zone")).toBeInTheDocument();
   const card = screen.getByRole("region", { name: "Intensity" });
   expect(within(card).queryByText("Loading…")).toBeNull();
@@ -188,9 +192,9 @@ test("前に読んだ期間に戻したときは、読み直さない", async ()
   await screen.findByText("Time in each zone");
 
   const period = screen.getByRole("group", { name: "Period" });
-  fireEvent.click(within(period).getByRole("button", { name: "4 weeks" }));
+  fireEvent.click(within(period).getByRole("button", { name: "1M" }));
   await vi.waitFor(() => expect(getDashboard).toHaveBeenCalledTimes(2));
-  fireEvent.click(within(period).getByRole("button", { name: "12 weeks" }));
+  fireEvent.click(within(period).getByRole("button", { name: "3M" }));
 
   await screen.findByText("Fitness, fatigue and VO2max");
   expect(getDashboard).toHaveBeenCalledTimes(2);
@@ -245,4 +249,146 @@ test("メモのモーダルは Tab を中で回し、外にフォーカスがあ
   fireEvent.keyDown(document.body, { key: "Escape" });
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(opener).toHaveFocus();
+});
+
+test("カードの下に、api の差と Form の一言を出す。VO2max は 4 週前との差と測った日", async () => {
+  vi.mocked(getDashboard).mockResolvedValue(
+    dashboard([], {
+      changes: { fitness: 5, fatigue: -1.24, headroom: 6.2, vo2max: 0.1 },
+      form: "fatigued",
+    }),
+  );
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
+  render(<DashboardPage {...props} />);
+
+  const stats = await screen.findByLabelText("Latest");
+  expect(within(stats).getByText("+5.0 vs last week")).toBeInTheDocument();
+  expect(within(stats).getByText("-1.2 vs last week")).toBeInTheDocument();
+  expect(within(stats).getByText("Tired — ease off")).toBeInTheDocument();
+  expect(within(stats).getByText(/^\+0\.1 in 4 weeks · /)).toBeInTheDocument();
+});
+
+test("比べる値がなければ、差の行を出さない。VO2max は測った日だけ", async () => {
+  vi.mocked(getDashboard).mockResolvedValue(
+    dashboard([], {
+      changes: { fitness: null, fatigue: null, headroom: null, vo2max: null },
+      form: null,
+    }),
+  );
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
+  render(<DashboardPage {...props} />);
+
+  const stats = await screen.findByLabelText("Latest");
+  expect(within(stats).queryByText(/vs last week/)).toBeNull();
+  expect(within(stats).queryByText(/in 4 weeks/)).toBeNull();
+  expect(within(stats).getByText(/26/)).toBeInTheDocument();
+});
+
+test("Last received は、取り込みが成功していれば見出しの横に出し、null なら出さない", async () => {
+  vi.mocked(getDashboard).mockResolvedValueOnce(dashboard([]));
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
+  const { unmount } = render(<DashboardPage {...props} />);
+  await screen.findByLabelText("Latest");
+  expect(screen.queryByText(/Last received/)).toBeNull();
+  unmount();
+
+  vi.mocked(getDashboard).mockResolvedValueOnce(
+    dashboard([], { last_received_at: "2026-09-24T07:12:00+09:00" }),
+  );
+  render(<DashboardPage {...props} />);
+  expect(await screen.findByText(/^Last received · /)).toBeInTheDocument();
+});
+
+test("期間は 1W・1M・3M・6M で、最初は 3M（13 週）。選んだ期間の週の数を渡す", async () => {
+  vi.mocked(getDashboard).mockResolvedValue(dashboard([point(1, 50)]));
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
+  render(<DashboardPage {...props} />);
+  await screen.findByText("Time in each zone");
+
+  const period = screen.getByRole("group", { name: "Period" });
+  expect(
+    within(period)
+      .getAllByRole("button")
+      .map((b) => b.textContent),
+  ).toEqual(["1W", "1M", "3M", "6M"]);
+  expect(vi.mocked(getDashboard).mock.calls[0][0]).toMatchObject({
+    weeks: 13,
+  });
+
+  fireEvent.click(within(period).getByRole("button", { name: "1W" }));
+  await vi.waitFor(() => expect(getDashboard).toHaveBeenCalledTimes(2));
+  expect(vi.mocked(getDashboard).mock.calls[1][0]).toMatchObject({ weeks: 1 });
+
+  fireEvent.click(within(period).getByRole("button", { name: "6M" }));
+  await vi.waitFor(() => expect(getDashboard).toHaveBeenCalledTimes(3));
+  expect(vi.mocked(getDashboard).mock.calls[2][0]).toMatchObject({
+    weeks: 26,
+  });
+});
+
+test("Totals は api の値を出す。負荷の 0 と分からない（–）を分け、前の期間を添える", async () => {
+  vi.mocked(getDashboard).mockResolvedValue(
+    dashboard([point(1, null)], {
+      totals: {
+        start: "2026-08-03",
+        end: "2026-11-01",
+        workouts: 2,
+        total_sec: 5400,
+        load: null,
+        load_per_workout: null,
+        workouts_without_load: 2,
+      },
+      previous_totals: {
+        start: "2026-05-04",
+        end: "2026-08-02",
+        workouts: 0,
+        total_sec: 0,
+        load: 0,
+        load_per_workout: null,
+        workouts_without_load: 0,
+      },
+    }),
+  );
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
+  render(<DashboardPage {...props} />);
+
+  const totals = await screen.findByLabelText("Totals");
+  const tile = (label: string) =>
+    within(totals).getByText(label).parentElement as HTMLElement;
+  expect(tile("Time")).toHaveTextContent("1.5 h");
+  expect(tile("Time")).toHaveTextContent("prev 3 months · 0.0 h");
+  expect(tile("Workouts")).toHaveTextContent("2prev 3 months · 0");
+  expect(tile("Load")).toHaveTextContent("–prev 3 months · 0");
+  expect(tile("Load per workout")).toHaveTextContent("–prev 3 months · –");
+  expect(
+    screen.getByText(/Load leaves out workouts without heart rate: 2/),
+  ).toBeInTheDocument();
+  // 右上に種目、期間、回数
+  expect(screen.getByText("All · last 3 months · 2")).toBeInTheDocument();
+});
+
+test("週ごとの強度は、心拍のない回を含む週を注記し、境目がなければ案内を出す", async () => {
+  const week = (without: number) => ({
+    start: "2026-10-26",
+    end: "2026-11-01",
+    zones: { low: 0, mid: 0, high: 0 },
+    workouts_without_zones: without,
+  });
+  vi.mocked(getDashboard).mockResolvedValueOnce(
+    dashboard([point(1, 50)], { zone_weeks: [week(0), week(1)] }),
+  );
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
+  const { unmount } = render(<DashboardPage {...props} />);
+  expect(
+    await screen.findByText(/▲ marks 1 week\(s\) with a workout/),
+  ).toBeInTheDocument();
+  unmount();
+
+  vi.mocked(getDashboard).mockResolvedValueOnce(
+    dashboard([point(1, 50)], { zone_weeks: null }),
+  );
+  render(<DashboardPage {...props} />);
+  expect(
+    await screen.findByText("Needs zone boundaries in settings."),
+  ).toBeInTheDocument();
 });

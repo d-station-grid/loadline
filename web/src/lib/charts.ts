@@ -6,8 +6,9 @@ import type {
   Vo2MaxPoint,
   WorkoutPoint,
   ZoneSeconds,
+  ZoneWeek,
 } from "../api";
-import { SPORT_LABEL } from "./format";
+import { formatDay, SPORT_LABEL } from "./format";
 
 // API の応答を ECharts の option に組み替える。描画はしないので、ここだけを単体で検査する。
 // 日付の軸は time にして、[日付, 値] の組で渡す。値のない日は線が途切れる。
@@ -317,6 +318,60 @@ export function zoneRows(zones: ZoneSeconds | null): ZoneRow[] | null {
     width: total === 0 ? 0 : (r.sec / total) * 100,
     color: CHART_COLORS.zones[i],
   }));
+}
+
+/**
+ * 週ごとの強度の時間（分）の積み上げ棒。横は週の初日。api が until から 7 日ずつ区切った順に並べる。
+ * 心拍のない回は api が足していないので、その回を含む週は棒の上に ▲ を置く。
+ * 0 分の棒を、休んだ週と読み違えないようにするため。
+ */
+export function zoneWeeksOption(weeks: ZoneWeek[]): EChartsOption {
+  const labels = weeks.map((w) => formatDay(w.start));
+  const missing = weeks.flatMap((w, i) =>
+    w.workouts_without_zones > 0
+      ? [[labels[i], toMinutes(w.zones.low + w.zones.mid + w.zones.high)]]
+      : [],
+  );
+  const legend = ["Low", "Mid", "High"];
+  if (missing.length > 0) legend.push(NO_HEART_RATE);
+  const zones = [
+    { name: "Low", key: "low" },
+    { name: "Mid", key: "mid" },
+    { name: "High", key: "high" },
+  ] as const;
+  return {
+    textStyle: TEXT_STYLE,
+    tooltip: { trigger: "axis" },
+    legend: { ...LEGEND, data: legend },
+    grid: { top: 36, bottom: 28, left: 40, right: 8 },
+    xAxis: {
+      type: "category",
+      data: labels,
+      axisLabel: { hideOverlap: true, color: CHART_COLORS.axis },
+      axisLine: { lineStyle: { color: CHART_COLORS.grid } },
+      axisTick: { show: false },
+    },
+    yAxis: { ...VALUE_AXIS, name: "min" },
+    series: [
+      ...zones.map((z, i): SeriesOption => ({
+        name: z.name,
+        type: "bar",
+        stack: "zones",
+        color: CHART_COLORS.zones[i],
+        data: weeks.map((w) => toMinutes(w.zones[z.key])),
+      })),
+      {
+        name: NO_HEART_RATE,
+        type: "scatter",
+        symbol: "triangle",
+        symbolSize: 10,
+        // 棒の上の端に重ならないよう、印を少し上にずらす
+        symbolOffset: [0, -10],
+        color: CHART_COLORS.noHeartRate,
+        data: missing,
+      },
+    ],
+  };
 }
 
 /** 1 回ごとの負荷（横）と高強度の時間（縦、分）。種目ごとに色を分け、どちらかが null の回は除く。 */

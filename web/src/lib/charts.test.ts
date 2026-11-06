@@ -1,7 +1,13 @@
 import type { EChartsOption, SeriesOption } from "echarts";
 import { expect, test } from "vitest";
 
-import type { DayPoint, NoteOut, Vo2MaxPoint, WorkoutPoint } from "../api";
+import type {
+  DayPoint,
+  NoteOut,
+  Vo2MaxPoint,
+  WorkoutPoint,
+  ZoneWeek,
+} from "../api";
 import {
   loadOption,
   trendOption,
@@ -9,7 +15,9 @@ import {
   workoutsOption,
   dayFromTime,
   zoneRows,
+  zoneWeeksOption,
 } from "./charts";
+import { formatDay } from "./format";
 
 function seriesOf(option: EChartsOption | null): SeriesOption[] {
   return (option?.series ?? []) as SeriesOption[];
@@ -310,4 +318,56 @@ test("時間の軸の位置は、いちばん近い日にする", () => {
   expect(dayFromTime(midnight + 11 * 3600 * 1000)).toBe("2026-10-26");
   expect(dayFromTime(midnight - 11 * 3600 * 1000)).toBe("2026-10-26");
   expect(dayFromTime(midnight + 13 * 3600 * 1000)).toBe("2026-10-27");
+});
+
+function zoneWeek(
+  start: string,
+  zones: ZoneWeek["zones"],
+  without = 0,
+): ZoneWeek {
+  return { start, end: start, zones, workouts_without_zones: without };
+}
+
+test("週ごとの強度は、低・中・高を分にして積み上げ、横は週の初日", () => {
+  const option = zoneWeeksOption([
+    zoneWeek("2026-10-19", { low: 3600, mid: 1530, high: 89 }),
+    zoneWeek("2026-10-26", { low: 0, mid: 0, high: 0 }),
+  ]);
+
+  const [low, mid, high, missing] = seriesOf(option);
+  expect([low, mid, high].map((s) => (s as { stack?: string }).stack)).toEqual([
+    "zones",
+    "zones",
+    "zones",
+  ]);
+  expect(low.data).toEqual([60, 0]);
+  expect(mid.data).toEqual([26, 0]);
+  expect(high.data).toEqual([1, 0]);
+  expect(missing.data).toEqual([]);
+  // 日付は端末の言語で書く（英語なら Oct 19）
+  expect((option.xAxis as { data: string[] }).data).toEqual([
+    formatDay("2026-10-19"),
+    formatDay("2026-10-26"),
+  ]);
+  // 印のない期間は凡例にも出さない
+  expect((option.legend as { data: string[] }).data).toEqual([
+    "Low",
+    "Mid",
+    "High",
+  ]);
+});
+
+test("心拍のない回を含む週は、棒の上の端に ▲ を置く。0 分の週でも置く", () => {
+  const option = zoneWeeksOption([
+    zoneWeek("2026-10-19", { low: 1200, mid: 600, high: 0 }, 1),
+    zoneWeek("2026-10-26", { low: 0, mid: 0, high: 0 }, 2),
+    zoneWeek("2026-11-02", { low: 600, mid: 0, high: 0 }),
+  ]);
+
+  const missing = seriesOf(option)[3];
+  expect(missing.data).toEqual([
+    [formatDay("2026-10-19"), 30],
+    [formatDay("2026-10-26"), 0],
+  ]);
+  expect((option.legend as { data: string[] }).data).toContain("No heart rate");
 });
