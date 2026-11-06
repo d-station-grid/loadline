@@ -97,22 +97,28 @@ async def _vo2max(
 
 async def _vo2max_change(
     session: AsyncSession, user_id: int, latest: Vo2maxPoint | None, until: date, tz: ZoneInfo
-) -> float | None:
-    """期間の最新の測定と、その 28 日前かそれより前の最後の測定との差。どちらかなければ None。
+) -> tuple[float, date] | None:
+    """期間の最新の測定と、その 28 日前かそれより前の最後の測定との差と、比べた測定の日。
+    どちらかの測定がなければ None。
 
     期間に測定がなくても読む。読む回数が記録の中身で変わらないようにするため。
     """
     before = vo2max_baseline_before(until if latest is None else latest.day)
-    value = await session.scalar(
-        select(Vo2maxReading.value)
-        .where(
-            Vo2maxReading.user_id == user_id,
-            Vo2maxReading.measured_at < start_of_day(before + timedelta(days=1), tz),
+    row = (
+        await session.execute(
+            select(Vo2maxReading.measured_at, Vo2maxReading.value)
+            .where(
+                Vo2maxReading.user_id == user_id,
+                Vo2maxReading.measured_at < start_of_day(before + timedelta(days=1), tz),
+            )
+            .order_by(Vo2maxReading.measured_at.desc())
+            .limit(1)
         )
-        .order_by(Vo2maxReading.measured_at.desc())
-        .limit(1)
-    )
-    return None if latest is None or value is None else latest.value - float(value)
+    ).first()
+    if latest is None or row is None:
+        return None
+    measured_at, value = row
+    return latest.value - float(value), measured_at.astimezone(tz).date()
 
 
 async def build_dashboard(
@@ -182,6 +188,9 @@ async def build_dashboard(
         form = judge_form(points[-1], first_day, unknown_days)
 
     vo2max = await _vo2max(session, user.id, since, until, tz)
+    vo2max_change = await _vo2max_change(
+        session, user.id, vo2max[-1] if vo2max else None, until, tz
+    )
     items = [
         WorkoutItem(day=day, duration_sec=w.duration_sec, load=wl)
         for w, day, wl in loads
@@ -216,9 +225,8 @@ async def build_dashboard(
             fitness=None if change is None else change.fitness,
             fatigue=None if change is None else change.fatigue,
             headroom=None if change is None else change.headroom,
-            vo2max=await _vo2max_change(
-                session, user.id, vo2max[-1] if vo2max else None, until, tz
-            ),
+            vo2max=None if vo2max_change is None else vo2max_change[0],
+            vo2max_since=None if vo2max_change is None else vo2max_change[1],
         ),
         form=form,
         zone_weeks=[

@@ -89,7 +89,7 @@ test("負荷が null の日は棒を出さず、負荷 0 の高さに印を置�
 
 test("心拍のない日がなければ、凡例に No heart rate を出さない", () => {
   const legendOf = (days: DayPoint[]) =>
-    (loadOption(days).legend as { data: string[] }).data;
+    (loadOption(days).legend as { data: unknown[] }).data;
   const day = { fitness: 30, fatigue: 50, headroom: -20 };
 
   expect(legendOf([{ day: "2026-10-01", load: 12, ...day }])).toEqual([
@@ -97,9 +97,10 @@ test("心拍のない日がなければ、凡例に No heart rate を出さな�
     "Fatigue",
     "Load",
   ]);
-  expect(legendOf([{ day: "2026-10-01", load: null, ...day }])).toContain(
-    "No heart rate",
-  );
+  expect(legendOf([{ day: "2026-10-01", load: null, ...day }])).toContainEqual({
+    name: "No heart rate",
+    icon: "triangle",
+  });
 });
 
 test("VO2max は測定値と 30 日平均を別の series にする", () => {
@@ -369,5 +370,34 @@ test("心拍のない回を含む週は、棒の上の端に ▲ を置く。0 �
     [formatDay("2026-10-19"), 30],
     [formatDay("2026-10-26"), 0],
   ]);
-  expect((option.legend as { data: string[] }).data).toContain("No heart rate");
+  expect((option.legend as { data: unknown[] }).data).toContainEqual({
+    name: "No heart rate",
+    icon: "triangle",
+  });
+});
+
+test("▲ はツールチップに出さず、凡例の印は三角にする。どちらのチャートも同じ", () => {
+  const weekly = zoneWeeksOption([
+    zoneWeek("2026-10-19", { low: 1200, mid: 0, high: 0 }, 1),
+  ]);
+  const daily = loadOption([
+    { day: "2026-10-01", load: null, fitness: 1, fatigue: 1, headroom: 0 },
+  ]);
+
+  for (const option of [weekly, daily]) {
+    const missing = seriesOf(option).find((s) => s.name === "No heart rate");
+    expect(missing?.tooltip).toEqual({ show: false });
+    expect((option.legend as { data: unknown[] }).data).toContainEqual({
+      name: "No heart rate",
+      icon: "triangle",
+    });
+  }
+});
+
+test("週ごとの強度の凡例は、上に取った余白に置く", () => {
+  const option = zoneWeeksOption([
+    zoneWeek("2026-10-19", { low: 600, mid: 0, high: 0 }),
+  ]);
+
+  expect((option.legend as { top?: number }).top).toBe(0);
 });

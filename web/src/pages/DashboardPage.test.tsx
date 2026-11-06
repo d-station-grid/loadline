@@ -4,6 +4,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 
 import type { Dashboard, WorkoutSummary } from "../api";
 import { getDashboard, getWorkouts } from "../lib/api";
+import { formatDay } from "../lib/format";
 import DashboardPage from "./DashboardPage";
 
 vi.mock("../lib/api", () => ({ getDashboard: vi.fn(), getWorkouts: vi.fn() }));
@@ -42,7 +43,13 @@ function dashboard(
     vo2max: [{ day: "2026-10-26", value: 48.7, average: 48.5 }],
     zones: { low: 3600, mid: 1800, high: 600 },
     workouts,
-    changes: { fitness: 5, fatigue: 5, headroom: 0, vo2max: 0.1 },
+    changes: {
+      fitness: 5,
+      fatigue: 5,
+      headroom: 0,
+      vo2max: 0.1,
+      vo2max_since: "2026-09-20",
+    },
     form: "steady",
     zone_weeks: [],
     totals: {
@@ -251,10 +258,16 @@ test("メモのモーダルは Tab を中で回し、外にフォーカスがあ
   expect(opener).toHaveFocus();
 });
 
-test("カードの下に、api の差と Form の一言を出す。VO2max は 4 週前との差と測った日", async () => {
+test("カードの下に、api の差と Form の一言を出す。VO2max は比べた測定の日からの差と測った日", async () => {
   vi.mocked(getDashboard).mockResolvedValue(
     dashboard([], {
-      changes: { fitness: 5, fatigue: -1.24, headroom: 6.2, vo2max: 0.1 },
+      changes: {
+        fitness: 5,
+        fatigue: -1.24,
+        headroom: 6.2,
+        vo2max: 0.1,
+        vo2max_since: "2026-08-20",
+      },
       form: "fatigued",
     }),
   );
@@ -265,13 +278,25 @@ test("カードの下に、api の差と Form の一言を出す。VO2max は 4 
   expect(within(stats).getByText("+5.0 vs last week")).toBeInTheDocument();
   expect(within(stats).getByText("-1.2 vs last week")).toBeInTheDocument();
   expect(within(stats).getByText("Tired — ease off")).toBeInTheDocument();
-  expect(within(stats).getByText(/^\+0\.1 in 4 weeks · /)).toBeInTheDocument();
+  // 測定が空くと 4 週より前と比べるので、「in 4 weeks」ではなく比べた日を書く
+  expect(
+    within(stats).getByText(
+      `+0.1 since ${formatDay("2026-08-20")} · ${formatDay("2026-10-26")}`,
+    ),
+  ).toBeInTheDocument();
+  expect(within(stats).queryByText(/in 4 weeks/)).toBeNull();
 });
 
 test("比べる値がなければ、差の行を出さない。VO2max は測った日だけ", async () => {
   vi.mocked(getDashboard).mockResolvedValue(
     dashboard([], {
-      changes: { fitness: null, fatigue: null, headroom: null, vo2max: null },
+      changes: {
+        fitness: null,
+        fatigue: null,
+        headroom: null,
+        vo2max: null,
+        vo2max_since: null,
+      },
       form: null,
     }),
   );
@@ -280,7 +305,7 @@ test("比べる値がなければ、差の行を出さない。VO2max は測っ�
 
   const stats = await screen.findByLabelText("Latest");
   expect(within(stats).queryByText(/vs last week/)).toBeNull();
-  expect(within(stats).queryByText(/in 4 weeks/)).toBeNull();
+  expect(within(stats).queryByText(/since/)).toBeNull();
   expect(within(stats).getByText(/26/)).toBeInTheDocument();
 });
 
@@ -391,4 +416,35 @@ test("週ごとの強度は、心拍のない回を含む週を注記し、境�
   expect(
     await screen.findByText("Needs zone boundaries in settings."),
   ).toBeInTheDocument();
+});
+
+test("境目があって期間の合計が出ないときは、心拍のない回の数だけを書く", async () => {
+  vi.mocked(getDashboard).mockResolvedValue(
+    dashboard([point(1, 50)], {
+      zones: null,
+      zone_weeks: [
+        {
+          start: "2026-10-19",
+          end: "2026-10-25",
+          zones: { low: 600, mid: 0, high: 0 },
+          workouts_without_zones: 1,
+        },
+        {
+          start: "2026-10-26",
+          end: "2026-11-01",
+          zones: { low: 0, mid: 0, high: 0 },
+          workouts_without_zones: 2,
+        },
+      ],
+    }),
+  );
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
+  render(<DashboardPage {...props} />);
+
+  expect(
+    await screen.findByText(
+      "Not shown: 3 workout(s) in this period have no heart rate.",
+    ),
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/Needs zone boundaries/)).toBeNull();
 });

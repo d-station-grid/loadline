@@ -387,8 +387,11 @@ async def test_vo2max_change_compares_with_four_weeks_before(
     without_old = await _get(client, since="2026-08-24", until="2026-08-24")
 
     assert body["changes"]["vo2max"] == pytest.approx(2.5)
+    # 比べた測定の日。28 日より前に空いているので、画面は「4 週前」ではなくこの日を書く
+    assert body["changes"]["vo2max_since"] == "2026-08-20"
     # 8/24 の 28 日前（7/27）より前に測定がない
     assert without_old["changes"]["vo2max"] is None
+    assert without_old["changes"]["vo2max_since"] is None
 
 
 async def test_vo2max_change_is_none_without_a_reading_in_the_period(

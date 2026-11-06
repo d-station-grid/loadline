@@ -488,14 +488,17 @@ function vsLastWeek(change: number | null): string | undefined {
 
 /**
  * VO2max の下の行。期間の最新の測定は今日の値ではないので、測った日を添える。
- * 4 週前と比べる測定がなければ、日付だけ。
+ * 差は、api が比べた測定の日を「since」で書く。測定が空くと 4 週より前の測定と比べるので、
+ * 「in 4 weeks」とは書かない。比べる測定がなければ、日付だけ。
  */
 function vo2maxNote(data: Dashboard): string | undefined {
   const latest = data.vo2max.at(-1);
   if (!latest) return undefined;
   const day = formatDay(latest.day);
-  const change = data.changes.vo2max;
-  return change === null ? day : `${formatChange(change)} in 4 weeks · ${day}`;
+  const { vo2max: change, vo2max_since: since } = data.changes;
+  return change === null || since === null
+    ? day
+    : `${formatChange(change)} since ${formatDay(since)} · ${day}`;
 }
 
 /** 小さなラベルの下に大きな数字。値がなければ – */
@@ -546,6 +549,9 @@ function IntensityCard({
   // 心拍のない回を含む週。棒の ▲ の説明に使う
   const weeksWithoutZones =
     data?.zone_weeks?.filter((w) => w.workouts_without_zones > 0).length ?? 0;
+  // 期間の心拍のない回。境目があるのに期間の合計が出ない理由
+  const workoutsWithoutZones =
+    data?.zone_weeks?.reduce((n, w) => n + w.workouts_without_zones, 0) ?? 0;
   const span = rangeOf(range).span;
   const sportLabel = SPORTS.find((s) => s.key === sport)?.label ?? sport;
 
@@ -623,10 +629,15 @@ function IntensityCard({
                 <h4>Time in each zone</h4>
                 {zones ? (
                   <ZoneBreakdown rows={zones} />
+                ) : data.zone_weeks ? (
+                  // 境目はある。心拍のない回を外して足すと少なく見えるので、合計は出さない
+                  <p className="muted small">
+                    Not shown: {workoutsWithoutZones} workout(s) in this period
+                    have no heart rate.
+                  </p>
                 ) : (
                   <p className="muted small">
-                    Needs zone boundaries in settings and heart rate on every
-                    workout in this period.
+                    Needs zone boundaries in settings.
                   </p>
                 )}
               </div>
