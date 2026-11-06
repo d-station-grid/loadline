@@ -6,13 +6,18 @@ import type {
   Vo2MaxPoint,
   WorkoutPoint,
   ZoneSeconds,
+  ZoneWeek,
 } from "../api";
-import { SPORT_LABEL } from "./format";
+import { formatDay, SPORT_LABEL } from "./format";
 
 // API の応答を ECharts の option に組み替える。描画はしないので、ここだけを単体で検査する。
 // 日付の軸は time にして、[日付, 値] の組で渡す。値のない日は線が途切れる。
 
 const NO_HEART_RATE = "No heart rate";
+// 凡例の ▲ の項目。印は series と同じ三角にする（既定の丸だと、どの印の説明か分からない）
+const NO_HEART_RATE_LEGEND = { name: NO_HEART_RATE, icon: "triangle" };
+/** 凡例の項目。名前だけか、印の形を決めたもの */
+type LegendItem = string | { name: string; icon: string };
 
 // チャートの色。index.css の色の変数と同じ値にする（canvas には CSS の変数が届かないため）。
 // 値は Figma の S08 から
@@ -30,6 +35,17 @@ export const CHART_COLORS = {
   axis: "#79878f",
   grid: "#e5eaec",
 };
+
+// ▲ の series の共通の形。▲ の高さは置き場所にすぎない（その日の負荷 0、その週の分かった分数）ので、
+// ツールチップには出さない。出すと「No heart rate: 30」と心拍のない時間に読めるため
+const NO_HEART_RATE_SERIES = {
+  name: NO_HEART_RATE,
+  type: "scatter",
+  symbol: "triangle",
+  symbolSize: 10,
+  color: CHART_COLORS.noHeartRate,
+  tooltip: { show: false },
+} as const;
 
 /** 体力・疲労と VO2max のチャートの高さ（px）。上の段と下の段を合わせた高さ */
 export const TREND_CHART_HEIGHT = 420;
@@ -83,8 +99,8 @@ export function loadOption(
   const missing = days.filter((d) => d.load === null);
   const lines = noteLines(days, notes);
   // 印のない期間は凡例にも出さない。点のない series の凡例は薄く出て、壊れて見えるため
-  const legend = ["Fitness", "Fatigue", "Load"];
-  if (missing.length > 0) legend.push(NO_HEART_RATE);
+  const legend: LegendItem[] = ["Fitness", "Fatigue", "Load"];
+  if (missing.length > 0) legend.push(NO_HEART_RATE_LEGEND);
   return {
     textStyle: TEXT_STYLE,
     tooltip: { trigger: "axis" },
@@ -136,12 +152,8 @@ export function loadOption(
         data: days.map((d) => [d.day, d.load === null ? null : round1(d.load)]),
       },
       {
-        name: NO_HEART_RATE,
-        type: "scatter",
+        ...NO_HEART_RATE_SERIES,
         yAxisIndex: 1,
-        symbol: "triangle",
-        symbolSize: 10,
-        color: CHART_COLORS.noHeartRate,
         data: missing.map((d) => [d.day, 0]),
       },
     ],
@@ -192,7 +204,7 @@ export function trendOption(
 ): EChartsOption {
   const range = { min: period.since, max: period.until };
   const bottom = vo2maxOption(vo2max);
-  const bottomLegend = (bottom.legend as { data: string[] }).data;
+  const bottomLegend = (bottom.legend as { data: LegendItem[] }).data;
   const bottomSeries = bottom.series as SeriesOption[];
   if (days.length === 0) {
     return {
@@ -202,7 +214,7 @@ export function trendOption(
     };
   }
   const top = loadOption(days, notes);
-  const topLegend = (top.legend as { data: string[] }).data;
+  const topLegend = (top.legend as { data: LegendItem[] }).data;
   const lines = noteLines(days, notes);
   return {
     textStyle: TEXT_STYLE,
@@ -317,6 +329,66 @@ export function zoneRows(zones: ZoneSeconds | null): ZoneRow[] | null {
     width: total === 0 ? 0 : (r.sec / total) * 100,
     color: CHART_COLORS.zones[i],
   }));
+}
+
+/**
+ * 週ごとの強度の時間（分）の積み上げ棒。横は週の初日。api が until から 7 日ずつ区切った順に並べる。
+ * 心拍のない回は api が足していないので、その回を含む週は棒の上に ▲ を置く。
+ * 0 分の棒を、休んだ週と読み違えないようにするため。
+ */
+export function zoneWeeksOption(weeks: ZoneWeek[]): EChartsOption {
+  const labels = weeks.map((w) => formatDay(w.start));
+  // ▲ は棒の上の端に置く。棒は強度ごとに分へ丸めて積むので、高さも丸めた分を足して決める。
+  // 秒を足してから丸めると 1 分ずれ、▲ が棒に沈むことがある
+  const missing = weeks.flatMap((w, i) =>
+    w.workouts_without_zones > 0
+      ? [
+          [
+            labels[i],
+            toMinutes(w.zones.low) +
+              toMinutes(w.zones.mid) +
+              toMinutes(w.zones.high),
+          ],
+        ]
+      : [],
+  );
+  const legend: LegendItem[] = ["Low", "Mid", "High"];
+  if (missing.length > 0) legend.push(NO_HEART_RATE_LEGEND);
+  const zones = [
+    { name: "Low", key: "low" },
+    { name: "Mid", key: "mid" },
+    { name: "High", key: "high" },
+  ] as const;
+  return {
+    textStyle: TEXT_STYLE,
+    tooltip: { trigger: "axis" },
+    // 凡例は上に取った余白に置く。位置を決めないと下に出て、棒の下の端に重なる
+    legend: { ...LEGEND, data: legend, top: 0 },
+    grid: { top: 36, bottom: 28, left: 40, right: 8 },
+    xAxis: {
+      type: "category",
+      data: labels,
+      axisLabel: { hideOverlap: true, color: CHART_COLORS.axis },
+      axisLine: { lineStyle: { color: CHART_COLORS.grid } },
+      axisTick: { show: false },
+    },
+    yAxis: { ...VALUE_AXIS, name: "min" },
+    series: [
+      ...zones.map((z, i): SeriesOption => ({
+        name: z.name,
+        type: "bar",
+        stack: "zones",
+        color: CHART_COLORS.zones[i],
+        data: weeks.map((w) => toMinutes(w.zones[z.key])),
+      })),
+      {
+        ...NO_HEART_RATE_SERIES,
+        // 棒の上の端に重ならないよう、印を少し上にずらす
+        symbolOffset: [0, -10],
+        data: missing,
+      },
+    ],
+  };
 }
 
 /** 1 回ごとの負荷（横）と高強度の時間（縦、分）。種目ごとに色を分け、どちらかが null の回は除く。 */

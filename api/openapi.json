@@ -931,6 +931,18 @@
               }
             ],
             "title": "Vo2Max"
+          },
+          "vo2max_since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vo2Max Since"
           }
         },
         "type": "object",
@@ -938,10 +950,11 @@
           "fitness",
           "fatigue",
           "headroom",
-          "vo2max"
+          "vo2max",
+          "vo2max_since"
         ],
         "title": "Changes",
-        "description": "カードに添える差。体力・疲労・余力は until の値 − その 7 日前の値。\n\nVO2max は期間の最新の測定 − その測定日の 28 日前かそれより前の最後の測定。\n比べる値がなければ None（心拍の設定がない、期間に測定がない、前の測定がない）。"
+        "description": "カードに添える差。体力・疲労・余力は until の値 − その 7 日前の値。\n\nVO2max は期間の最新の測定 − その測定日の 28 日前かそれより前の最後の測定。\nvo2max_since は比べた測定の日。測定が空くと 28 日より前になるので、画面は「4 週前」と\n言わず、この日を書く。\n比べる値がなければ None（心拍の設定がない、期間に測定がない、前の測定がない）。"
       },
       "Dashboard": {
         "properties": {

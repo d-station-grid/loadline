@@ -10,6 +10,8 @@ export type ClientOptions = {
  * カードに添える差。体力・疲労・余力は until の値 − その 7 日前の値。
  *
  * VO2max は期間の最新の測定 − その測定日の 28 日前かそれより前の最後の測定。
+ * vo2max_since は比べた測定の日。測定が空くと 28 日より前になるので、画面は「4 週前」と
+ * 言わず、この日を書く。
  * 比べる値がなければ None（心拍の設定がない、期間に測定がない、前の測定がない）。
  */
 export type Changes = {
@@ -29,6 +31,10 @@ export type Changes = {
    * Vo2Max
    */
   vo2max: number | null;
+  /**
+   * Vo2Max Since
+   */
+  vo2max_since: string | null;
 };
 
 /**
