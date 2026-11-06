@@ -212,3 +212,39 @@ def _rest_days_before(week: WeekInput) -> int | None:
     if not week.workout_days or week.last_workout_day_before is None:
         return None
     return (min(week.workout_days) - week.last_workout_day_before).days - 1
+
+
+class Form(StrEnum):
+    """今日の余力の区分。カードの一言に使う。週の状況と同じ境目で分ける。"""
+
+    NOT_ENOUGH_DATA = "not_enough_data"
+    FATIGUED = "fatigued"
+    FRESH = "fresh"
+    STEADY = "steady"
+
+
+def judge_form(
+    today: FitnessPoint,
+    first_workout_day: date | None,
+    unknown_load_days: int,
+    thresholds: SituationThresholds = DEFAULT_THRESHOLDS,
+) -> Form:
+    """今日の余力 ÷ 体力 を、judge_week の 4〜7 と同じ境目で分ける。
+
+    unknown_load_days は今日までの 7 日のうち、負荷の分からないワークアウトを含む日の数。
+    週の判定と同じく、max_unknown_load_days を超えたら割合を使わない。
+    走れなかった週・中断明けは週の材料が要るので、ここでは見ない。
+    """
+    ratio = headroom_ratio(today.fitness, today.fatigue)
+    if (
+        ratio is None
+        or first_workout_day is None
+        or (today.day - first_workout_day).days < thresholds.enough_history_days
+        or unknown_load_days > thresholds.max_unknown_load_days
+    ):
+        return Form.NOT_ENOUGH_DATA
+    if ratio < thresholds.fatigued_below_ratio:
+        return Form.FATIGUED
+    if ratio > thresholds.fresh_above_ratio:
+        return Form.FRESH
+    return Form.STEADY

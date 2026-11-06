@@ -23,7 +23,8 @@ async def read_dashboard(
 ) -> Dashboard:
     """本人の負荷と推移。since と until は利用者のタイムゾーンでの日付で、両端を含む。
 
-    weeks は「直近 N 週」。since は until（省けば今日）の N 週前の日になる。since とは
+    weeks は「直近 N 週」。until（省けば今日）までのちょうど N × 7 日で、since は N 週前の
+    翌日になる。since とは
     一緒に渡せない。期間の誤りは、入力の検査と同じ 422 の形（detail が loc と msg の配列）で返す。
     """
     if weeks is not None and since is not None:

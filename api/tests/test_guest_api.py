@@ -97,7 +97,7 @@ async def test_guest_sees_the_last_weeks_of_the_demo_data(client: AsyncClient, d
     assert body["vo2max"]
     assert workouts.status_code == 200
     assert workouts.json()["items"]
-    assert date.fromisoformat(workouts.json()["since"][:10]) == date(2026, 10, 4)
+    assert date.fromisoformat(workouts.json()["since"][:10]) == date(2026, 10, 5)
 
 
 async def test_guest_sees_the_latest_seeded_review_with_options_not_chosen(

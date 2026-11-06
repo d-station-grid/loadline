@@ -15,7 +15,12 @@ from app.main import app
 from app.models import User, Workout
 from app.schemas.ingest import IngestPayload
 from app.services.ingest import ingest
-from tests.factories import UserFactory, Vo2maxReadingFactory, WorkoutFactory
+from tests.factories import (
+    IngestTokenFactory,
+    UserFactory,
+    Vo2maxReadingFactory,
+    WorkoutFactory,
+)
 
 HEADERS = {"Authorization": "Bearer good"}
 # 2026-09-13 14:10 (JST) に始まる Apple Watch のサイクリング 1 件（4028 秒、心拍 72 サンプル）
@@ -232,7 +237,7 @@ async def test_weeks_starts_n_weeks_before_today_in_user_timezone(
 
     today = datetime.now(ZoneInfo("Pacific/Kiritimati")).date()
     assert body["until"] == today.isoformat()
-    assert body["since"] == (today - timedelta(weeks=1)).isoformat()
+    assert body["since"] == (today - timedelta(days=6)).isoformat()
     assert body["days"][0]["day"] == body["since"]
 
 
@@ -241,8 +246,8 @@ async def test_weeks_counts_back_from_until(client: AsyncClient, session: AsyncS
 
     body = await _get(client, weeks="12", until="2026-10-17")
 
-    assert body["since"] == "2026-07-25"
-    assert len(body["days"]) == 12 * 7 + 1
+    assert body["since"] == "2026-07-26"
+    assert len(body["days"]) == 12 * 7
 
 
 async def test_only_own_records(client: AsyncClient, session: AsyncSession) -> None:
@@ -319,3 +324,175 @@ async def test_requires_login(client: AsyncClient) -> None:
     res = await client.get("/dashboard")
 
     assert res.status_code == 401
+
+
+async def _vo2max(user: User, day: str, value: str) -> None:
+    measured_at = datetime.fromisoformat(f"{day} 07:00:00").replace(tzinfo=JST)
+    await Vo2maxReadingFactory.create_async(
+        user_id=user.id, measured_at=measured_at, value=Decimal(value)
+    )
+
+
+async def test_changes_compare_with_seven_days_before(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    await _user(session)
+
+    body = await _get(client, since=SAMPLE_DAY, until="2026-09-20")
+
+    week_ago, now = body["days"][0], body["days"][-1]
+    changes = body["changes"]
+    assert changes["fitness"] == pytest.approx(now["fitness"] - week_ago["fitness"])
+    assert changes["fatigue"] == pytest.approx(now["fatigue"] - week_ago["fatigue"])
+    assert changes["headroom"] == pytest.approx(now["headroom"] - week_ago["headroom"])
+    # 最初のワークアウトから 42 日に満たないので、余力の区分は出さない
+    assert body["form"] == "not_enough_data"
+
+
+async def test_changes_and_form_are_none_without_heart_rate_settings(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    await _user(session, settings=False)
+
+    body = await _get(client, since=SAMPLE_DAY, until="2026-09-20")
+
+    assert body["changes"]["fitness"] is None
+    assert body["changes"]["fatigue"] is None
+    assert body["changes"]["headroom"] is None
+    assert body["form"] is None
+
+
+async def test_form_is_judged_after_enough_history(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """9/13 の 1 回だけで 42 日を過ぎると、疲労が抜けて休めている側になる。"""
+    await _user(session)
+
+    body = await _get(client, since="2026-10-25", until="2026-10-25")
+
+    assert body["form"] == "fresh"
+
+
+async def test_vo2max_change_compares_with_four_weeks_before(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    user = await _user(session)
+    await _vo2max(user, "2026-08-20", "45.0")
+    # 9/20 の 28 日前（8/23）より後なので、比べる相手にしない
+    await _vo2max(user, "2026-08-24", "40.0")
+    await _vo2max(user, "2026-09-20", "47.5")
+
+    body = await _get(client, since="2026-09-14", until="2026-09-20")
+    without_old = await _get(client, since="2026-08-24", until="2026-08-24")
+
+    assert body["changes"]["vo2max"] == pytest.approx(2.5)
+    # 8/24 の 28 日前（7/27）より前に測定がない
+    assert without_old["changes"]["vo2max"] is None
+
+
+async def test_vo2max_change_is_none_without_a_reading_in_the_period(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    user = await _user(session)
+    await _vo2max(user, "2026-08-20", "45.0")
+
+    body = await _get(client, since="2026-09-14", until="2026-09-20")
+
+    assert body["vo2max"] == []
+    assert body["changes"]["vo2max"] is None
+
+
+async def test_totals_and_previous_totals_follow_the_sport(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    user = await _user(session)
+    # 期間（9/14〜9/20）に心拍のないラン 1 回。前の期間（9/7〜9/13）に心拍のあるサイクリング 1 回
+    await _run(user, "2026-09-15 07:00:00")
+
+    everything = await _get(client, since="2026-09-14", until="2026-09-20")
+    rides = await _get(client, since="2026-09-14", until="2026-09-20", sport="ride")
+
+    totals, previous = everything["totals"], everything["previous_totals"]
+    assert (totals["start"], totals["end"]) == ("2026-09-14", "2026-09-20")
+    assert (previous["start"], previous["end"]) == ("2026-09-07", SAMPLE_DAY)
+    assert totals["workouts"] == 1
+    assert totals["total_sec"] == 1800
+    assert totals["load"] is None
+    assert totals["load_per_workout"] is None
+    assert totals["workouts_without_load"] == 1
+    assert previous["workouts"] == 1
+    assert previous["total_sec"] == 4028
+    ride_load = (await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY))["workouts"][0]["load"]
+    assert previous["load"] == pytest.approx(ride_load)
+    assert previous["load_per_workout"] == pytest.approx(ride_load)
+    # サイクリングだけなら、期間は 0 回で負荷も 0
+    assert rides["totals"]["workouts"] == 0
+    assert rides["totals"]["load"] == 0
+    assert rides["previous_totals"]["workouts"] == 1
+
+
+async def test_previous_totals_reach_beyond_the_warmup(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """期間が長いと、前の期間はウォームアップ（252 日）より前まで届く。そこも読む。"""
+    user = await _user(session)
+    # 期間は 273 日。前の期間は 2025-05-04〜2026-01-31、ウォームアップは 2025-05-25 から
+    await _run(user, "2025-05-10 07:00:00")
+
+    body = await _get(client, since="2026-02-01", until="2026-10-31")
+
+    assert body["previous_totals"]["start"] == "2025-05-04"
+    assert body["previous_totals"]["workouts"] == 1
+
+
+async def test_zone_weeks_count_back_from_until(client: AsyncClient, session: AsyncSession) -> None:
+    await _user(session, zone_boundary_1=130, zone_boundary_2=155)
+
+    body = await _get(client, weeks="2", until="2026-09-19")
+
+    weeks = body["zone_weeks"]
+    assert [(w["start"], w["end"]) for w in weeks] == [
+        ("2026-09-06", "2026-09-12"),
+        (SAMPLE_DAY, "2026-09-19"),
+    ]
+    assert weeks[0]["zones"] == {"low": 0, "mid": 0, "high": 0}
+    assert weeks[1]["zones"] == body["zones"]
+    assert weeks[1]["workouts_without_zones"] == 0
+
+
+async def test_zone_weeks_are_none_without_boundaries(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    await _user(session)
+
+    body = await _get(client, weeks="2", until="2026-09-19")
+
+    assert body["zone_weeks"] is None
+
+
+async def test_last_received_at_is_the_latest_use_of_any_token(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    user = await _user(session)
+    other = await UserFactory.create_async(firebase_uid="uid-other")
+    latest = datetime(2026, 9, 24, 7, 12, tzinfo=JST)
+    # 再発行で無効にした古いトークンが、いちばん最近に使われていることもある
+    await IngestTokenFactory.create_async(
+        user_id=user.id, last_used_at=latest, revoked_at=latest + timedelta(hours=1)
+    )
+    await IngestTokenFactory.create_async(user_id=user.id, last_used_at=latest - timedelta(days=1))
+    await IngestTokenFactory.create_async(user_id=other.id, last_used_at=latest + timedelta(days=1))
+
+    body = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY)
+
+    assert datetime.fromisoformat(body["last_received_at"]) == latest
+
+
+async def test_last_received_at_is_none_before_anything_arrives(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    await _user(session)
+
+    body = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY)
+
+    assert body["last_received_at"] is None

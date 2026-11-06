@@ -110,11 +110,14 @@ async def test_before_id_without_until_is_422(client: AsyncClient, session: Asyn
 async def test_weeks_starts_at_midnight_in_user_timezone(
     client: AsyncClient, session: AsyncSession
 ) -> None:
-    """「直近 1 週」の境目は、利用者のタイムゾーンでの 1 週前の 0 時。UTC+14 で確かめる。"""
+    """「直近 1 週」の境目は、利用者のタイムゾーンでの 6 日前の 0 時（今日を含めて 7 日）。
+
+    UTC+14 で確かめる。
+    """
     tz = ZoneInfo("Pacific/Kiritimati")
     user = await UserFactory.create_async(firebase_uid="uid-1", timezone=tz.key)
     today = datetime.now(tz).date()
-    start = datetime.combine(today - timedelta(weeks=1), datetime.min.time(), tzinfo=tz)
+    start = datetime.combine(today - timedelta(days=6), datetime.min.time(), tzinfo=tz)
     inside = await WorkoutFactory.create_async(user_id=user.id, started_at=start)
     await WorkoutFactory.create_async(user_id=user.id, started_at=start - timedelta(seconds=1))
 
@@ -142,7 +145,7 @@ def test_since_for_weeks_uses_the_date_in_user_timezone() -> None:
     tz = ZoneInfo("Pacific/Kiritimati")
     now = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
 
-    assert since_for_weeks(4, today_in(tz, now), tz) == datetime(2026, 9, 25, 0, 0, tzinfo=tz)
+    assert since_for_weeks(4, today_in(tz, now), tz) == datetime(2026, 9, 26, 0, 0, tzinfo=tz)
 
 
 @pytest.mark.parametrize(

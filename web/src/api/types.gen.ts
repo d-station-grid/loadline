@@ -5,13 +5,46 @@ export type ClientOptions = {
 };
 
 /**
+ * Changes
+ *
+ * カードに添える差。体力・疲労・余力は until の値 − その 7 日前の値。
+ *
+ * VO2max は期間の最新の測定 − その測定日の 28 日前かそれより前の最後の測定。
+ * 比べる値がなければ None（心拍の設定がない、期間に測定がない、前の測定がない）。
+ */
+export type Changes = {
+  /**
+   * Fitness
+   */
+  fitness: number | null;
+  /**
+   * Fatigue
+   */
+  fatigue: number | null;
+  /**
+   * Headroom
+   */
+  headroom: number | null;
+  /**
+   * Vo2Max
+   */
+  vo2max: number | null;
+};
+
+/**
  * Dashboard
  *
  * ダッシュボードの 1 画面ぶん。日付は利用者のタイムゾーンで区切る。
  *
  * days は全種目で計算する（種目で絞ると疲労を低く見積もるため）。sport で絞るのは
- * zones と workouts だけ。最大心拍か安静時心拍が未設定なら、負荷が出ないので days は空で、
- * needs_heart_rate_settings が true。
+ * zones、workouts、zone_weeks、totals、previous_totals だけ。最大心拍か安静時心拍が
+ * 未設定なら、負荷が出ないので days は空で、needs_heart_rate_settings が true。
+ *
+ * changes と form も全種目。form は until の余力の区分（振り返りの週の判定と同じ境目）で、
+ * days が空なら None。zone_weeks は until から 7 日ずつ区切った強度の時間で、古い順。
+ * 境目がそろわなければ None。totals は期間の合計、previous_totals は since の前の同じ
+ * 日数の合計。last_received_at は Health Auto Export から最後に記録が届いた日時で、
+ * 届いたことがなければ None。
  */
 export type Dashboard = {
   /**
@@ -43,6 +76,18 @@ export type Dashboard = {
    * Workouts
    */
   workouts: Array<WorkoutPoint>;
+  changes: Changes;
+  form: Form | null;
+  /**
+   * Zone Weeks
+   */
+  zone_weeks: Array<ZoneWeek> | null;
+  totals: Totals;
+  previous_totals: Totals;
+  /**
+   * Last Received At
+   */
+  last_received_at: string | null;
 };
 
 /**
@@ -79,6 +124,13 @@ export type DayPoint = {
  * Expression
  */
 export type Expression = "happy" | "relaxed" | "sad" | "surprised";
+
+/**
+ * Form
+ *
+ * 今日の余力の区分。カードの一言に使う。週の状況と同じ境目で分ける。
+ */
+export type Form = "not_enough_data" | "fatigued" | "fresh" | "steady";
 
 /**
  * HTTPValidationError
@@ -464,6 +516,45 @@ export type Situation =
   | "steady";
 
 /**
+ * Totals
+ *
+ * 期間（start から end まで、両端を含む）の合計。
+ *
+ * load は負荷の分かる回だけの合計で、回があるのに 1 回も分からなければ None。
+ * load_per_workout は 負荷の合計 ÷ 負荷の分かる回の数。workouts_without_load は外した回の数。
+ */
+export type Totals = {
+  /**
+   * Start
+   */
+  start: string;
+  /**
+   * End
+   */
+  end: string;
+  /**
+   * Workouts
+   */
+  workouts: number;
+  /**
+   * Total Sec
+   */
+  total_sec: number;
+  /**
+   * Load
+   */
+  load: number | null;
+  /**
+   * Load Per Workout
+   */
+  load_per_workout: number | null;
+  /**
+   * Workouts Without Load
+   */
+  workouts_without_load: number;
+};
+
+/**
  * UserOut
  *
  * ログインした本人に返す情報。
@@ -752,6 +843,29 @@ export type ZoneSeconds = {
    * High
    */
   high: number;
+};
+
+/**
+ * ZoneWeek
+ *
+ * 7 日ぶん（start から end まで、両端を含む）の強度ごとの時間。
+ *
+ * zones は心拍の分かる回だけの合計。workouts_without_zones は足せなかった回の数。
+ */
+export type ZoneWeek = {
+  /**
+   * Start
+   */
+  start: string;
+  /**
+   * End
+   */
+  end: string;
+  zones: ZoneSeconds;
+  /**
+   * Workouts Without Zones
+   */
+  workouts_without_zones: number;
 };
 
 export type LoginAuthLoginPostData = {
