@@ -338,9 +338,18 @@ export function zoneRows(zones: ZoneSeconds | null): ZoneRow[] | null {
  */
 export function zoneWeeksOption(weeks: ZoneWeek[]): EChartsOption {
   const labels = weeks.map((w) => formatDay(w.start));
+  // ▲ は棒の上の端に置く。棒は強度ごとに分へ丸めて積むので、高さも丸めた分を足して決める。
+  // 秒を足してから丸めると 1 分ずれ、▲ が棒に沈むことがある
   const missing = weeks.flatMap((w, i) =>
     w.workouts_without_zones > 0
-      ? [[labels[i], toMinutes(w.zones.low + w.zones.mid + w.zones.high)]]
+      ? [
+          [
+            labels[i],
+            toMinutes(w.zones.low) +
+              toMinutes(w.zones.mid) +
+              toMinutes(w.zones.high),
+          ],
+        ]
       : [],
   );
   const legend: LegendItem[] = ["Low", "Mid", "High"];

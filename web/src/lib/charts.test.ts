@@ -401,3 +401,15 @@ test("週ごとの強度の凡例は、上に取った余白に置く", () => {
 
   expect((option.legend as { top?: number }).top).toBe(0);
 });
+
+test("▲ の高さは、強度ごとに分へ丸めた棒の高さの合計にそろえる", () => {
+  // 秒を足してから丸めると 180 秒 = 3 分だが、棒は 2 + 2 = 4 分まで積まれる
+  const option = zoneWeeksOption([
+    zoneWeek("2026-10-19", { low: 90, mid: 90, high: 0 }, 1),
+  ]);
+
+  const [low, mid, high, missing] = seriesOf(option);
+  const top = [low, mid, high].reduce((n, s) => n + (s.data as number[])[0], 0);
+  expect(top).toBe(4);
+  expect(missing.data).toEqual([[formatDay("2026-10-19"), 4]]);
+});
