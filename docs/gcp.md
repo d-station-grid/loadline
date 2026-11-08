@@ -2,7 +2,7 @@
 
 loadline が GCP（プロジェクト `loadline-app`）に持っている設定の一覧です。2026-11-08 に、実際の GCP を読み取って書きました。
 
-- リージョンは `asia-northeast1`（東京）にそろえています。例外は「使っていないもの」に書いた spike の残りだけです
+- リージョンは `asia-northeast1`（東京）にそろえています
 - Cloud Run へのデプロイ（`.github/workflows/deploy.yml`、`deploy-tts.yml`）が入れる設定以外は、コンソールやコマンドで手で入れたもので、コードには残りません。変えたら、この文書も直します
 - データベースは GCP ではなく Neon（AWS シンガポール）です。接続の URL だけを Secret Manager に置いています
 - 今の設定を確かめるコマンドは、最後の「確かめ方」にあります
@@ -29,7 +29,7 @@ flowchart LR
 
 ## サービスアカウント
 
-既定の Compute サービスアカウントは使いません。用途ごとに分け、権限は相手のリソースだけに付けます。
+既定の Compute サービスアカウント（`969839428626-compute@developer.gserviceaccount.com`）は使わず、権限も付けていません（既定で付く `roles/editor` も外しています）。用途ごとに分け、権限は相手のリソースだけに付けます。
 
 | サービスアカウント | 使うところ |
 |---|---|
@@ -168,14 +168,39 @@ Scheduler が 1 時間おきに api を呼び、api が振り返りを作る相�
 
 | 秘密 | 中身 | 版 |
 |---|---|---|
-| `database-url` | Neon の接続の URL | 1 と 2（どちらも有効）。Cloud Run は `latest` を読む |
+| `database-url` | Neon の接続の URL（asyncpg の形） | 2 が有効で、Cloud Run は `latest` を読む。1（asyncpg が読めない最初の形）は無効 |
 | `typesafe-api-key` | TypeSafe AI（Jev）のキー | 1 |
 
 ## Artifact Registry
 
 | リポジトリ | 中身 | 掃除 |
 |---|---|---|
-| `loadline`（東京、Docker） | `api` と `tts` のイメージ | 直近 10 個を残し、30 日より古いものを消す |
+| `loadline`（東京、Docker） | `api` と `tts` のイメージ | 7 日より古いものを消す。ただし直近 10 個（`api` と `tts` それぞれ）は残す |
+
+「残す」の決まりは「消す」より優先されるので、しばらくデプロイがなくても、動いている版のイメージは消えません。掃除は 1 日に 1 回ほど裏で動きます。
+
+`set-cleanup-policies` は、決まりを足すのではなく、ファイルの中身で全部を置き換えます。変えるときは、残す決まりも同じファイルに入れます。
+
+```sh
+cat > /tmp/loadline-ar-cleanup.json <<'JSON'
+[
+  {
+    "name": "delete-older-than-7d",
+    "action": {"type": "Delete"},
+    "condition": {"tagState": "any", "olderThan": "7d"}
+  },
+  {
+    "name": "keep-recent-10",
+    "action": {"type": "Keep"},
+    "mostRecentVersions": {"keepCount": 10}
+  }
+]
+JSON
+
+gcloud artifacts repositories set-cleanup-policies loadline \
+  --project loadline-app --location asia-northeast1 \
+  --policy=/tmp/loadline-ar-cleanup.json
+```
 
 ## GitHub Actions からの入り方（Workload Identity Federation）
 
@@ -238,15 +263,6 @@ loadline が使っているのは次のものです。
 `run`、`artifactregistry`、`cloudbuild`、`iam`、`iamcredentials`、`sts`、`secretmanager`、`aiplatform`、`cloudtasks`、`cloudscheduler`、`storage`、`firebase`、`identitytoolkit`、`securetoken`、`billingbudgets`、`logging`、`monitoring`
 
 ほかに、プロジェクトや Firebase を作ったときに既定で有効になったもの（BigQuery、Datastore、App Engine、Firebase Hosting など）があります。loadline からは使っていません。
-
-## 使っていないもの、気になる点
-
-今のところ、どれも手を付けていません。
-
-- **既定の Compute サービスアカウント（`969839428626-compute@developer.gserviceaccount.com`）に、プロジェクト全体の `roles/editor` が付いている。** 既定で付いたもので、どのサービスも実行用に使っていない。権限が広いので、外す候補
-- **spike の残りが 2 つある。** us-central1 の Artifact Registry のリポジトリ `cloud-run-source-deploy` と、バケット `run-sources-loadline-app-us-central1`。どちらも空なので、費用はかからない
-- **api のイメージが 38 個（約 4.7GB）ある。** 掃除は 30 日より古いものだけを消すため。保存料は月に数十円
-- **`database-url` の版 1 と 2 が、どちらも有効のまま。** Cloud Run は `latest`（版 2）を読む
 
 ## 確かめ方
 
