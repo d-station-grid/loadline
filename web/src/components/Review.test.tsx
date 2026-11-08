@@ -1,4 +1,11 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type { User } from "firebase/auth";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
@@ -371,25 +378,153 @@ test("作っているあいだは、目安と経った秒数を出す", async ()
   expect(screen.queryByText(/This usually takes/)).not.toBeInTheDocument();
 });
 
+const FRESH = `${AUDIO}&fresh`;
+
+function player() {
+  return screen.queryByLabelText("Listen to this review");
+}
+
 test("音声を読めなければ、1 回だけ読み直して新しい URL にする", async () => {
   // 署名付き URL の期限（1 時間）が切れたとき
-  const fresh = `${AUDIO}&fresh`;
   vi.mocked(getCurrentReview)
     .mockResolvedValueOnce({ ...review(), audio_url: AUDIO })
-    .mockResolvedValue({ ...review(), audio_url: fresh });
+    .mockResolvedValue({ ...review(), audio_url: FRESH });
   renderReview();
-  const audio = await screen.findByLabelText("Listen to this review");
 
-  fireEvent.error(audio);
+  fireEvent.error(await screen.findByLabelText("Listen to this review"));
 
-  expect(await screen.findByLabelText("Listen to this review")).toHaveAttribute(
-    "src",
-    fresh,
-  );
+  await waitFor(() => expect(player()).toHaveAttribute("src", FRESH));
   expect(getCurrentReview).toHaveBeenCalledTimes(2);
-  // 新しい URL でも読めなければ、もう読み直さない（字幕だけで見せる）
-  fireEvent.error(screen.getByLabelText("Listen to this review"));
-  await act(async () => {});
+});
+
+test("読み直した URL でも読めなければ、再生ボタンを消して字幕だけにする", async () => {
+  vi.mocked(getCurrentReview)
+    .mockResolvedValueOnce({ ...review(), audio_url: AUDIO })
+    .mockResolvedValue({ ...review(), audio_url: FRESH });
+  renderReview();
+  fireEvent.error(await screen.findByLabelText("Listen to this review"));
+  await waitFor(() => expect(player()).toHaveAttribute("src", FRESH));
+
+  fireEvent.error(player()!);
+
+  await waitFor(() => expect(player()).not.toBeInTheDocument());
+  // もう読み直さない
   expect(getCurrentReview).toHaveBeenCalledTimes(2);
   expect(screen.getByText(/A heavy week/)).toBeInTheDocument();
+});
+
+test.each([
+  ["読み直せない", () => Promise.reject(new Error("offline"))],
+  ["読み直したら URL がない", () => Promise.resolve(review())],
+])("%sときは、再生ボタンを消す", async (_name, next) => {
+  vi.mocked(getCurrentReview)
+    .mockResolvedValueOnce({ ...review(), audio_url: AUDIO })
+    .mockImplementation(next);
+  renderReview();
+
+  fireEvent.error(await screen.findByLabelText("Listen to this review"));
+
+  await waitFor(() => expect(player()).not.toBeInTheDocument());
+  expect(screen.getByText(/A heavy week/)).toBeInTheDocument();
+});
+
+test("選択肢を選んでも、再生している URL は替えない", async () => {
+  // 選択の応答は、同じ音声の新しい署名付き URL を返す。替えると再生が最初に戻る
+  vi.mocked(getCurrentReview).mockResolvedValue({
+    ...review(),
+    audio_url: AUDIO,
+  });
+  vi.mocked(selectReviewOption).mockResolvedValue({
+    ...review(1),
+    audio_url: FRESH,
+  });
+  renderReview();
+  await screen.findByLabelText("Listen to this review");
+
+  fireEvent.click(option("Go easy"));
+
+  await waitFor(() =>
+    expect(option("Go easy")).toHaveAttribute("aria-pressed", "true"),
+  );
+  expect(player()).toHaveAttribute("src", AUDIO);
+});
+
+test("読み直しが遅れて返っても、そのあいだに選んだ選択肢を消さない", async () => {
+  const slow = deferred<WeeklyReviewOut | null>();
+  vi.mocked(getCurrentReview)
+    .mockResolvedValueOnce({ ...review(), audio_url: AUDIO })
+    .mockReturnValueOnce(slow.promise);
+  vi.mocked(selectReviewOption).mockResolvedValue({
+    ...review(1),
+    audio_url: FRESH,
+  });
+  renderReview();
+  fireEvent.error(await screen.findByLabelText("Listen to this review"));
+  fireEvent.click(option("Go easy"));
+  await waitFor(() =>
+    expect(option("Go easy")).toHaveAttribute("aria-pressed", "true"),
+  );
+
+  // 選ぶ前に読んだ、まだ選んでいない振り返りが遅れて返る
+  await act(async () => {
+    slow.resolve({ ...review(), audio_url: FRESH });
+  });
+
+  expect(option("Go easy")).toHaveAttribute("aria-pressed", "true");
+  expect(player()).toHaveAttribute("src", FRESH);
+});
+
+test("表示している振り返りが替わっていたら、読み直した URL は使わない", async () => {
+  const slow = deferred<WeeklyReviewOut | null>();
+  const next = `${AUDIO}&next-week`;
+  vi.mocked(getCurrentReview)
+    .mockResolvedValueOnce({ ...review(), audio_url: AUDIO })
+    .mockReturnValueOnce(slow.promise)
+    .mockResolvedValueOnce({ ...review(), id: 8, audio_url: next });
+  vi.mocked(selectReviewOption).mockRejectedValue(new ApiError(409));
+  renderReview();
+  fireEvent.error(await screen.findByLabelText("Listen to this review"));
+  // 開いているあいだに週が替わり、今の週を読み直す
+  fireEvent.click(option("Go easy"));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Load this week's review" }),
+  );
+  await waitFor(() => expect(player()).toHaveAttribute("src", next));
+
+  await act(async () => {
+    slow.resolve({ ...review(), audio_url: FRESH });
+  });
+
+  expect(player()).toHaveAttribute("src", next);
+});
+
+test("作り直すときは、経った秒数を 0 から数える", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.mocked(getCurrentReview).mockResolvedValue(null);
+  const first = deferred<WeeklyReviewOut>();
+  vi.mocked(createReview)
+    .mockReturnValueOnce(
+      first.promise.then(() => Promise.reject(new Error("timeout"))),
+    )
+    .mockReturnValue(new Promise(() => {}));
+  renderReview();
+  await screen.findByText("No review for this week yet.");
+  fireEvent.click(
+    screen.getByRole("button", { name: "Create this week's review" }),
+  );
+  act(() => {
+    vi.advanceTimersByTime(5_000);
+  });
+  await act(async () => {
+    first.resolve(review());
+  });
+  expect(await screen.findByRole("alert")).toHaveTextContent("timeout");
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Create this week's review" }),
+  );
+
+  expect(
+    screen.getByText("This usually takes 20–30 seconds. 0s"),
+  ).toBeInTheDocument();
 });

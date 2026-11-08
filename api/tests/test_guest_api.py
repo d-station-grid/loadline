@@ -26,7 +26,14 @@ from app.models import (
 )
 from app.routers.deps import get_account_deleter
 from app.services.reviews import select_option
-from scripts.seed_demo import FIRST_DAY, LAST_DAY, REVIEWS, seed_demo, seed_demo_atomically
+from scripts.seed_demo import (
+    FIRST_DAY,
+    LAST_DAY,
+    REVIEWS,
+    seed_demo,
+    seed_demo_atomically,
+    voiced_reviews,
+)
 from tests.test_me_api import FakeDeleter
 from tests.test_reviews_service import FakeAudioStore, FakeVoice
 
@@ -324,3 +331,17 @@ async def test_a_failed_seed_deletes_its_new_audio_and_keeps_the_previous(
     # 前のデモは行も音声もそのまま。途中まで置いた新しい音声は消える
     assert (await _demo_state(committed))[0] == [first]
     assert audio.files == before
+
+
+async def test_seed_counts_the_voiced_reviews(committed: AsyncEngine) -> None:
+    # tts に断られても seed は通る。声が付いた数を出して、字幕だけの週に気づけるようにする
+    class RefusesTheFirst(FakeVoice):
+        async def speak(self, text: str) -> bytes | None:
+            self.spoken.append(text)
+            return None if len(self.spoken) == 1 else b"RIFF"
+
+    voiced = await seed_demo_atomically(committed, voice=FakeVoice(), audio=FakeAudioStore())
+    assert await voiced_reviews(committed, voiced) == REVIEWS
+
+    partly = await seed_demo_atomically(committed, voice=RefusesTheFirst(), audio=FakeAudioStore())
+    assert await voiced_reviews(committed, partly) == REVIEWS - 1

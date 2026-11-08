@@ -22,6 +22,20 @@ type SelectError = { kind: "closed" } | { kind: "other"; message: string };
 
 type Props = { user: User; onOpenSettings: () => void };
 
+/**
+ * 再生に使う音声。振り返りとは別に持つ。選択肢を選ぶと api は同じ音声の新しい署名付き
+ * URL を返すが、差し替えると再生が最初に戻るので、同じ振り返りのあいだは替えない。
+ * url が null なら再生ボタンを出さない（声がない、または再生できなかった）。
+ */
+type Audio = {
+  reviewId: number;
+  url: string | null;
+  // 読めなくて読み直した後。もう一度読めなければ、再生ボタンを消す
+  refreshed: boolean;
+  // 再生できないと決まった。選び直しで URL が返っても出し直さない
+  broken: boolean;
+};
+
 /** 作るあいだに出す目安。本番の実測（Gemini、Jev、声を作るまで）で約 26 秒 */
 const CREATE_HINT = "This usually takes 20–30 seconds.";
 
@@ -45,15 +59,30 @@ export default function Review({ user, onOpenSettings }: Props) {
   const [selectError, setSelectError] = useState<SelectError | null>(null);
   // 作り始めてからの秒数。待つあいだ、止まっていないことを見せる
   const [elapsed, setElapsed] = useState(0);
+  const [audio, setAudio] = useState<Audio | null>(null);
   // 連打よけ。disabled は描画のあとにしか効かないので、送った直後にここで止める
   const busy = useRef(false);
-  // 音声の URL を読み直した振り返りの id。期限切れのときに 1 回だけ読み直す
-  const audioRefreshed = useRef<number | null>(null);
   const guest = user.isAnonymous;
+
+  // 別の振り返りになったら、その振り返りの URL で再生する。同じ振り返りでは今の URL を
+  // 残す。まだ URL がなく（署名できなかった）、再生できないと決まってもいなければ、
+  // 後から返った URL を使う
+  if (
+    review &&
+    (audio?.reviewId !== review.id ||
+      (audio.url === null && !audio.broken && review.audio_url !== null))
+  ) {
+    setAudio({
+      reviewId: review.id,
+      url: review.audio_url,
+      refreshed: false,
+      broken: false,
+    });
+  }
+  const audioUrl = review && audio?.reviewId === review.id ? audio.url : null;
 
   useEffect(() => {
     if (!creating) return;
-    setElapsed(0);
     const started = Date.now();
     const timer = setInterval(() => {
       setElapsed(Math.floor((Date.now() - started) / 1000));
@@ -88,6 +117,8 @@ export default function Review({ user, onOpenSettings }: Props) {
   async function create() {
     if (busy.current) return;
     busy.current = true;
+    // 作り直したときに、前回の秒数が一瞬見えないよう、ここで 0 に戻す
+    setElapsed(0);
     setCreating(true);
     setCreateError(null);
     try {
@@ -108,17 +139,34 @@ export default function Review({ user, onOpenSettings }: Props) {
 
   /**
    * 音声を読めなかったとき。署名付き URL の期限（1 時間）が切れたと見て、振り返りを
-   * 読み直して新しい URL にする。1 つの振り返りで 1 回だけ。だめなら文字だけで見せる
+   * 読み直して新しい URL にする。1 つの振り返りで 1 回だけ。読み直した URL でも読めない、
+   * 読み直せない、読み直したら URL がない、のどれかなら再生ボタンを消し、字幕だけにする。
+   *
+   * 反映するのは音声の URL だけ。振り返りは差し替えないので、読み直しが遅れて返っても、
+   * そのあいだに選んだ選択肢や、読み直した今の週を消さない。反映するのは、読み直しを
+   * 始めたときと同じ振り返りの、同じ URL を再生しているときだけ
    */
-  async function refreshAudio(reviewId: number) {
-    if (audioRefreshed.current === reviewId) return;
-    audioRefreshed.current = reviewId;
+  async function onAudioError(failed: Audio) {
+    function update(next: Partial<Audio>) {
+      setAudio((now) =>
+        now?.reviewId === failed.reviewId && now.url === failed.url
+          ? { ...now, ...next }
+          : now,
+      );
+    }
+    const giveUp = { url: null, broken: true };
+    if (failed.refreshed) {
+      update(giveUp);
+      return;
+    }
+    let url: string | null = null;
     try {
       const fresh = await getCurrentReview(await user.getIdToken());
-      if (fresh?.id === reviewId) setReview(fresh);
+      url = fresh?.id === failed.reviewId ? fresh.audio_url : null;
     } catch {
-      // 字幕は出ているので、声が出ないだけにする
+      // 読み直せなければ、字幕だけにする
     }
+    update(url === null ? giveUp : { url, refreshed: true });
   }
 
   async function select(reviewId: number, optionId: number) {
@@ -197,14 +245,14 @@ export default function Review({ user, onOpenSettings }: Props) {
           <p>{review.script}</p>
           {/* 声を作れなかった週と、今は署名できなかったときは、字幕だけ。
               自動では鳴らさない（ブラウザが止めることが多い）。読み込むのは押してから */}
-          {review.audio_url && (
+          {audio && audioUrl && (
             <audio
               className="review-audio"
               controls
               preload="none"
-              src={review.audio_url}
+              src={audioUrl}
               aria-label="Listen to this review"
-              onError={() => void refreshAudio(review.id)}
+              onError={() => void onAudioError(audio)}
             />
           )}
           <h4 id="review-plan-heading">How will you spend the week ahead?</h4>

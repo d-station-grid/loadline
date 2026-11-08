@@ -542,8 +542,6 @@ fieldset.plain {
   margin-top: var(--space-4);
 }
 
-/* 選択肢のボタン。文字の下端でそろえると、✓ の付いたボタンだけ上下にずれるので、
-   高さをそろえて並べる。狭い画面では折り返す */
 /* 振り返りの声。字幕の下に、横いっぱいの再生ボタン */
 .review-audio {
   display: block;
@@ -551,6 +549,8 @@ fieldset.plain {
   margin-bottom: var(--space-3);
 }
 
+/* 選択肢のボタン。文字の下端でそろえると、✓ の付いたボタンだけ上下にずれるので、
+   高さをそろえて並べる。狭い画面では折り返す */
 .review-options {
   display: flex;
   flex-wrap: wrap;

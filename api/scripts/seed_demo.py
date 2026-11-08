@@ -44,7 +44,7 @@ from app.adapters.jev import jev_checker
 from app.adapters.tts import kokoro_voice
 from app.core.config import get_settings
 from app.core.db import get_engine
-from app.models import Note, User, Vo2maxReading, Workout, WorkoutHeartRate
+from app.models import Note, User, Vo2maxReading, WeeklyReview, Workout, WorkoutHeartRate
 from app.services.audio import AudioStore, Voice, user_audio_prefix
 from app.services.reviews import LineChecker, ReviewWriter, create_review, select_option
 
@@ -314,6 +314,17 @@ class _Tracked:
         await self._store.delete_all(prefix)
 
 
+async def voiced_reviews(engine: AsyncEngine, user_id: int) -> int:
+    """デモの振り返りのうち、声が付いた数。tts に断られても seed は通るので、数で確かめる。"""
+    async with engine.connect() as conn:
+        count = await conn.scalar(
+            select(func.count())
+            .select_from(WeeklyReview)
+            .where(WeeklyReview.user_id == user_id, WeeklyReview.audio_path.is_not(None))
+        )
+    return count or 0
+
+
 class _UploadOnly:
     """手元から seed を流すときの音声の置き場所。置く・消すだけで、署名はしない。
 
@@ -343,8 +354,9 @@ async def main() -> None:
 
     voice = kokoro_voice(settings, given_token if token else None)
     store = audio_store(settings)
+    engine = get_engine()
     user_id = await seed_demo_atomically(
-        get_engine(),
+        engine,
         gemini_writer(settings),
         jev_checker(settings),
         voice=voice,
@@ -353,6 +365,12 @@ async def main() -> None:
     print(f"demo user {user_id}: {FIRST_DAY} to {LAST_DAY}")
     if voice is None or store is None:
         print("no audio: set TTS_URL and AUDIO_BUCKET to voice the reviews")
+        return
+    voiced = await voiced_reviews(engine, user_id)
+    print(f"audio: {voiced} of {REVIEWS} reviews")
+    if voiced < REVIEWS:
+        # 声がない週は、ゲストには字幕だけで見える。tts のログを見て、流し直す
+        print("some reviews have no audio: check the tts warnings above and run again")
 
 
 if __name__ == "__main__":
