@@ -14,10 +14,12 @@ permissions:
   contents: read
   id-token: write # Workload Identity Federation で GCP に入るのに要る
 
-# 続けてマージしたときに並べて走らせない。待ちに並ぶのは 1 つだけで、新しい実行が来ると
-# 待っていた古い実行は取り消される。走っている実行は途中で止めない
+# 続けてマージしたときに並べて走らせない。来た順に 1 つずつ走らせ、待っている実行は取り消さない
+# （queue: max。既定の single では、古い実行の Re-run が最新の待ちを取り消してしまう）。
+# 走っている実行は途中で止めない。古い実行は下の main との比較で出さずに終わる
 concurrency:
   group: deploy-tts
+  queue: max
   cancel-in-progress: false
 
 env:

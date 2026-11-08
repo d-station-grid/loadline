@@ -122,6 +122,6 @@ gcloud run services add-iam-policy-binding tts \
 
 ### デプロイが重ならないように
 
-`deploy-tts.yml` と `deploy.yml` は、同じ workflow を並べて走らせません（`concurrency`）。待ちに並ぶのは 1 つだけで、新しい実行が来ると、待っていた古い実行は取り消されます。
+`deploy-tts.yml` と `deploy.yml` は、同じ workflow を並べて走らせません（`concurrency`）。`queue: max` にして、来た順に 1 つずつ走らせ、待っている実行は取り消しません。既定の `queue: single` では待ちに並ぶのが 1 つだけで、古い実行を Re-run すると、待っていた最新の実行が取り消されてしまうためです。
 
 そのうえで、デプロイの直前に、出そうとしている版と今の main の中身を比べます（tts なら `tts/` と `deploy-tts.yml`、api なら `api/`、`web/`、`Dockerfile`、`.dockerignore`、`deploy.yml`）。違えば、もっと新しい変更があるので出しません。古い実行を Re-run したときに、古い版を出し直さないためです。main の先頭のコミットそのものと比べないのは、ほかの場所だけを変えたコミットが後に入ったときに、出すべき版まで止めてしまうためです。api はマイグレーションより前で止めます。
