@@ -22,10 +22,14 @@ type SelectError = { kind: "closed" } | { kind: "other"; message: string };
 
 type Props = { user: User; onOpenSettings: () => void };
 
+/** 作るあいだに出す目安。本番の実測（Gemini、Jev、声を作るまで）で約 26 秒 */
+const CREATE_HINT = "This usually takes 20–30 seconds.";
+
 /**
- * 今の週の振り返り。セリフを字幕として出し、その週の過ごし方の選択肢を並べる。
- * まだなければ、その場で作るボタンを出す。選んだ後もボタンは残し、押せば選び直せる。
- * ゲストはデモの振り返りを見るだけ。作るボタンは出さず、選択肢は押せない。
+ * 今の週の振り返り。セリフを字幕として出し、声があれば再生ボタンを出し、その週の
+ * 過ごし方の選択肢を並べる。まだなければ、その場で作るボタンを出す。選んだ後もボタンは
+ * 残し、押せば選び直せる。ゲストはデモの振り返りを見るだけ。作るボタンは出さず、
+ * 選択肢は押せない。
  */
 export default function Review({ user, onOpenSettings }: Props) {
   // undefined は読み込み中、null はまだない週
@@ -39,9 +43,23 @@ export default function Review({ user, onOpenSettings }: Props) {
   const [createError, setCreateError] = useState<CreateError | null>(null);
   const [selecting, setSelecting] = useState(false);
   const [selectError, setSelectError] = useState<SelectError | null>(null);
+  // 作り始めてからの秒数。待つあいだ、止まっていないことを見せる
+  const [elapsed, setElapsed] = useState(0);
   // 連打よけ。disabled は描画のあとにしか効かないので、送った直後にここで止める
   const busy = useRef(false);
+  // 音声の URL を読み直した振り返りの id。期限切れのときに 1 回だけ読み直す
+  const audioRefreshed = useRef<number | null>(null);
   const guest = user.isAnonymous;
+
+  useEffect(() => {
+    if (!creating) return;
+    setElapsed(0);
+    const started = Date.now();
+    const timer = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - started) / 1000));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [creating]);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,6 +103,21 @@ export default function Review({ user, onOpenSettings }: Props) {
     } finally {
       busy.current = false;
       setCreating(false);
+    }
+  }
+
+  /**
+   * 音声を読めなかったとき。署名付き URL の期限（1 時間）が切れたと見て、振り返りを
+   * 読み直して新しい URL にする。1 つの振り返りで 1 回だけ。だめなら文字だけで見せる
+   */
+  async function refreshAudio(reviewId: number) {
+    if (audioRefreshed.current === reviewId) return;
+    audioRefreshed.current = reviewId;
+    try {
+      const fresh = await getCurrentReview(await user.getIdToken());
+      if (fresh?.id === reviewId) setReview(fresh);
+    } catch {
+      // 字幕は出ているので、声が出ないだけにする
     }
   }
 
@@ -132,6 +165,11 @@ export default function Review({ user, onOpenSettings }: Props) {
               {creating ? "Writing your review…" : "Create this week's review"}
             </button>
           )}
+          {creating && (
+            <p className="muted small">
+              {CREATE_HINT} {elapsed}s
+            </p>
+          )}
           {createError?.kind === "settings" && (
             <p role="alert">
               Set your max and resting heart rate before creating a review.{" "}
@@ -155,8 +193,20 @@ export default function Review({ user, onOpenSettings }: Props) {
           <p className="muted small">
             Week reviewed: {review.period_start} – {review.period_end}
           </p>
-          {/* 字幕。アバターと声は後から重ねる */}
+          {/* 字幕。アバターは後から重ねる */}
           <p>{review.script}</p>
+          {/* 声を作れなかった週と、今は署名できなかったときは、字幕だけ。
+              自動では鳴らさない（ブラウザが止めることが多い）。読み込むのは押してから */}
+          {review.audio_url && (
+            <audio
+              className="review-audio"
+              controls
+              preload="none"
+              src={review.audio_url}
+              aria-label="Listen to this review"
+              onError={() => void refreshAudio(review.id)}
+            />
+          )}
           <h4 id="review-plan-heading">How will you spend the week ahead?</h4>
           <div
             className="review-options"
