@@ -5,7 +5,8 @@
 
 声も入れるとき（TTS_URL と AUDIO_BUCKET を設定して）。手元の Google アカウントの
 資格情報からは tts の ID トークンを作れないので、gcloud で取って渡す:
-  TTS_ID_TOKEN=$(gcloud auth print-identity-token) uv run python -m scripts.seed_demo
+  TTS_ID_TOKEN=$(gcloud auth print-identity-token --project loadline-app) \
+    uv run python -m scripts.seed_demo
 
 デモの利用者（is_demo、firebase_uid は NULL）を消して作り直し、16 週分のワークアウトと
 心拍、VO2max、メモを入れる。記録は決まった乱数で作るので、毎回同じになる。日付も
