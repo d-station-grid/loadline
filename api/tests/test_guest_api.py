@@ -28,6 +28,7 @@ from app.routers.deps import get_account_deleter
 from app.services.reviews import select_option
 from scripts.seed_demo import FIRST_DAY, LAST_DAY, REVIEWS, seed_demo, seed_demo_atomically
 from tests.test_me_api import FakeDeleter
+from tests.test_reviews_service import FakeAudioStore, FakeVoice
 
 GUEST = {"Authorization": "Bearer guest"}
 ANOTHER_GUEST = {"Authorization": "Bearer guest-2"}
@@ -269,3 +270,57 @@ async def test_seeding_twice_at_once_leaves_one_demo_user(committed: AsyncEngine
     ids, reviews, selected = await _demo_state(committed)
     assert len(ids) == 1
     assert (reviews, selected) == (REVIEWS, REVIEWS - 1)
+
+
+async def test_seed_voices_the_demo_reviews(session: AsyncSession) -> None:
+    # ゲストは振り返りを作れないので、デモの声は seed で入れる
+    voice, audio = FakeVoice(), FakeAudioStore()
+
+    demo = await seed_demo(session, voice=voice, audio=audio)
+
+    reviews = list(
+        await session.scalars(select(WeeklyReview).where(WeeklyReview.user_id == demo.id))
+    )
+    assert len(reviews) == REVIEWS
+    assert voice.spoken == [r.script for r in sorted(reviews, key=lambda r: r.period_start)]
+    assert sorted(audio.files) == sorted(f"users/{demo.id}/reviews/{r.id}.wav" for r in reviews)
+    assert all(r.audio_path is not None for r in reviews)
+
+
+async def test_seeding_again_deletes_the_audio_of_the_previous_demo(
+    committed: AsyncEngine,
+) -> None:
+    audio = FakeAudioStore()
+    first = await seed_demo_atomically(committed, voice=FakeVoice(), audio=audio)
+
+    second = await seed_demo_atomically(committed, voice=FakeVoice(), audio=audio)
+
+    # 前のデモの音声は残さない。新しいデモの音声だけがある
+    assert first != second
+    assert len(audio.files) == REVIEWS
+    assert all(name.startswith(f"users/{second}/") for name in audio.files)
+
+
+async def test_a_failed_seed_deletes_its_new_audio_and_keeps_the_previous(
+    committed: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    audio = FakeAudioStore()
+    first = await seed_demo_atomically(committed, voice=FakeVoice(), audio=audio)
+    before = dict(audio.files)
+    real = select_option
+    calls = 0
+
+    async def fail_on_second(*args: Any, **kwargs: Any) -> Any:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("boom")
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(seed_module, "select_option", fail_on_second)
+    with pytest.raises(RuntimeError):
+        await seed_demo_atomically(committed, voice=FakeVoice(), audio=audio)
+
+    # 前のデモは行も音声もそのまま。途中まで置いた新しい音声は消える
+    assert (await _demo_state(committed))[0] == [first]
+    assert audio.files == before

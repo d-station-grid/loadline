@@ -3,6 +3,10 @@
 使い方（api/ で）:
   uv run python -m scripts.seed_demo
 
+声も入れるとき（TTS_URL と AUDIO_BUCKET を設定して）。手元の Google アカウントの
+資格情報からは tts の ID トークンを作れないので、gcloud で取って渡す:
+  TTS_ID_TOKEN=$(gcloud auth print-identity-token) uv run python -m scripts.seed_demo
+
 デモの利用者（is_demo、firebase_uid は NULL）を消して作り直し、16 週分のワークアウトと
 心拍、VO2max、メモを入れる。記録は決まった乱数で作るので、毎回同じになる。日付も
 動かさない。ゲストのダッシュボードは最後のワークアウトの日を今日として切る。
@@ -11,13 +15,18 @@
 するので、チャートとセリフの数字が食い違わない。GEMINI_PROJECT と TYPESAFE_API_KEY が
 あれば Gemini が書いて Jev で確かめ、なければ定型になる。前の 3 週は選択肢を 1 つ
 選んでおく。最後の週は選ばずに残す（ゲストには押せない選択肢として見せる）。
-音声はまだ入れない（声にする機能で足す）。
+TTS_URL と AUDIO_BUCKET があれば、利用者と同じく振り返りを声にして置く。
 
 全体を 1 つのトランザクションで入れる。途中で失敗したら何も変えず、前のデモデータが
 そのまま残る。同時に 2 回流しても、advisory lock で 1 回ずつ順に入る。
+
+デモの利用者は作り直すたびに id が変わり、音声の置き場所（users/{id}/）も変わる。前の
+デモの音声は、新しいデモを確定してから消す。失敗したときは、新しく置いた音声を消す。
 """
 
 import asyncio
+import logging
+import os
 import random
 import uuid
 from dataclasses import dataclass
@@ -28,12 +37,17 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
+from app.adapters.audio_storage import audio_store
 from app.adapters.gemini import gemini_writer
 from app.adapters.jev import jev_checker
+from app.adapters.tts import kokoro_voice
 from app.core.config import get_settings
 from app.core.db import get_engine
 from app.models import Note, User, Vo2maxReading, Workout, WorkoutHeartRate
+from app.services.audio import AudioStore, Voice, user_audio_prefix
 from app.services.reviews import LineChecker, ReviewWriter, create_review, select_option
+
+logger = logging.getLogger(__name__)
 
 DEMO_EMAIL = "demo@loadline.invalid"
 TIMEZONE = "Asia/Tokyo"
@@ -172,6 +186,9 @@ async def seed_demo(
     session: AsyncSession,
     writer: ReviewWriter | None = None,
     checker: LineChecker | None = None,
+    *,
+    voice: Voice | None = None,
+    audio: AudioStore | None = None,
 ) -> User:
     """デモの利用者を作り直して、記録、メモ、振り返りを入れる。
 
@@ -220,7 +237,9 @@ async def seed_demo(
     # 振り返りの日（月曜）。最後の回は LAST_DAY の翌日
     review_days = [LAST_DAY + timedelta(days=1) - timedelta(weeks=n) for n in range(REVIEWS)][::-1]
     for i, day in enumerate(review_days):
-        review, _ = await create_review(session, user, writer, checker, today=day)
+        review, _ = await create_review(
+            session, user, writer, checker, today=day, voice=voice, audio=audio
+        )
         if i < len(review_days) - 1:
             # 前の週は、その週の間に真ん中の選択肢を選んだことにする
             option = review.options[len(review.options) // 2]
@@ -232,26 +251,107 @@ async def seed_demo_atomically(
     engine: AsyncEngine,
     writer: ReviewWriter | None = None,
     checker: LineChecker | None = None,
+    *,
+    voice: Voice | None = None,
+    audio: AudioStore | None = None,
 ) -> int:
     """seed_demo を 1 つのトランザクションで流し、最後まで済んだときだけ確定する。
 
     create_review などは途中で commit するので、外のトランザクションに入れて savepoint に
     する。途中で例外が出たら全部を巻き戻し、前のデモデータを残す。作ったデモの利用者の id を返す。
+
+    audio があれば、確定してから前のデモの音声を消す。途中で失敗したら、新しく置いた音声を
+    消す（前のデモの音声は、前のデモの行と一緒に残る）。
     """
-    async with engine.connect() as conn, conn.begin():
-        async with AsyncSession(
-            bind=conn, expire_on_commit=False, join_transaction_mode="create_savepoint"
-        ) as session:
-            user = await seed_demo(session, writer, checker)
+    tracked = None if audio is None else _Tracked(audio)
+    try:
+        async with engine.connect() as conn, conn.begin():
+            async with AsyncSession(
+                bind=conn, expire_on_commit=False, join_transaction_mode="create_savepoint"
+            ) as session:
+                # seed_demo と同じ鍵。トランザクションの中なら同じ鍵を何度取ってもよい。
+                # 先に取らないと、同時に流れた側が確定する前の id を読み落とす
+                await session.execute(select(func.pg_advisory_xact_lock(_LOCK_KEY)))
+                old_ids = list(await session.scalars(select(User.id).where(User.is_demo.is_(True))))
+                user = await seed_demo(session, writer, checker, voice=voice, audio=tracked)
+    except BaseException:
+        if tracked is not None:
+            # 1 つずつ、置いたファイルそのものを消す（名前を prefix として渡す）
+            await _delete_audio(tracked, tracked.put_paths)
+        raise
+    if tracked is not None:
+        await _delete_audio(tracked, [user_audio_prefix(i) for i in old_ids])
     return user.id
+
+
+async def _delete_audio(audio: AudioStore, prefixes: list[str]) -> None:
+    """デモの音声を消す。消せなくてもデモは使えるので、ログに残して続ける。"""
+    for prefix in prefixes:
+        try:
+            await audio.delete_all(prefix)
+        except Exception:
+            logger.exception("seed: could not delete the demo audio under %s", prefix)
+
+
+class _Tracked:
+    """置いたファイルの名前を控える。seed が途中で失敗したときに、それだけを消すため。"""
+
+    def __init__(self, store: AudioStore) -> None:
+        self._store = store
+        self.put_paths: list[str] = []
+
+    async def put(self, path: str, wav: bytes) -> bool:
+        saved = await self._store.put(path, wav)
+        if saved:
+            self.put_paths.append(path)
+        return saved
+
+    async def url(self, path: str) -> str | None:
+        return await self._store.url(path)
+
+    async def delete_all(self, prefix: str) -> None:
+        await self._store.delete_all(prefix)
+
+
+class _UploadOnly:
+    """手元から seed を流すときの音声の置き場所。置く・消すだけで、署名はしない。
+
+    手元の Google アカウントの資格情報では署名付き URL を作れない。seed は URL を使わない
+    ので、署名のたびにエラーのログを出さないよう、署名しない。
+    """
+
+    def __init__(self, store: AudioStore) -> None:
+        self._store = store
+
+    async def put(self, path: str, wav: bytes) -> bool:
+        return await self._store.put(path, wav)
+
+    async def url(self, path: str) -> str | None:
+        return None
+
+    async def delete_all(self, prefix: str) -> None:
+        await self._store.delete_all(prefix)
 
 
 async def main() -> None:
     settings = get_settings()
+    token = os.environ.get("TTS_ID_TOKEN")
+
+    async def given_token() -> str:
+        return token or ""
+
+    voice = kokoro_voice(settings, given_token if token else None)
+    store = audio_store(settings)
     user_id = await seed_demo_atomically(
-        get_engine(), gemini_writer(settings), jev_checker(settings)
+        get_engine(),
+        gemini_writer(settings),
+        jev_checker(settings),
+        voice=voice,
+        audio=None if store is None else _UploadOnly(store),
     )
     print(f"demo user {user_id}: {FIRST_DAY} to {LAST_DAY}")
+    if voice is None or store is None:
+        print("no audio: set TTS_URL and AUDIO_BUCKET to voice the reviews")
 
 
 if __name__ == "__main__":

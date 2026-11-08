@@ -4,7 +4,7 @@ loadline が GCP（プロジェクト `loadline-app`）に持っている設定�
 
 - リージョンは `asia-northeast1`（東京）にそろえています。例外は Gemini（Vertex AI）で、api は `global` のエンドポイントを呼びます（api の設定 `gemini_location` の既定。`deploy.yml` は `GEMINI_LOCATION` を渡していない）
 - Cloud Run へのデプロイ（`.github/workflows/deploy.yml`、`deploy-tts.yml`）が入れる設定以外は、コンソールやコマンドで手で入れたもので、コードには残りません。変えたら、この文書も直します
-- 振り返りの音声は、api が tts で声にして音声のバケットに置き、署名付き URL を返します。web がその URL を再生するのはまだで、#39 の残りでつなぎます
+- 振り返りの音声は、api が tts で声にして音声のバケットに置き、署名付き URL を返します。web はその URL を、ブラウザから直接読んで再生します
 - データベースは GCP ではなく Neon（AWS シンガポール）です。接続の URL だけを Secret Manager に置いています
 - 今の設定を確かめるコマンドは、最後の「確かめ方」にあります
 
@@ -21,14 +21,12 @@ flowchart LR
   A -- セリフを書く --> V[Vertex AI: Gemini<br>global]
   A -- 置く・署名付き URL・消す --> S[(gs://loadline-app-audio)]
   A -- 読む --> SM[Secret Manager]
-  U -. 署名付き URL で再生（web は #39 の残りでつなぐ） .-> S
+  U -- 署名付き URL で再生 --> S
   GA[GitHub Actions<br>loadline-deploy] -- イメージ --> AR[Artifact Registry<br>loadline]
   GA -- 読む --> M[(gs://loadline-app-models)]
   GA -- デプロイ --> A
   GA -- デプロイ --> T
 ```
-
-点線は、GCP と api の側は用意してあり、web がつなぐのはこれからの経路です。
 
 ## サービスアカウント
 

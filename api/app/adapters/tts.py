@@ -115,8 +115,16 @@ class KokoroVoice:
         return None
 
 
-def kokoro_voice(settings: Settings) -> KokoroVoice | None:
-    """設定から作る。TTS_URL が空なら None（声にしない）。ここではまだトークンを取らない。"""
+def kokoro_voice(
+    settings: Settings, token: Callable[[], Awaitable[str]] | None = None
+) -> KokoroVoice | None:
+    """設定から作る。TTS_URL が空なら None（声にしない）。ここではまだトークンを取らない。
+
+    token を渡さなければ、Application Default Credentials で ID トークンを取る（本番）。
+    手元から seed を流すときは、gcloud で取ったトークンを渡す。
+    """
     if not settings.tts_url:
         return None
-    return KokoroVoice(settings.tts_url, IdTokens(settings.tts_url), settings.tts_timeout_sec)
+    return KokoroVoice(
+        settings.tts_url, token or IdTokens(settings.tts_url), settings.tts_timeout_sec
+    )
