@@ -4,15 +4,18 @@ from typing import Annotated, Any
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.adapters.audio_storage import audio_store
 from app.adapters.cloud_tasks import review_queue
 from app.adapters.firebase_accounts import account_deleter
 from app.adapters.gemini import gemini_writer
 from app.adapters.jev import jev_checker
+from app.adapters.tts import kokoro_voice
 from app.core.auth import Identity, get_identity
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.models import User
 from app.services.accounts import AccountDeleter
+from app.services.audio import AudioStore, Voice
 from app.services.auto_reviews import ReviewQueue
 from app.services.reviews import LineChecker, ReviewWriter
 from app.services.users import AccountDeletedError, DemoUnavailableError, get_or_create_user
@@ -74,6 +77,24 @@ def get_line_checker() -> LineChecker | None:
 
 
 LineCheckerDep = Annotated[LineChecker | None, Depends(get_line_checker)]
+
+
+@lru_cache
+def get_voice() -> Voice | None:
+    """セリフを読み上げる tts。プロセスで 1 つ。TTS_URL が空なら None（声にしない）。"""
+    return kokoro_voice(get_settings())
+
+
+VoiceDep = Annotated[Voice | None, Depends(get_voice)]
+
+
+@lru_cache
+def get_audio_store() -> AudioStore | None:
+    """音声を置く Cloud Storage。プロセスで 1 つ。AUDIO_BUCKET が空なら None（声にしない）。"""
+    return audio_store(get_settings())
+
+
+AudioStoreDep = Annotated[AudioStore | None, Depends(get_audio_store)]
 
 
 @lru_cache

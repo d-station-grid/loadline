@@ -15,7 +15,13 @@ from app.domain.review_week import review_period
 from app.main import app
 from app.models import User, WeeklyReview
 from app.routers import internal
-from app.routers.deps import get_line_checker, get_review_queue, get_review_writer
+from app.routers.deps import (
+    get_audio_store,
+    get_line_checker,
+    get_review_queue,
+    get_review_writer,
+    get_voice,
+)
 from app.services.auto_reviews import (
     AutoReview,
     AutoReviewResult,
@@ -26,7 +32,14 @@ from app.services.auto_reviews import (
     due_reviews,
 )
 from tests.factories import UserFactory, WeeklyReviewFactory
-from tests.test_reviews_service import SAFE, WRITTEN, FakeChecker, FakeWriter
+from tests.test_reviews_service import (
+    SAFE,
+    WRITTEN,
+    FakeAudioStore,
+    FakeChecker,
+    FakeVoice,
+    FakeWriter,
+)
 
 HEADERS = {"Authorization": "Bearer from-google"}
 TOKYO = ZoneInfo("Asia/Tokyo")
@@ -274,6 +287,22 @@ async def test_task_checks_what_gemini_wrote_with_jev(
     assert checker.contents == [WRITTEN]
     assert not review.is_fallback
     assert review.script == WRITTEN.script
+
+
+async def test_task_voices_the_review(client: AsyncClient, session: AsyncSession) -> None:
+    """自動で作るときも、本人がボタンで作るときと同じく声にして置く。"""
+    user = await _runner()
+    voice, audio = FakeVoice(), FakeAudioStore()
+    app.dependency_overrides[get_voice] = lambda: voice
+    app.dependency_overrides[get_audio_store] = lambda: audio
+
+    res = await client.post(_task_path(user, _current_week()), headers=HEADERS)
+
+    review = await session.get(WeeklyReview, res.json()["review_id"])
+    assert review is not None
+    assert voice.spoken == [review.script]
+    assert review.audio_path == f"users/{user.id}/reviews/{review.id}.wav"
+    assert list(audio.files) == [review.audio_path]
 
 
 @pytest.mark.parametrize(

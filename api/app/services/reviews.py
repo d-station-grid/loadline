@@ -35,6 +35,7 @@ from app.domain.situation import (
 from app.models import Note, ReviewStatus, User, WeeklyReview, WeeklyReviewOption, Workout
 from app.schemas.dashboard import DayPoint
 from app.schemas.reviews import ReviewOptionOut, WeeklyReviewOut
+from app.services.audio import AudioStore, Voice, review_audio_path
 from app.services.dashboard import build_dashboard
 
 logger = logging.getLogger(__name__)
@@ -280,8 +281,14 @@ async def _options(session: AsyncSession, review_id: int) -> list[WeeklyReviewOp
     return list(await session.scalars(stmt))
 
 
-async def _out(session: AsyncSession, review: WeeklyReview) -> WeeklyReviewOut:
+async def _out(
+    session: AsyncSession, review: WeeklyReview, audio: AudioStore | None
+) -> WeeklyReviewOut:
+    """応答の形にする。音声があり、audio があれば、再生できる URL を付ける。"""
     options = await _options(session, review.id)
+    audio_url = None
+    if review.audio_path is not None and audio is not None:
+        audio_url = await audio.url(review.audio_path)
     return WeeklyReviewOut(
         id=review.id,
         period_start=review.period_start,
@@ -292,8 +299,30 @@ async def _out(session: AsyncSession, review: WeeklyReview) -> WeeklyReviewOut:
         is_fallback=review.is_fallback,
         expression=Expression(review.expression),
         created_at=review.created_at,
+        audio_url=audio_url,
         options=[ReviewOptionOut.model_validate(o) for o in options],
     )
+
+
+async def _speak(
+    session: AsyncSession,
+    user: User,
+    script: str,
+    voice: Voice | None,
+    audio: AudioStore | None,
+) -> bytes | None:
+    """セリフを声にする。voice と audio のどちらかがない（設定で切っている）、または
+    読めなければ None（音声なしで作る）。"""
+    if voice is None or audio is None:
+        return None
+    # 読み上げを待つ 10〜45 秒のあいだ、DB の接続を手放す
+    await session.commit()
+    wav = await voice.speak(script)
+    if wav is None:
+        logger.warning(
+            "review: could not voice the script; saving it without audio for user %s", user.id
+        )
+    return wav
 
 
 async def create_review(
@@ -302,12 +331,18 @@ async def create_review(
     writer: ReviewWriter | None = None,
     checker: LineChecker | None = None,
     today: date | None = None,
+    *,
+    voice: Voice | None = None,
+    audio: AudioStore | None = None,
 ) -> tuple[WeeklyReviewOut, bool]:
     """今の振り返りの週の振り返りを作る。作ったら True、もうあればそれと False。
 
     writer と checker の両方があれば LLM に書いてもらい、Jev で話してよいと確かめられた
     ときだけその文で作る。それ以外（どちらかがない、書けない、引っかかった、確かめられ
     なかった）は定型で作る。
+
+    voice と audio の両方があれば、決まったセリフ（LLM の文でも定型でも）を声にして置く。
+    読めない、置けないときは音声なし（audio_url が null）で作り、文字だけで見せる。
 
     週は、今日以前でいちばん近い振り返りの曜日の前日までの 7 日間（利用者のタイムゾーン）。
     一度作った週は作り直さない。作った時点の記録で書いた、その週の 1 通にする。選択肢を
@@ -321,13 +356,14 @@ async def create_review(
     start, end = review_period(today, user.review_weekday)
     existing = await _find(session, user.id, start)
     if existing is not None:
-        return await _out(session, existing), False
+        return await _out(session, existing, audio), False
 
     material = await review_material(session, user, start, today)
     written = await _write(session, user, material, writer, checker)
     # 定型は前の週の選択とメモを読まない。メモを Jev で確かめたフラグだけを使う。
     # 定型のときの表情は relaxed（_Written の既定）
     content = written.content or fallback_review(material.week, written.health_flag)
+    wav = await _speak(session, user, content.script, voice, audio)
     review = await session.scalar(
         insert(WeeklyReview)
         .values(
@@ -348,8 +384,14 @@ async def create_review(
         raced = await _find(session, user.id, start)
         if raced is None:
             raise RuntimeError("weekly review conflicted but was not found")
-        return await _out(session, raced), False
+        return await _out(session, raced, audio), False
 
+    if wav is not None and audio is not None:
+        # 置き場所に振り返りの id を使うので、行を入れてから置く。置いてから commit に
+        # 失敗したときに残るファイルも、利用者ごとの場所にあるので、アカウントを消せば消える
+        path = review_audio_path(user.id, review.id)
+        if await audio.put(path, wav):
+            review.audio_path = path
     session.add_all(
         WeeklyReviewOption(
             weekly_review_id=review.id,
@@ -360,7 +402,7 @@ async def create_review(
         for i, o in enumerate(content.options)
     )
     await session.commit()
-    return await _out(session, review), True
+    return await _out(session, review, audio), True
 
 
 async def _find(session: AsyncSession, user_id: int, start: date) -> WeeklyReview | None:
@@ -372,7 +414,11 @@ async def _find(session: AsyncSession, user_id: int, start: date) -> WeeklyRevie
 
 
 async def current_review(
-    session: AsyncSession, user: User, today: date | None = None
+    session: AsyncSession,
+    user: User,
+    today: date | None = None,
+    *,
+    audio: AudioStore | None = None,
 ) -> WeeklyReviewOut | None:
     """今の振り返りの週の振り返り。週の決め方は create_review と同じ。まだなければ None。
 
@@ -389,15 +435,21 @@ async def current_review(
             .order_by(WeeklyReview.period_start.desc())
             .limit(1)
         )
-        return None if latest is None else await _out(session, latest)
+        return None if latest is None else await _out(session, latest, audio)
     today = today or today_for(user.timezone)
     start, _ = review_period(today, user.review_weekday)
     review = await _find(session, user.id, start)
-    return None if review is None else await _out(session, review)
+    return None if review is None else await _out(session, review, audio)
 
 
 async def select_option(
-    session: AsyncSession, user: User, review_id: int, option_id: int, today: date | None = None
+    session: AsyncSession,
+    user: User,
+    review_id: int,
+    option_id: int,
+    today: date | None = None,
+    *,
+    audio: AudioStore | None = None,
 ) -> WeeklyReviewOut:
     """振り返りの選択肢を 1 つ選ぶ。もう別のものを選んでいれば、そちらを外して選び直す。
 
@@ -443,6 +495,6 @@ async def select_option(
         )
     # 応答はロックを持ったまま組み立てる。commit の後に読むと、その間に別のリクエストが
     # 選び直した行だけが新しく、自分の行は古いまま残り、選択済みが 2 つに見える
-    out = await _out(session, review)
+    out = await _out(session, review, audio)
     await session.commit()
     return out

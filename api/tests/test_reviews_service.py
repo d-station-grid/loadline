@@ -6,7 +6,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.domain.expression import ExpressionAnswer
@@ -934,3 +934,134 @@ async def test_offering_more_is_stopped_in_a_fatigued_week_without_the_health_fl
     assert writer.data()["may_offer_more"] is False
     assert checker.notes == []
     assert review.is_fallback is is_fallback
+
+
+class FakeVoice:
+    """tts の代わり。読んだセリフを控える。fail なら読めなかったことにする。"""
+
+    def __init__(self, fail: bool = False) -> None:
+        self.spoken: list[str] = []
+        self.fail = fail
+
+    async def speak(self, text: str) -> bytes | None:
+        self.spoken.append(text)
+        return None if self.fail else b"RIFF" + text.encode()
+
+
+class FakeAudioStore:
+    """Cloud Storage の代わり。置いたファイルを名前で持つ。"""
+
+    def __init__(self, fail_put: bool = False) -> None:
+        self.files: dict[str, bytes] = {}
+        self.fail_put = fail_put
+
+    async def put(self, path: str, wav: bytes) -> bool:
+        if self.fail_put:
+            return False
+        self.files[path] = wav
+        return True
+
+    async def url(self, path: str) -> str | None:
+        return f"https://storage.example/{path}?signed"
+
+    async def delete_all(self, prefix: str) -> None:
+        for name in [n for n in self.files if n.startswith(prefix)]:
+            del self.files[name]
+
+
+async def test_create_review_voices_the_script(session: AsyncSession) -> None:
+    user = await _user()
+    voice, audio = FakeVoice(), FakeAudioStore()
+
+    review, _ = await create_review(session, user, today=TODAY, voice=voice, audio=audio)
+
+    path = f"users/{user.id}/reviews/{review.id}.wav"
+    assert voice.spoken == [review.script]
+    assert audio.files == {path: b"RIFF" + review.script.encode()}
+    assert review.audio_url == f"https://storage.example/{path}?signed"
+    saved = await session.get(WeeklyReview, review.id, populate_existing=True)
+    assert saved is not None and saved.audio_path == path
+
+
+async def test_create_review_voices_what_the_writer_wrote(session: AsyncSession) -> None:
+    user = await _user()
+    voice = FakeVoice()
+
+    review, _ = await create_review(
+        session,
+        user,
+        FakeWriter(WRITTEN),
+        FakeChecker(SAFE),
+        today=TODAY,
+        voice=voice,
+        audio=FakeAudioStore(),
+    )
+
+    assert not review.is_fallback
+    assert voice.spoken == [WRITTEN.script]
+
+
+@pytest.mark.parametrize(
+    ("voice", "audio"),
+    [(FakeVoice(fail=True), FakeAudioStore()), (FakeVoice(), FakeAudioStore(fail_put=True))],
+    ids=["cannot-speak", "cannot-put"],
+)
+async def test_review_is_saved_without_audio_when_voicing_fails(
+    session: AsyncSession, voice: FakeVoice, audio: FakeAudioStore
+) -> None:
+    # 声を作れなくても振り返りは作り、文字だけで見せる
+    user = await _user()
+
+    review, created = await create_review(session, user, today=TODAY, voice=voice, audio=audio)
+
+    assert created
+    assert review.audio_url is None
+    assert audio.files == {}
+    saved = await session.get(WeeklyReview, review.id, populate_existing=True)
+    assert saved is not None and saved.audio_path is None
+
+
+async def test_no_voice_without_the_store(session: AsyncSession) -> None:
+    # 置き場所がなければ、読ませても使えないので tts も呼ばない
+    user = await _user()
+    voice = FakeVoice()
+
+    review, _ = await create_review(session, user, today=TODAY, voice=voice, audio=None)
+
+    assert voice.spoken == []
+    assert review.audio_url is None
+
+
+async def test_existing_review_is_not_voiced_again(session: AsyncSession) -> None:
+    user = await _user()
+    audio = FakeAudioStore()
+    first, _ = await create_review(session, user, today=TODAY, voice=FakeVoice(), audio=audio)
+    voice = FakeVoice()
+
+    second, created = await create_review(session, user, today=TODAY, voice=voice, audio=audio)
+
+    assert not created
+    assert voice.spoken == []
+    assert second.audio_url == first.audio_url is not None
+
+
+async def test_current_review_and_selection_have_the_audio_url(session: AsyncSession) -> None:
+    user = await _user()
+    review_id, option_ids = await _review_with_options(user, MONDAY)
+    path = f"users/{user.id}/reviews/{review_id}.wav"
+    await session.execute(
+        update(WeeklyReview).where(WeeklyReview.id == review_id).values(audio_path=path)
+    )
+    audio = FakeAudioStore()
+    url = f"https://storage.example/{path}?signed"
+
+    current = await current_review(session, user, today=TODAY, audio=audio)
+    selected = await select_option(
+        session, user, review_id, option_ids[0], today=TODAY, audio=audio
+    )
+
+    assert current is not None and current.audio_url == url
+    assert selected.audio_url == url
+    # 置き場所の設定がなければ、音声があっても URL は出せない
+    without = await current_review(session, user, today=TODAY)
+    assert without is not None and without.audio_url is None

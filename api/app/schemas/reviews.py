@@ -24,7 +24,8 @@ class WeeklyReviewOut(BaseModel):
 
     script はアバターのセリフで、字幕にも使う。is_fallback が true なら人が書いた定型。
     expression はセリフを話すときのアバターの表情。定型なら relaxed。
-    options は position の順。音声は声にする機能で足す。
+    audio_url はセリフの音声を期限つきで再生できる URL。声を作れなかったときと、
+    声にしない設定のときは null で、文字だけで見せる。options は position の順。
     """
 
     id: int
@@ -36,6 +37,7 @@ class WeeklyReviewOut(BaseModel):
     is_fallback: bool
     expression: Expression
     created_at: datetime
+    audio_url: str | None
     options: list[ReviewOptionOut]
 
 

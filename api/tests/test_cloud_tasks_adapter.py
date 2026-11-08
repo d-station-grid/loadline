@@ -56,7 +56,7 @@ async def test_enqueues_a_task_for_the_week() -> None:
     assert task.http_request.url == f"{BASE_URL}/internal/reviews/users/7/weeks/2026-10-26"
     assert task.http_request.oidc_token.service_account_email == CALLER
     assert task.http_request.oidc_token.audience == BASE_URL
-    assert task.dispatch_deadline.total_seconds() == DISPATCH_DEADLINE_SEC == 150
+    assert task.dispatch_deadline.total_seconds() == DISPATCH_DEADLINE_SEC == 180
 
 
 def test_task_name_is_per_hour_in_utc() -> None:
