@@ -343,9 +343,15 @@ async def test_firebase_failure_after_the_audio_keeps_every_row(
     await session.commit()
     me_id = me.id
     before = await _rows_of(session, me_id)
+    audio.files[f"users/{me_id}/reviews/1.wav"] = b"RIFF"
     deleter.fail = True
 
     res = await client.delete("/me", headers=HEADERS)
 
+    # 行と Firebase の利用者は残るので、本人はログインしてやり直せる。音声はもう消えている
+    # （その振り返りは文字だけになる）。やり直したときは、消すものがないだけで通る
     assert res.status_code == 502
     assert await _rows_of(session, me_id) == before
+    assert audio.files == {}
+    deleter.fail = False
+    assert (await client.delete("/me", headers=HEADERS)).status_code == 204

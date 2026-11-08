@@ -69,7 +69,8 @@ async def test_busy_tts_is_tried_again_after_a_wait(busy: int) -> None:
 
     assert wav == WAV
     assert len(tts.requests) == 3
-    assert sleeps.waited == list(RETRY_WAITS_SEC)
+    # 最後の試行は約 30 秒後。0 台からの起動（約 21 秒）を待ち切る
+    assert sleeps.waited == list(RETRY_WAITS_SEC) == [10.0, 20.0]
 
 
 async def test_network_failure_is_tried_again() -> None:

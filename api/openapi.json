@@ -1949,7 +1949,7 @@
           "options"
         ],
         "title": "WeeklyReviewOut",
-        "description": "週に 1 回の振り返り。期間は利用者のタイムゾーンでの日付で、両端を含む。\n\nscript はアバターのセリフで、字幕にも使う。is_fallback が true なら人が書いた定型。\nexpression はセリフを話すときのアバターの表情。定型なら relaxed。\naudio_url はセリフの音声を期限つきで再生できる URL。声を作れなかったときと、\n声にしない設定のときは null で、文字だけで見せる。options は position の順。"
+        "description": "週に 1 回の振り返り。期間は利用者のタイムゾーンでの日付で、両端を含む。\n\nscript はアバターのセリフで、字幕にも使う。is_fallback が true なら人が書いた定型。\nexpression はセリフを話すときのアバターの表情。定型なら relaxed。\naudio_url はセリフの音声を期限つきで再生できる URL。null なら文字だけで見せる。\nnull は、声を作れなかった、声にしない設定、今は署名できなかった、のどれか。最後の\n場合は、次に読むと URL が出ることがある。options は position の順。"
       },
       "WorkoutDetail": {
         "properties": {

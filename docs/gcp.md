@@ -150,7 +150,7 @@ gcloud iam service-accounts add-iam-policy-binding \
 
 上限が 2 台なので、同時に 3 件来ると、3 件目は空きが出るのを待ちます。待つあいだに前の読み上げが終われば処理され、空きが出なければ 429 になります。自動の振り返りは Cloud Tasks が同時に 2 件までしか送らないので、重なるのは画面から作った分が加わったときです。
 
-api は 429（と 5xx、通信の失敗）のとき、5 秒、10 秒と間を空けてやり直します。試すのは最初の 1 回を含めて 3 回まで、全体で 45 秒までです（`api/app/adapters/tts.py`、api の設定 `tts_timeout_sec`）。それでも読めなければ、音声なしで振り返りを作り、画面は文字だけで見せます。
+api は 429（と 5xx、通信の失敗）のとき、10 秒、20 秒と間を空けてやり直します。最後の試行は約 30 秒後で、0 台からの起動（約 21 秒）を待ち切ります。試すのは最初の 1 回を含めて 3 回まで、全体で 45 秒までです（`api/app/adapters/tts.py`、api の設定 `tts_timeout_sec`）。それでも読めなければ、音声なしで振り返りを作り、画面は文字だけで見せます。音声なしになった週は、あとから読み直しません。
 
 ### デプロイが重ならないように
 
@@ -167,7 +167,7 @@ Scheduler が 1 時間おきに api を呼び、api が振り返りを作る相�
 | Scheduler のジョブ | `weekly-review-dispatch`、毎時 0 分（UTC）、`POST /internal/reviews/dispatch` |
 | Scheduler が積み込み（dispatch）を待つ時間 | 180 秒 |
 | Tasks のキュー | `weekly-reviews` |
-| Tasks が 1 人分の生成を待つ時間 | 180 秒（api が積むときにタスクごとに指定する。`api/app/adapters/cloud_tasks.py` の `DISPATCH_DEADLINE_SEC`）。Gemini 60 秒、Jev 15 秒を 2 回、読み上げ 45 秒の上限に、ゆとりを足した長さ |
+| Tasks が 1 人分の生成を待つ時間 | 180 秒（api が積むときにタスクごとに指定する。`api/app/adapters/cloud_tasks.py` の `DISPATCH_DEADLINE_SEC`）。Gemini 60 秒、Jev 15 秒を 2 回、読み上げ 45 秒、音声の保存 20 秒の上限で 155 秒。それにゆとりを足した長さ |
 | 同時に送る数 | 2 |
 | 試す回数 | 最初の 1 回を含めて 3 回まで（やり直しは 2 回まで）。間は 60 秒から 600 秒まで広げる |
 
@@ -238,7 +238,9 @@ gcloud artifacts repositories set-cleanup-policies loadline \
 
 音声は、消したらすぐに戻せなくします。アカウントを消したとき（`DELETE /me`）は、本人の音声（`users/{利用者の id}/` の下）も消します。そのとき 7 日のあいだ復元できると、消したという約束とずれるためです。
 
-音声は `users/{利用者の id}/reviews/{振り返りの id}.wav` に置きます。web には、期限 1 時間の署名付き URL を渡します（api の設定 `audio_url_ttl_sec`）。モデルは誤って消したときに戻せるよう、既定の 7 日のままにしています。
+音声は `users/{利用者の id}/reviews/{振り返りの id}.wav` に置きます。web には、期限 1 時間の署名付き URL を渡します（api の設定 `audio_url_ttl_sec`）。
+
+api から Cloud Storage と IAM への通信には、上限を付けています（`api/app/adapters/audio_storage.py`）。置く・一覧・消すは 1 回 10 秒、やり直しを含めて 20 秒、署名は 5 秒です。SDK の既定（1 回 60 秒、やり直しを含めて 120 秒）のままだと、振り返りを作る処理が Tasks の期限を超え、DB の行も長く持つためです。署名が間に合わなければ `audio_url` を null にして文字だけで返し、次に読むときにもう一度署名します。モデルは誤って消したときに戻せるよう、既定の 7 日のままにしています。
 
 モデルを音声と別のバケットにしたのは、api が音声のバケットに持つ書き込みと削除の権限を、モデルに届かせないためです。モデルは配布元（kokoro-onnx の GitHub Releases の `model-files-v1.0`）が消えたときの控えも兼ねます。
 

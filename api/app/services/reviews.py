@@ -281,14 +281,19 @@ async def _options(session: AsyncSession, review_id: int) -> list[WeeklyReviewOp
     return list(await session.scalars(stmt))
 
 
+async def _audio_url(review: WeeklyReview, audio: AudioStore | None) -> str | None:
+    """音声を再生できる URL。音声がない、置き場所の設定がない、署名できないなら None。"""
+    if review.audio_path is None or audio is None:
+        return None
+    return await audio.url(review.audio_path)
+
+
 async def _out(
     session: AsyncSession, review: WeeklyReview, audio: AudioStore | None
 ) -> WeeklyReviewOut:
     """応答の形にする。音声があり、audio があれば、再生できる URL を付ける。"""
     options = await _options(session, review.id)
-    audio_url = None
-    if review.audio_path is not None and audio is not None:
-        audio_url = await audio.url(review.audio_path)
+    audio_url = await _audio_url(review, audio)
     return WeeklyReviewOut(
         id=review.id,
         period_start=review.period_start,
@@ -494,7 +499,8 @@ async def select_option(
             .values(selected_at=datetime.now(UTC))
         )
     # 応答はロックを持ったまま組み立てる。commit の後に読むと、その間に別のリクエストが
-    # 選び直した行だけが新しく、自分の行は古いまま残り、選択済みが 2 つに見える
-    out = await _out(session, review, audio)
+    # 選び直した行だけが新しく、自分の行は古いまま残り、選択済みが 2 つに見える。
+    # 音声の URL は commit の後に付ける。署名（IAM に頼む）を待つあいだ、ロックを持たない
+    out = await _out(session, review, None)
     await session.commit()
-    return out
+    return out.model_copy(update={"audio_url": await _audio_url(review, audio)})

@@ -1065,3 +1065,37 @@ async def test_current_review_and_selection_have_the_audio_url(session: AsyncSes
     # 置き場所の設定がなければ、音声があっても URL は出せない
     without = await current_review(session, user, today=TODAY)
     assert without is not None and without.audio_url is None
+
+
+async def test_select_option_signs_the_url_after_the_commit(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 署名（IAM に頼む）を待つあいだ、振り返りの行のロックを持たない
+    user = await _user()
+    review_id, option_ids = await _review_with_options(user, MONDAY)
+    await session.execute(
+        update(WeeklyReview)
+        .where(WeeklyReview.id == review_id)
+        .values(audio_path=f"users/{user.id}/reviews/{review_id}.wav")
+    )
+    events: list[str] = []
+    real_commit = session.commit
+
+    async def recording_commit() -> None:
+        await real_commit()
+        events.append("commit")
+
+    class RecordingStore(FakeAudioStore):
+        async def url(self, path: str) -> str | None:
+            events.append("sign")
+            return await super().url(path)
+
+    monkeypatch.setattr(session, "commit", recording_commit)
+
+    out = await select_option(
+        session, user, review_id, option_ids[0], today=TODAY, audio=RecordingStore()
+    )
+
+    assert events == ["commit", "sign"]
+    assert out.audio_url is not None
+    assert [o.id for o in out.options if o.selected_at is not None] == [option_ids[0]]

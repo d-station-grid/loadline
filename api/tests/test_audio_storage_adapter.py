@@ -1,3 +1,4 @@
+import time
 from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
@@ -5,7 +6,14 @@ from typing import Any
 import pytest
 from google.api_core.exceptions import Forbidden, ServiceUnavailable
 
-from app.adapters.audio_storage import GcsAudioStore, audio_store
+from app.adapters import audio_storage
+from app.adapters.audio_storage import (
+    STORAGE_RETRY_SEC,
+    STORAGE_TIMEOUT_SEC,
+    GcsAudioStore,
+    _TimedRequest,
+    audio_store,
+)
 from app.core.config import Settings
 from app.services.accounts import AccountDeleteError
 
@@ -17,7 +25,8 @@ class FakeBlob:
         self.bucket = bucket
         self.name = name
 
-    def upload_from_string(self, data: bytes, content_type: str) -> None:
+    def upload_from_string(self, data: bytes, content_type: str, **limits: Any) -> None:
+        self.bucket.limits.append(limits)
         if self.bucket.fail is not None:
             raise self.bucket.fail
         self.bucket.files[self.name] = (data, content_type)
@@ -25,6 +34,7 @@ class FakeBlob:
     def generate_signed_url(self, **kwargs: Any) -> str:
         if self.bucket.fail is not None:
             raise self.bucket.fail
+        time.sleep(self.bucket.sign_sec)
         self.bucket.signed.append((self.name, kwargs))
         return f"https://storage.example/{self.name}?signed"
 
@@ -35,17 +45,23 @@ class FakeBucket:
     def __init__(self) -> None:
         self.files: dict[str, tuple[bytes, str]] = {}
         self.signed: list[tuple[str, dict[str, Any]]] = []
+        self.limits: list[dict[str, Any]] = []
         self.fail: Exception | None = None
+        self.sign_sec = 0.0
 
     def blob(self, name: str) -> FakeBlob:
         return FakeBlob(self, name)
 
-    def list_blobs(self, prefix: str) -> list[FakeBlob]:
+    def list_blobs(self, prefix: str, **limits: Any) -> list[FakeBlob]:
+        self.limits.append(limits)
         if self.fail is not None:
             raise self.fail
         return [FakeBlob(self, n) for n in self.files if n.startswith(prefix)]
 
-    def delete_blobs(self, blobs: list[FakeBlob], on_error: Callable[[FakeBlob], None]) -> None:
+    def delete_blobs(
+        self, blobs: list[FakeBlob], on_error: Callable[[FakeBlob], None], **limits: Any
+    ) -> None:
+        self.limits.append(limits)
         for b in blobs:
             if self.files.pop(b.name, None) is None:
                 on_error(b)
@@ -75,8 +91,22 @@ class FakeCredentials:
         self.service_account_email = "loadline-api@loadline-app.iam.gserviceaccount.com"
 
 
-def _store(bucket: FakeBucket, credentials: Any = None) -> GcsAudioStore:
-    return GcsAudioStore("audio", TTL, credentials=credentials, client=FakeClient(bucket))
+def _store(
+    bucket: FakeBucket, credentials: Any = None, sign_timeout_sec: float = 5.0
+) -> GcsAudioStore:
+    return GcsAudioStore(
+        "audio",
+        TTL,
+        credentials=credentials,
+        client=FakeClient(bucket),
+        sign_timeout_sec=sign_timeout_sec,
+    )
+
+
+def _assert_limited(limits: dict[str, Any]) -> None:
+    # SDK の既定（1 回 60 秒、やり直しを含めて 120 秒）のままにしない
+    assert limits["timeout"] == STORAGE_TIMEOUT_SEC == 10.0
+    assert limits["retry"].timeout == STORAGE_RETRY_SEC == 20.0
 
 
 async def test_put_saves_the_wav() -> None:
@@ -84,6 +114,8 @@ async def test_put_saves_the_wav() -> None:
 
     assert await _store(bucket).put("users/1/reviews/2.wav", b"RIFF")
     assert bucket.files == {"users/1/reviews/2.wav": (b"RIFF", "audio/wav")}
+    (limits,) = bucket.limits
+    _assert_limited(limits)
 
 
 FORBIDDEN = Forbidden("no")  # type: ignore[no-untyped-call]
@@ -99,7 +131,7 @@ async def test_put_failure_is_false(error: Exception) -> None:
 
 
 async def test_url_is_signed_with_iam_as_the_service_account() -> None:
-    # Cloud Run には鍵がないので、メールと access token を渡して IAM に署名させる
+    # Cloud Run には鍵がないので、サービスアカウントの名前で IAM に署名させる
     bucket = FakeBucket()
 
     url = await _store(bucket, FakeCredentials()).url("users/1/reviews/2.wav")
@@ -107,13 +139,36 @@ async def test_url_is_signed_with_iam_as_the_service_account() -> None:
     assert url == "https://storage.example/users/1/reviews/2.wav?signed"
     ((name, kwargs),) = bucket.signed
     assert name == "users/1/reviews/2.wav"
-    assert kwargs == {
-        "version": "v4",
-        "expiration": TTL,
-        "method": "GET",
-        "service_account_email": "loadline-api@loadline-app.iam.gserviceaccount.com",
-        "access_token": "access-token",
-    }
+    signing = kwargs.pop("credentials")
+    assert kwargs == {"version": "v4", "expiration": TTL, "method": "GET"}
+    assert signing.signer_email == "loadline-api@loadline-app.iam.gserviceaccount.com"
+
+
+async def test_signing_is_given_up_after_the_timeout() -> None:
+    # IAM が止まっても、画面の読み込みを待たせない。URL なしで返す
+    bucket = FakeBucket()
+    bucket.sign_sec = 0.5
+
+    url = await _store(bucket, FakeCredentials(), sign_timeout_sec=0.05).url(
+        "users/1/reviews/2.wav"
+    )
+
+    assert url is None
+
+
+def test_every_request_for_signing_has_a_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 署名の通信（IAM と資格情報の取り直し）は、google-auth の既定では 1 回 120 秒待つ
+    calls: list[dict[str, Any]] = []
+
+    class RecordingRequest:
+        def __call__(self, url: str, **kwargs: Any) -> None:
+            calls.append(kwargs)
+
+    monkeypatch.setattr(audio_storage, "Request", RecordingRequest)
+
+    _TimedRequest(5.0)("https://iamcredentials.googleapis.com/", method="POST", timeout=120)
+
+    assert calls == [{"method": "POST", "timeout": 5.0}]
 
 
 async def test_url_failure_is_none() -> None:
@@ -132,6 +187,10 @@ async def test_delete_all_removes_only_the_prefix() -> None:
 
     # users/10/ は users/1 で始まるが、/ まで含めて比べるので残る
     assert list(bucket.files) == ["users/10/reviews/4.wav"]
+    # アカウントを消すあいだも DB の行を持つので、一覧と削除にも上限を付ける
+    assert len(bucket.limits) == 2
+    for limits in bucket.limits:
+        _assert_limited(limits)
 
 
 async def test_delete_all_with_nothing_to_delete() -> None:
@@ -153,8 +212,8 @@ async def test_already_deleted_file_is_not_an_error() -> None:
     # 一覧を取ったあとに、別の処理が消した
     original = bucket.list_blobs
 
-    def listed_then_gone(prefix: str) -> list[FakeBlob]:
-        blobs = original(prefix)
+    def listed_then_gone(prefix: str, **limits: Any) -> list[FakeBlob]:
+        blobs = original(prefix, **limits)
         bucket.files.clear()
         return blobs
 

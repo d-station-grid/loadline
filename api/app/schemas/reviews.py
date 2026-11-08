@@ -24,8 +24,9 @@ class WeeklyReviewOut(BaseModel):
 
     script はアバターのセリフで、字幕にも使う。is_fallback が true なら人が書いた定型。
     expression はセリフを話すときのアバターの表情。定型なら relaxed。
-    audio_url はセリフの音声を期限つきで再生できる URL。声を作れなかったときと、
-    声にしない設定のときは null で、文字だけで見せる。options は position の順。
+    audio_url はセリフの音声を期限つきで再生できる URL。null なら文字だけで見せる。
+    null は、声を作れなかった、声にしない設定、今は署名できなかった、のどれか。最後の
+    場合は、次に読むと URL が出ることがある。options は position の順。
     """
 
     id: int
