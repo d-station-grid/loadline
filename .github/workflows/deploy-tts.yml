@@ -1,0 +1,63 @@
+name: deploy-tts
+
+# main に入った tts/ の変更を Cloud Run の tts へ。api は deploy.yml で出す。
+# モデル（約 350MB）は Git に入れていないので、組み立ての前に Cloud Storage からコピーする
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tts/**"
+      - ".github/workflows/deploy-tts.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # Workload Identity Federation で GCP に入るのに要る
+
+env:
+  REGION: asia-northeast1
+  IMAGE: asia-northeast1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/loadline/tts
+  RUNTIME_SA: loadline-tts@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+  MODELS: gs://loadline-app-models/kokoro-v1.0
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      # tts/Dockerfile はこの 2 つを tts/ から COPY する
+      - name: copy the model files
+        run: |
+          gcloud storage cp "$MODELS/kokoro-v1.0.onnx" "$MODELS/voices-v1.0.bin" tts/ \
+            --project "${{ vars.GCP_PROJECT_ID }}"
+
+      - name: docker login (Artifact Registry)
+        run: gcloud auth configure-docker asia-northeast1-docker.pkg.dev --quiet
+
+      - name: build and push
+        run: |
+          docker build -t "$IMAGE:${{ github.sha }}" tts
+          docker push "$IMAGE:${{ github.sha }}"
+
+      # 値は試作で測ったもの。2GiB で足り、1GiB では足りない。4 vCPU で 1 回の読み上げが約 10 秒。
+      # 読み上げは 1 回で CPU を使い切るので、1 台に 1 件ずつ。費用を抑えるため 2 台まで。
+      # --cpu-boost は起動のあいだ CPU を足し、0 台から起き上がる時間を縮める。
+      # 認証を必須にし、呼べるのは api のサービスアカウントだけ（Invoker は手で付ける）
+      - name: deploy tts
+        run: |
+          gcloud run deploy tts \
+            --project "${{ vars.GCP_PROJECT_ID }}" --region "$REGION" \
+            --image "$IMAGE:${{ github.sha }}" \
+            --service-account "$RUNTIME_SA" \
+            --no-allow-unauthenticated \
+            --cpu 4 --memory 2Gi --cpu-boost \
+            --concurrency 1 --max-instances 2 \
+            --quiet

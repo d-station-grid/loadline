@@ -1,6 +1,6 @@
 name: deploy
 
-# main に入ったら api（web 同梱）を Cloud Run へ。tts は 6 段目で足す
+# main に入ったら api（web 同梱）を Cloud Run へ。tts は deploy-tts.yml で出す
 on:
   push:
     branches: [main]
