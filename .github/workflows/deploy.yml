@@ -1,6 +1,6 @@
 name: deploy
 
-# main に入ったら api（web 同梱）を Cloud Run へ。tts は 6 段目で足す
+# main に入ったら api（web 同梱）を Cloud Run へ。tts は deploy-tts.yml で出す
 on:
   push:
     branches: [main]
@@ -15,6 +15,14 @@ on:
 permissions:
   contents: read
   id-token: write # Workload Identity Federation で GCP に入るのに要る
+
+# 続けてマージしたときに並べて走らせない。来た順に 1 つずつ走らせ、待っている実行は取り消さない
+# （queue: max。既定の single では、古い実行の Re-run が最新の待ちを取り消してしまう）。
+# 走っている実行は途中で止めない（マイグレーションの途中で切らない）。古い実行は下の main との比較で出さずに終わる
+concurrency:
+  group: deploy-api
+  queue: max
+  cancel-in-progress: false
 
 env:
   REGION: asia-northeast1
@@ -51,8 +59,23 @@ jobs:
             -t "$IMAGE:${{ github.sha }}" .
           docker push "$IMAGE:${{ github.sha }}"
 
+      # 古い実行の Re-run などで、古い版を出し直さない。今の main と比べて api の中身が違えば、
+      # もっと新しい変更があり、その実行が出すので、ここでは出さない。同じなら出してよい。
+      # マイグレーションより前で止める。古いコードは新しい revision を知らず、upgrade head が失敗するため
+      - name: check that main has the same api
+        id: main
+        run: |
+          git fetch --depth=1 origin main
+          if git diff --quiet "$GITHUB_SHA" FETCH_HEAD -- api web Dockerfile .dockerignore .github/workflows/deploy.yml; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::main has newer api changes; not deploying $GITHUB_SHA"
+            echo "current=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # マイグレーションは同じイメージを Cloud Run Job として動かす。DB の URL は Secret Manager から
       - name: migrate
+        if: steps.main.outputs.current == 'true'
         run: |
           gcloud run jobs deploy api-migrate \
             --project "${{ vars.GCP_PROJECT_ID }}" --region "$REGION" \
@@ -68,6 +91,7 @@ jobs:
       # サービスアカウントの権限（roles/aiplatform.user）で呼ぶ。Jev のキーは Secret Manager から。
       # Jev のキーがないと、Gemini が書いても話さずに定型にする
       - name: deploy api
+        if: steps.main.outputs.current == 'true'
         run: |
           gcloud run deploy api \
             --project "${{ vars.GCP_PROJECT_ID }}" --region "$REGION" \
