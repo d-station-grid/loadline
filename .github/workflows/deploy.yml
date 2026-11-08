@@ -32,6 +32,9 @@ env:
   API_URL: https://api-qbvpsx77dq-an.a.run.app
   INVOKER_SA: loadline-invoker@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com
   TASKS_QUEUE: projects/${{ vars.GCP_PROJECT_ID }}/locations/asia-northeast1/queues/weekly-reviews
+  # 振り返りのセリフを声にする。tts は deploy-tts.yml が出す。音声は非公開のバケットに置き、署名付き URL で渡す
+  TTS_URL: https://tts-qbvpsx77dq-an.a.run.app
+  AUDIO_BUCKET: loadline-app-audio
 
 jobs:
   deploy:
@@ -98,6 +101,6 @@ jobs:
             --image "$IMAGE:${{ github.sha }}" \
             --service-account "$RUNTIME_SA" \
             --allow-unauthenticated \
-            --set-env-vars "APP_ENV=production,FIREBASE_PROJECT_ID=${{ vars.GCP_PROJECT_ID }},INTERNAL_AUDIENCE=$API_URL,INTERNAL_CALLER_EMAIL=$INVOKER_SA,TASKS_QUEUE=$TASKS_QUEUE,GEMINI_PROJECT=${{ vars.GCP_PROJECT_ID }}" \
+            --set-env-vars "APP_ENV=production,FIREBASE_PROJECT_ID=${{ vars.GCP_PROJECT_ID }},INTERNAL_AUDIENCE=$API_URL,INTERNAL_CALLER_EMAIL=$INVOKER_SA,TASKS_QUEUE=$TASKS_QUEUE,GEMINI_PROJECT=${{ vars.GCP_PROJECT_ID }},TTS_URL=$TTS_URL,AUDIO_BUCKET=$AUDIO_BUCKET" \
             --set-secrets DATABASE_URL=database-url:latest,TYPESAFE_API_KEY=typesafe-api-key:latest \
             --quiet

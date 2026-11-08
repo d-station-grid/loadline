@@ -21,7 +21,7 @@ from app.models import (
     Workout,
     WorkoutHeartRate,
 )
-from app.routers.deps import get_account_deleter
+from app.routers.deps import get_account_deleter, get_audio_store
 from app.services.accounts import (
     AccountDeleteError,
     delete_account,
@@ -38,6 +38,7 @@ from tests.factories import (
     WorkoutHeartRateFactory,
 )
 from tests.test_internal_api import FakeCallerVerifier
+from tests.test_reviews_service import FakeAudioStore
 
 HEADERS = {"Authorization": "Bearer good"}
 
@@ -280,3 +281,77 @@ async def test_dispatch_forgets_old_deleted_uids(
 
     assert res.status_code == 200
     assert not await _deleted_uid(session, "old")
+
+
+class BrokenAudioStore(FakeAudioStore):
+    async def delete_all(self, prefix: str) -> None:
+        raise AccountDeleteError
+
+
+@pytest.fixture
+def audio() -> Iterator[FakeAudioStore]:
+    fake = FakeAudioStore()
+    app.dependency_overrides[get_audio_store] = lambda: fake
+    yield fake
+    app.dependency_overrides.pop(get_audio_store, None)
+
+
+async def test_delete_removes_the_audio_of_the_user(
+    client: AsyncClient, session: AsyncSession, deleter: FakeDeleter, audio: FakeAudioStore
+) -> None:
+    me = await _user_with_everything("uid-1")
+    other = await _user_with_everything("someone-else")
+    await session.commit()
+    mine = [f"users/{me.id}/reviews/1.wav", f"users/{me.id}/reviews/2.wav"]
+    # 振り返りの行がないファイル（置いたあとに commit できなかった分）も消す
+    mine.append(f"users/{me.id}/reviews/999.wav")
+    theirs = f"users/{other.id}/reviews/3.wav"
+    for path in [*mine, theirs]:
+        audio.files[path] = b"RIFF"
+
+    res = await client.delete("/me", headers=HEADERS)
+
+    assert res.status_code == 204
+    # 本人のファイルは 1 つも残らない。別の利用者のファイルは残る
+    assert list(audio.files) == [theirs]
+
+
+async def test_audio_failure_keeps_every_row_and_the_login(
+    client: AsyncClient, session: AsyncSession, deleter: FakeDeleter
+) -> None:
+    me = await _user_with_everything("uid-1")
+    await session.commit()
+    me_id = me.id
+    before = await _rows_of(session, me_id)
+    app.dependency_overrides[get_audio_store] = BrokenAudioStore
+    try:
+        res = await client.delete("/me", headers=HEADERS)
+    finally:
+        app.dependency_overrides.pop(get_audio_store, None)
+
+    # Firebase の利用者は消さないので、本人はログインしてやり直せる
+    assert res.status_code == 502
+    assert deleter.deleted == []
+    assert await _rows_of(session, me_id) == before
+    assert not await _deleted_uid(session, "uid-1")
+
+
+async def test_firebase_failure_after_the_audio_keeps_every_row(
+    client: AsyncClient, session: AsyncSession, deleter: FakeDeleter, audio: FakeAudioStore
+) -> None:
+    me = await _user_with_everything("uid-1")
+    await session.commit()
+    me_id = me.id
+    before = await _rows_of(session, me_id)
+    audio.files[f"users/{me_id}/reviews/1.wav"] = b"RIFF"
+    deleter.fail = True
+
+    res = await client.delete("/me", headers=HEADERS)
+
+    # 行と Firebase の利用者は残るので、本人はログインしてやり直せる。音声はもう消えている
+    # （その振り返りは文字だけになる）。やり直したときは、消すものがないだけで通る
+    assert res.status_code == 502
+    assert await _rows_of(session, me_id) == before
+    assert audio.files == {}
+    deleter.fail = False
+    assert (await client.delete("/me", headers=HEADERS)).status_code == 204

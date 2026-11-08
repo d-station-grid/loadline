@@ -194,7 +194,7 @@
           "me"
         ],
         "summary": "Delete Me",
-        "description": "ログイン中の本人を消す。記録、メモ、振り返り、取り込み用トークン、Firebase の利用者。\n\nFirebase の利用者を消せなければ何も消さずに 502 を返す。もう一度呼べばやり直せる。\n消したあとは、同じ ID トークンでも 401 になる。",
+        "description": "ログイン中の本人を消す。記録、メモ、振り返りとその音声、取り込み用トークン、\nFirebase の利用者。\n\n音声か Firebase の利用者を消せなければ、記録とログインを残して 502 を返す。もう一度\n呼べばやり直せる。\n消したあとは、同じ ID トークンでも 401 になる。",
         "operationId": "delete_me_me_delete",
         "responses": {
           "204": {
@@ -204,7 +204,7 @@
             "description": "ゲスト（デモの利用者）は消せない"
           },
           "502": {
-            "description": "Firebase の利用者を消せなかった。何も消していないので、やり直せる"
+            "description": "音声か Firebase の利用者を消せなかった。記録とログインは残るので、やり直せる"
           }
         },
         "security": [
@@ -456,7 +456,7 @@
           "reviews"
         ],
         "summary": "Add Review",
-        "description": "今の振り返りの週の振り返りを作る。週は、今日以前でいちばん近い振り返りの曜日の\n前日までの 7 日間（利用者のタイムゾーン）。\n\nその週の振り返りがもうあれば、作り直さずにそれを 200 で返す。後から届いた記録も\n入れない。GEMINI_PROJECT と TYPESAFE_API_KEY が設定されていればセリフと選択肢を\nGemini が書き、Jev で話してよいと確かめられたときだけその文にする。書けない、\n引っかかった、確かめられなかった（時間切れも）ときは定型にする。設定がなければ\n定型だけ。どちらだったかは is_fallback で分かる。",
+        "description": "今の振り返りの週の振り返りを作る。週は、今日以前でいちばん近い振り返りの曜日の\n前日までの 7 日間（利用者のタイムゾーン）。\n\nその週の振り返りがもうあれば、作り直さずにそれを 200 で返す。後から届いた記録も\n入れない。GEMINI_PROJECT と TYPESAFE_API_KEY が設定されていればセリフと選択肢を\nGemini が書き、Jev で話してよいと確かめられたときだけその文にする。書けない、\n引っかかった、確かめられなかった（時間切れも）ときは定型にする。設定がなければ\n定型だけ。どちらだったかは is_fallback で分かる。\n\nTTS_URL と AUDIO_BUCKET が設定されていれば、セリフを声にして audio_url を付ける。\n声を作れなかったときは audio_url が null。",
         "operationId": "add_review_reviews_post",
         "responses": {
           "201": {
@@ -1915,6 +1915,17 @@
             "format": "date-time",
             "title": "Created At"
           },
+          "audio_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Url"
+          },
           "options": {
             "items": {
               "$ref": "#/components/schemas/ReviewOptionOut"
@@ -1934,10 +1945,11 @@
           "is_fallback",
           "expression",
           "created_at",
+          "audio_url",
           "options"
         ],
         "title": "WeeklyReviewOut",
-        "description": "週に 1 回の振り返り。期間は利用者のタイムゾーンでの日付で、両端を含む。\n\nscript はアバターのセリフで、字幕にも使う。is_fallback が true なら人が書いた定型。\nexpression はセリフを話すときのアバターの表情。定型なら relaxed。\noptions は position の順。音声は声にする機能で足す。"
+        "description": "週に 1 回の振り返り。期間は利用者のタイムゾーンでの日付で、両端を含む。\n\nscript はアバターのセリフで、字幕にも使う。is_fallback が true なら人が書いた定型。\nexpression はセリフを話すときのアバターの表情。定型なら relaxed。\naudio_url はセリフの音声を期限つきで再生できる URL。null なら文字だけで見せる。\nnull は、声を作れなかった、声にしない設定、今は署名できなかった、のどれか。最後の\n場合は、次に読むと URL が出ることがある。options は position の順。"
       },
       "WorkoutDetail": {
         "properties": {

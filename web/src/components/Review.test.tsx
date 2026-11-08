@@ -38,6 +38,7 @@ function review(chosen: number | null = null): WeeklyReviewOut {
     is_fallback: true,
     expression: "relaxed",
     created_at: "2026-10-26T00:00:00Z",
+    audio_url: null,
     options: options.map(([label, description], i) => ({
       id: 100 + i,
       position: i,

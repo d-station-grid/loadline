@@ -4,7 +4,7 @@ loadline が GCP（プロジェクト `loadline-app`）に持っている設定�
 
 - リージョンは `asia-northeast1`（東京）にそろえています。例外は Gemini（Vertex AI）で、api は `global` のエンドポイントを呼びます（api の設定 `gemini_location` の既定。`deploy.yml` は `GEMINI_LOCATION` を渡していない）
 - Cloud Run へのデプロイ（`.github/workflows/deploy.yml`、`deploy-tts.yml`）が入れる設定以外は、コンソールやコマンドで手で入れたもので、コードには残りません。変えたら、この文書も直します
-- 振り返りの音声（tts、音声のバケット、署名付き URL）は、GCP の側だけ先に用意してあります。api がそれを使うのは #39 からで、今の api は tts を呼ばず、音声のバケットも使いません。この文書では「#39 でつなぐ」と書き分けています
+- 振り返りの音声は、api が tts で声にして音声のバケットに置き、署名付き URL を返します。web がその URL を再生するのはまだで、#39 の残りでつなぎます
 - データベースは GCP ではなく Neon（AWS シンガポール）です。接続の URL だけを Secret Manager に置いています
 - 今の設定を確かめるコマンドは、最後の「確かめ方」にあります
 
@@ -17,18 +17,18 @@ flowchart LR
   SCH[Cloud Scheduler<br>1 時間おき] -- OIDC: loadline-invoker --> A
   A -- 積む --> Q[Cloud Tasks<br>weekly-reviews]
   Q -- OIDC: loadline-invoker --> A
-  A -. 呼ぶ（認証あり、#39 でつなぐ） .-> T[Cloud Run: tts<br>loadline-tts]
+  A -- 呼ぶ（認証あり） --> T[Cloud Run: tts<br>loadline-tts]
   A -- セリフを書く --> V[Vertex AI: Gemini<br>global]
-  A -. 置く・読む・消す（#39 でつなぐ） .-> S[(gs://loadline-app-audio)]
+  A -- 置く・署名付き URL・消す --> S[(gs://loadline-app-audio)]
   A -- 読む --> SM[Secret Manager]
-  U -. 署名付き URL で再生（#39 でつなぐ） .-> S
+  U -. 署名付き URL で再生（web は #39 の残りでつなぐ） .-> S
   GA[GitHub Actions<br>loadline-deploy] -- イメージ --> AR[Artifact Registry<br>loadline]
   GA -- 読む --> M[(gs://loadline-app-models)]
   GA -- デプロイ --> A
   GA -- デプロイ --> T
 ```
 
-点線は、GCP の側は用意してあり、api がつなぐのは #39 からの経路です。
+点線は、GCP と api の側は用意してあり、web がつなぐのはこれからの経路です。
 
 ## サービスアカウント
 
@@ -67,12 +67,12 @@ gcloud iam service-accounts create loadline-deploy --project loadline-app
 | 誰に | 何に | ロール | なぜ |
 |---|---|---|---|
 | `allUsers` | Cloud Run の `api` | `roles/run.invoker` | 画面と取り込みの窓口。認証は api の中で Firebase のトークンと取り込みのトークンで行う |
-| `loadline-api` | Cloud Run の `tts` | `roles/run.invoker` | 認証が必須の tts を呼ぶ。先に付けてあり、api が呼ぶのは #39 から |
+| `loadline-api` | Cloud Run の `tts` | `roles/run.invoker` | 認証が必須の tts を呼ぶ |
 | `loadline-api` | Secret Manager の `database-url`、`typesafe-api-key` | `roles/secretmanager.secretAccessor` | DB の URL と Jev のキーを読む |
 | `loadline-api` | Cloud Tasks の `weekly-reviews` | `roles/cloudtasks.enqueuer` | 振り返りを作る相手を 1 人ずつ積む |
 | `loadline-api` | `loadline-invoker` | `roles/iam.serviceAccountUser` | 積むタスクに `loadline-invoker` の OIDC トークンを付ける（actAs） |
-| `loadline-api` | `loadline-api` 自身 | `roles/iam.serviceAccountTokenCreator` | 署名付き URL を作る。Cloud Run には鍵のファイルがないので、IAM の signBlob で署名する。先に付けてあり、使うのは #39 から |
-| `loadline-api` | `gs://loadline-app-audio` | `roles/storage.objectUser` | 音声を置く、読む、一覧を取る、消す。先に付けてあり、使うのは #39 から |
+| `loadline-api` | `loadline-api` 自身 | `roles/iam.serviceAccountTokenCreator` | 署名付き URL を作る。Cloud Run には鍵のファイルがないので、IAM の signBlob で署名する |
+| `loadline-api` | `gs://loadline-app-audio` | `roles/storage.objectUser` | 音声を置く、一覧を取る、消す。再生は署名付き URL なので、利用者は権限なしで読める |
 | `loadline-deploy` | `loadline-api`、`loadline-tts` | `roles/iam.serviceAccountUser` | それぞれを実行用に指定してデプロイする（actAs） |
 | `loadline-deploy` | Artifact Registry の `loadline` | `roles/artifactregistry.writer` | イメージを push する |
 | `loadline-deploy` | `gs://loadline-app-models` | `roles/storage.objectViewer` | tts のイメージを組み立てる前にモデルをコピーする |
@@ -128,7 +128,7 @@ gcloud iam service-accounts add-iam-policy-binding \
 | 1 回のリクエストの上限 | 300 秒（既定） |
 | 起動中の CPU の追加 | あり（手で入れた値） |
 | 呼べる人 | 誰でも |
-| 環境変数 | `APP_ENV`、`FIREBASE_PROJECT_ID`、`INTERNAL_AUDIENCE`（api の URL）、`INTERNAL_CALLER_EMAIL`（`loadline-invoker`）、`TASKS_QUEUE`、`GEMINI_PROJECT` |
+| 環境変数 | `APP_ENV`、`FIREBASE_PROJECT_ID`、`INTERNAL_AUDIENCE`（api の URL）、`INTERNAL_CALLER_EMAIL`（`loadline-invoker`）、`TASKS_QUEUE`、`GEMINI_PROJECT`、`TTS_URL`（tts の URL）、`AUDIO_BUCKET`（`loadline-app-audio`） |
 | Secret Manager から | `DATABASE_URL`（`database-url`）、`TYPESAFE_API_KEY`（`typesafe-api-key`） |
 
 台数の上限 5 と起動中の CPU の追加は、`deploy.yml` には書いていません。手で入れた値で、`gcloud run deploy` が指定しなかった設定を前の版から引き継ぐので残っています。
@@ -148,7 +148,9 @@ gcloud iam service-accounts add-iam-policy-binding \
 | 1 回のリクエストの上限（`--timeout`） | 60 秒 | 0 台からの起動と、最初の `/speak` でのモデルの読み込みを含めても収まる長さ。既定の 300 秒では、止まったときに気づくのが遅い |
 | 起動中の CPU の追加（`--cpu-boost`） | あり | 0 台から起き上がる時間を縮める。試作では、0 台からの最初の応答に約 21 秒かかった |
 
-上限が 2 台なので、同時に 3 件来ると、3 件目は空きが出るのを待ちます。待つあいだに前の読み上げが終われば処理され、空きが出なければ 429 になります。自動の振り返りは Cloud Tasks が同時に 2 件までしか送らないので、重なるのは画面から作った分が加わったときです。429 を間を空けてやり直す処理は、#39 で api に入れます。
+上限が 2 台なので、同時に 3 件来ると、3 件目は空きが出るのを待ちます。待つあいだに前の読み上げが終われば処理され、空きが出なければ 429 になります。自動の振り返りは Cloud Tasks が同時に 2 件までしか送らないので、重なるのは画面から作った分が加わったときです。
+
+api は 429（と 5xx、通信の失敗）のとき、10 秒、20 秒と間を空けてやり直します。最後の試行は約 30 秒後で、0 台からの起動（約 21 秒）を待ち切ります。試すのは最初の 1 回を含めて 3 回まで、全体で 45 秒までです（`api/app/adapters/tts.py`、api の設定 `tts_timeout_sec`）。それでも読めなければ、音声なしで振り返りを作り、画面は文字だけで見せます。音声なしになった週は、あとから読み直しません。
 
 ### デプロイが重ならないように
 
@@ -158,14 +160,14 @@ gcloud iam service-accounts add-iam-policy-binding \
 
 ## 週 1 回の振り返り（Cloud Scheduler と Cloud Tasks）
 
-Scheduler が 1 時間おきに api を呼び、api が振り返りを作る相手と週を探して、1 人ずつ Tasks に積みます。Tasks が 1 人ずつ api を呼び、セリフを作ります（音声は #39 で足す）。どちらも `loadline-invoker` の OIDC トークンを付け、宛先（audience）は api の URL です。
+Scheduler が 1 時間おきに api を呼び、api が振り返りを作る相手と週を探して、1 人ずつ Tasks に積みます。Tasks が 1 人ずつ api を呼び、セリフを作って声にします。どちらも `loadline-invoker` の OIDC トークンを付け、宛先（audience）は api の URL です。
 
 | 設定 | 値 |
 |---|---|
 | Scheduler のジョブ | `weekly-review-dispatch`、毎時 0 分（UTC）、`POST /internal/reviews/dispatch` |
 | Scheduler が積み込み（dispatch）を待つ時間 | 180 秒 |
 | Tasks のキュー | `weekly-reviews` |
-| Tasks が 1 人分の生成を待つ時間 | 150 秒（api が積むときにタスクごとに指定する。`api/app/adapters/cloud_tasks.py` の `DISPATCH_DEADLINE_SEC`） |
+| Tasks が 1 人分の生成を待つ時間 | 180 秒（api が積むときにタスクごとに指定する。`api/app/adapters/cloud_tasks.py` の `DISPATCH_DEADLINE_SEC`）。Gemini 60 秒、Jev 15 秒を 2 回、読み上げ 45 秒、音声の保存 20 秒の上限で 155 秒。それにゆとりを足した長さ |
 | 同時に送る数 | 2 |
 | 試す回数 | 最初の 1 回を含めて 3 回まで（やり直しは 2 回まで）。間は 60 秒から 600 秒まで広げる |
 
@@ -234,7 +236,11 @@ gcloud artifacts repositories set-cleanup-policies loadline \
 
 音声に古いものを消す設定を付けないのは、デモの振り返りの音声まで消えるためです。音声は 1 件で約 1.4MB（30 秒の WAV）で、週に 1 件なので、量は気にしなくてよい大きさです。
 
-音声は、消したらすぐに戻せなくします。#39 で、アカウントを消したとき（`DELETE /me`）に本人の音声も消すようにします。そのとき 7 日のあいだ復元できると、消したという約束とずれるためです。モデルは誤って消したときに戻せるよう、既定の 7 日のままにしています。
+音声は、消したらすぐに戻せなくします。アカウントを消したとき（`DELETE /me`）は、本人の音声（`users/{利用者の id}/` の下）も消します。そのとき 7 日のあいだ復元できると、消したという約束とずれるためです。
+
+音声は `users/{利用者の id}/reviews/{振り返りの id}.wav` に置きます。web には、期限 1 時間の署名付き URL を渡します（api の設定 `audio_url_ttl_sec`）。
+
+api から Cloud Storage と IAM への通信には、上限を付けています（`api/app/adapters/audio_storage.py`）。置く・一覧・消すは 1 回 10 秒、やり直しを含めて 20 秒、署名は 5 秒です。SDK の既定（1 回 60 秒、やり直しを含めて 120 秒）のままだと、振り返りを作る処理が Tasks の期限を超え、DB の行も長く持つためです。署名が間に合わなければ `audio_url` を null にして文字だけで返し、次に読むときにもう一度署名します。モデルは誤って消したときに戻せるよう、既定の 7 日のままにしています。
 
 モデルを音声と別のバケットにしたのは、api が音声のバケットに持つ書き込みと削除の権限を、モデルに届かせないためです。モデルは配布元（kokoro-onnx の GitHub Releases の `model-files-v1.0`）が消えたときの控えも兼ねます。
 

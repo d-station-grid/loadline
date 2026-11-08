@@ -13,7 +13,7 @@ from app.core.auth import Identity, InvalidTokenError, get_token_verifier
 from app.domain.review_week import review_period
 from app.main import app
 from app.models import User
-from app.routers.deps import get_line_checker, get_review_writer
+from app.routers.deps import get_audio_store, get_line_checker, get_review_writer, get_voice
 from tests.factories import (
     UserFactory,
     WeeklyReviewFactory,
@@ -22,6 +22,7 @@ from tests.factories import (
 )
 from tests.test_gemini_adapter import FakeGenerate, busy, recorded
 from tests.test_jev_adapter import FakeSystemOne, line_answer
+from tests.test_reviews_service import FakeAudioStore, FakeVoice
 
 HEADERS = {"Authorization": "Bearer good"}
 
@@ -279,3 +280,26 @@ async def test_post_writes_with_gemini_and_falls_back_to_the_fixed_script(
     assert body["is_fallback"] is is_fallback
     expected = json.loads(recorded("steady").text or "")
     assert (body["script"] == expected["line"]) is not is_fallback
+
+
+async def test_post_voices_the_review_and_get_returns_the_audio_url(client: AsyncClient) -> None:
+    me = await _me()
+    voice, audio = FakeVoice(), FakeAudioStore()
+    app.dependency_overrides[get_voice] = lambda: voice
+    app.dependency_overrides[get_audio_store] = lambda: audio
+
+    created = (await client.post("/reviews", headers=HEADERS)).json()
+    current = (await client.get("/reviews/current", headers=HEADERS)).json()
+
+    url = f"https://storage.example/users/{me.id}/reviews/{created['id']}.wav?signed"
+    assert voice.spoken == [created["script"]]
+    assert created["audio_url"] == current["audio_url"] == url
+
+
+async def test_audio_url_is_null_without_voice(client: AsyncClient) -> None:
+    # 手元と CI は TTS_URL と AUDIO_BUCKET が空。文字だけの振り返りになる
+    await _me()
+
+    res = await client.post("/reviews", headers=HEADERS)
+
+    assert res.json()["audio_url"] is None

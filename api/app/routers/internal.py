@@ -10,7 +10,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from app.core.internal_auth import require_internal_caller
-from app.routers.deps import DbSession, LineCheckerDep, ReviewQueueDep, ReviewWriterDep
+from app.routers.deps import (
+    AudioStoreDep,
+    DbSession,
+    LineCheckerDep,
+    ReviewQueueDep,
+    ReviewWriterDep,
+    VoiceDep,
+)
 from app.services.accounts import forget_deleted_accounts
 from app.services.auto_reviews import (
     AutoReviewResult,
@@ -72,6 +79,8 @@ async def create_review_for_user(
     session: DbSession,
     writer: ReviewWriterDep,
     checker: LineCheckerDep,
+    voice: VoiceDep,
+    audio: AudioStoreDep,
 ) -> AutoReviewOut:
     """Tasks が 1 人ずつ呼ぶ。探したときの週（period_start に始まる 7 日間）の振り返りを作る。
 
@@ -79,7 +88,9 @@ async def create_review_for_user(
     設定がない、今の週が period_start でなくなった）はやり直しても変わらないので 200 の
     skipped にする。
     """
-    done = await create_for_user(session, user_id, period_start, writer, checker)
+    done = await create_for_user(
+        session, user_id, period_start, writer, checker, voice=voice, audio=audio
+    )
     logger.info(
         "internal: weekly review for user %s, week of %s: %s",
         user_id,

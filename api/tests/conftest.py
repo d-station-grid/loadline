@@ -11,7 +11,13 @@ from app.core.config import get_settings
 from app.core.db import get_session
 from app.main import app
 from app.models import Base
-from app.routers.deps import get_line_checker, get_review_queue, get_review_writer
+from app.routers.deps import (
+    get_audio_store,
+    get_line_checker,
+    get_review_queue,
+    get_review_writer,
+    get_voice,
+)
 from tests.factories import BaseFactory
 
 
@@ -73,6 +79,9 @@ async def client(session: AsyncSession) -> AsyncIterator[AsyncClient]:
     app.dependency_overrides[get_line_checker] = lambda: None
     # Cloud Tasks にも積まない。積むテストは個別に差し替える
     app.dependency_overrides[get_review_queue] = lambda: None
+    # tts と Cloud Storage も使わない。声にするテストは個別に差し替える
+    app.dependency_overrides[get_voice] = lambda: None
+    app.dependency_overrides[get_audio_store] = lambda: None
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
