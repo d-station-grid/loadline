@@ -2,8 +2,9 @@
 
 loadline が GCP（プロジェクト `loadline-app`）に持っている設定の一覧です。2026-11-08 に、実際の GCP を読み取って書きました。
 
-- リージョンは `asia-northeast1`（東京）にそろえています
+- リージョンは `asia-northeast1`（東京）にそろえています。例外は Gemini（Vertex AI）で、api は `global` のエンドポイントを呼びます（api の設定 `gemini_location` の既定。`deploy.yml` は `GEMINI_LOCATION` を渡していない）
 - Cloud Run へのデプロイ（`.github/workflows/deploy.yml`、`deploy-tts.yml`）が入れる設定以外は、コンソールやコマンドで手で入れたもので、コードには残りません。変えたら、この文書も直します
+- 振り返りの音声（tts、音声のバケット、署名付き URL）は、GCP の側だけ先に用意してあります。api がそれを使うのは #39 からで、今の api は tts を呼ばず、音声のバケットも使いません。この文書では「#39 でつなぐ」と書き分けています
 - データベースは GCP ではなく Neon（AWS シンガポール）です。接続の URL だけを Secret Manager に置いています
 - 今の設定を確かめるコマンドは、最後の「確かめ方」にあります
 
@@ -16,16 +17,18 @@ flowchart LR
   SCH[Cloud Scheduler<br>1 時間おき] -- OIDC: loadline-invoker --> A
   A -- 積む --> Q[Cloud Tasks<br>weekly-reviews]
   Q -- OIDC: loadline-invoker --> A
-  A -- 呼ぶ（認証あり） --> T[Cloud Run: tts<br>loadline-tts]
-  A -- セリフを書く --> V[Vertex AI: Gemini]
-  A -- 置く・読む・消す --> S[(gs://loadline-app-audio)]
+  A -. 呼ぶ（認証あり、#39 でつなぐ） .-> T[Cloud Run: tts<br>loadline-tts]
+  A -- セリフを書く --> V[Vertex AI: Gemini<br>global]
+  A -. 置く・読む・消す（#39 でつなぐ） .-> S[(gs://loadline-app-audio)]
   A -- 読む --> SM[Secret Manager]
-  U -- 署名付き URL で再生 --> S
+  U -. 署名付き URL で再生（#39 でつなぐ） .-> S
   GA[GitHub Actions<br>loadline-deploy] -- イメージ --> AR[Artifact Registry<br>loadline]
   GA -- 読む --> M[(gs://loadline-app-models)]
   GA -- デプロイ --> A
   GA -- デプロイ --> T
 ```
+
+点線は、GCP の側は用意してあり、api がつなぐのは #39 からの経路です。
 
 ## サービスアカウント
 
@@ -64,12 +67,12 @@ gcloud iam service-accounts create loadline-deploy --project loadline-app
 | 誰に | 何に | ロール | なぜ |
 |---|---|---|---|
 | `allUsers` | Cloud Run の `api` | `roles/run.invoker` | 画面と取り込みの窓口。認証は api の中で Firebase のトークンと取り込みのトークンで行う |
-| `loadline-api` | Cloud Run の `tts` | `roles/run.invoker` | 認証が必須の tts を呼ぶ |
+| `loadline-api` | Cloud Run の `tts` | `roles/run.invoker` | 認証が必須の tts を呼ぶ。先に付けてあり、api が呼ぶのは #39 から |
 | `loadline-api` | Secret Manager の `database-url`、`typesafe-api-key` | `roles/secretmanager.secretAccessor` | DB の URL と Jev のキーを読む |
 | `loadline-api` | Cloud Tasks の `weekly-reviews` | `roles/cloudtasks.enqueuer` | 振り返りを作る相手を 1 人ずつ積む |
 | `loadline-api` | `loadline-invoker` | `roles/iam.serviceAccountUser` | 積むタスクに `loadline-invoker` の OIDC トークンを付ける（actAs） |
-| `loadline-api` | `loadline-api` 自身 | `roles/iam.serviceAccountTokenCreator` | 署名付き URL を作る。Cloud Run には鍵のファイルがないので、IAM の signBlob で署名する |
-| `loadline-api` | `gs://loadline-app-audio` | `roles/storage.objectUser` | 音声を置く、読む、一覧を取る、消す |
+| `loadline-api` | `loadline-api` 自身 | `roles/iam.serviceAccountTokenCreator` | 署名付き URL を作る。Cloud Run には鍵のファイルがないので、IAM の signBlob で署名する。先に付けてあり、使うのは #39 から |
+| `loadline-api` | `gs://loadline-app-audio` | `roles/storage.objectUser` | 音声を置く、読む、一覧を取る、消す。先に付けてあり、使うのは #39 から |
 | `loadline-deploy` | `loadline-api`、`loadline-tts` | `roles/iam.serviceAccountUser` | それぞれを実行用に指定してデプロイする（actAs） |
 | `loadline-deploy` | Artifact Registry の `loadline` | `roles/artifactregistry.writer` | イメージを push する |
 | `loadline-deploy` | `gs://loadline-app-models` | `roles/storage.objectViewer` | tts のイメージを組み立てる前にモデルをコピーする |
@@ -121,12 +124,14 @@ gcloud iam service-accounts add-iam-policy-binding \
 |---|---|
 | CPU、メモリ | 1 vCPU、512MiB |
 | 1 台で同時に受ける数 | 80（既定） |
-| 台数の上限 | 5 |
+| 台数の上限 | 5（手で入れた値） |
 | 1 回のリクエストの上限 | 300 秒（既定） |
-| 起動中の CPU の追加 | あり |
+| 起動中の CPU の追加 | あり（手で入れた値） |
 | 呼べる人 | 誰でも |
 | 環境変数 | `APP_ENV`、`FIREBASE_PROJECT_ID`、`INTERNAL_AUDIENCE`（api の URL）、`INTERNAL_CALLER_EMAIL`（`loadline-invoker`）、`TASKS_QUEUE`、`GEMINI_PROJECT` |
 | Secret Manager から | `DATABASE_URL`（`database-url`）、`TYPESAFE_API_KEY`（`typesafe-api-key`） |
+
+台数の上限 5 と起動中の CPU の追加は、`deploy.yml` には書いていません。手で入れた値で、`gcloud run deploy` が指定しなかった設定を前の版から引き継ぐので残っています。
 
 マイグレーションは、同じイメージを Cloud Run の Job `api-migrate` として、デプロイの前に動かします。
 
@@ -143,7 +148,7 @@ gcloud iam service-accounts add-iam-policy-binding \
 | 1 回のリクエストの上限（`--timeout`） | 60 秒 | 0 台からの起動と、最初の `/speak` でのモデルの読み込みを含めても収まる長さ。既定の 300 秒では、止まったときに気づくのが遅い |
 | 起動中の CPU の追加（`--cpu-boost`） | あり | 0 台から起き上がる時間を縮める。試作では、0 台からの最初の応答に約 21 秒かかった |
 
-上限が 2 台なので、同時に 3 件来ると 3 件目は 429 になります。自動の振り返りは Cloud Tasks が同時に 2 件までしか送らないので、重なるのは画面から作った分が加わったときです。api の側で、429 は間を空けてやり直します。
+上限が 2 台なので、同時に 3 件来ると 3 件目は 429 になります。自動の振り返りは Cloud Tasks が同時に 2 件までしか送らないので、重なるのは画面から作った分が加わったときです。429 を間を空けてやり直す処理は、#39 で api に入れます。
 
 ### デプロイが重ならないように
 
@@ -153,12 +158,14 @@ gcloud iam service-accounts add-iam-policy-binding \
 
 ## 週 1 回の振り返り（Cloud Scheduler と Cloud Tasks）
 
-Scheduler が 1 時間おきに api を呼び、api が振り返りを作る相手と週を探して、1 人ずつ Tasks に積みます。Tasks が 1 人ずつ api を呼び、セリフと音声を作ります。どちらも `loadline-invoker` の OIDC トークンを付け、宛先（audience）は api の URL です。
+Scheduler が 1 時間おきに api を呼び、api が振り返りを作る相手と週を探して、1 人ずつ Tasks に積みます。Tasks が 1 人ずつ api を呼び、セリフを作ります（音声は #39 で足す）。どちらも `loadline-invoker` の OIDC トークンを付け、宛先（audience）は api の URL です。
 
 | 設定 | 値 |
 |---|---|
-| Scheduler のジョブ | `weekly-review-dispatch`、毎時 0 分（UTC）、`POST /internal/reviews/dispatch`、待つのは 180 秒まで |
+| Scheduler のジョブ | `weekly-review-dispatch`、毎時 0 分（UTC）、`POST /internal/reviews/dispatch` |
+| Scheduler が積み込み（dispatch）を待つ時間 | 180 秒 |
 | Tasks のキュー | `weekly-reviews` |
+| Tasks が 1 人分の生成を待つ時間 | 150 秒（api が積むときにタスクごとに指定する。`api/app/adapters/cloud_tasks.py` の `DISPATCH_DEADLINE_SEC`） |
 | 同時に送る数 | 2 |
 | やり直し | 3 回まで、60 秒から 600 秒まで間を広げる |
 
@@ -177,7 +184,9 @@ Scheduler が 1 時間おきに api を呼び、api が振り返りを作る相�
 |---|---|---|
 | `loadline`（東京、Docker） | `api` と `tts` のイメージ | 7 日より古いものを消す。ただし直近 10 個（`api` と `tts` それぞれ）は残す |
 
-「残す」の決まりは「消す」より優先されるので、しばらくデプロイがなくても、動いている版のイメージは消えません。掃除は 1 日に 1 回ほど裏で動きます。
+「残す」の決まりは「消す」より優先されます。掃除は 1 日に 1 回ほど裏で動きます。
+
+ただし、残るのは各イメージの新しい 10 個で、動いている版とは限りません。workflow は、main と比べる手順やマイグレーションより前にイメージを push するので、出さずに終わった実行や失敗した実行のイメージも 10 個に数えられます。そうした実行が続くと、動いている版が 10 個から外れ、7 日より古ければ消えます。直し方は #71 に書いてあります。
 
 `set-cleanup-policies` は、決まりを足すのではなく、ファイルの中身で全部を置き換えます。変えるときは、残す決まりも同じファイルに入れます。
 
@@ -225,7 +234,7 @@ gcloud artifacts repositories set-cleanup-policies loadline \
 
 音声に古いものを消す設定を付けないのは、デモの振り返りの音声まで消えるためです。音声は 1 件で約 1.4MB（30 秒の WAV）で、週に 1 件なので、量は気にしなくてよい大きさです。
 
-音声は、消したらすぐに戻せなくします。アカウントを消したとき（`DELETE /me`）に本人の音声も消すので、7 日のあいだ復元できると、消したという約束とずれるためです。モデルは誤って消したときに戻せるよう、既定の 7 日のままにしています。
+音声は、消したらすぐに戻せなくします。#39 で、アカウントを消したとき（`DELETE /me`）に本人の音声も消すようにします。そのとき 7 日のあいだ復元できると、消したという約束とずれるためです。モデルは誤って消したときに戻せるよう、既定の 7 日のままにしています。
 
 モデルを音声と別のバケットにしたのは、api が音声のバケットに持つ書き込みと削除の権限を、モデルに届かせないためです。モデルは配布元（kokoro-onnx の GitHub Releases の `model-files-v1.0`）が消えたときの控えも兼ねます。
 
@@ -246,7 +255,11 @@ gcloud storage cp tts/kokoro-v1.0.onnx tts/voices-v1.0.bin \
 
 ## 請求と予算
 
-請求先は CardiLife と共通です。「利用額上限」は、上限に達するとそのサービスをその月のあいだ止めます。止まったサービスは、上限を上げるか外すまで戻りません。
+請求先は CardiLife と共通です。
+
+「利用額上限」は、上限に達すると、そのプロジェクトのそのサービスの新しい利用を止めます。処理中のリクエストは最後まで処理され、リソースやデータは消えません。止まるまでには少し遅れがあるので、上限を少し超えることがあります。
+
+止まったサービスは、翌月の予算期間の初め（1 日）に自動で戻ります（既定。loadline の 2 つも既定のまま）。同じ月のうちに戻すには、上限を手で解除します。解除してから戻るまで、最大 1 時間ほどかかります。
 
 | 予算 | 対象 | 月額 | 種類 |
 |---|---|---|---|
@@ -260,9 +273,12 @@ Cloud Storage、Artifact Registry、Neon は、利用額上限では止まりま
 
 loadline が使っているのは次のものです。
 
-`run`、`artifactregistry`、`cloudbuild`、`iam`、`iamcredentials`、`sts`、`secretmanager`、`aiplatform`、`cloudtasks`、`cloudscheduler`、`storage`、`firebase`、`identitytoolkit`、`securetoken`、`billingbudgets`、`logging`、`monitoring`
+`run`、`artifactregistry`、`iam`、`iamcredentials`、`sts`、`secretmanager`、`aiplatform`、`cloudtasks`、`cloudscheduler`、`storage`、`firebase`、`identitytoolkit`、`securetoken`、`billingbudgets`、`logging`、`monitoring`
 
-ほかに、プロジェクトや Firebase を作ったときに既定で有効になったもの（BigQuery、Datastore、App Engine、Firebase Hosting など）があります。loadline からは使っていません。
+ほかに、有効だが今は使っていないものがあります。
+
+- `cloudbuild`: spike で試したソースからのデプロイで使った。今のデプロイは GitHub Actions で組み立てるので呼ばれない
+- プロジェクトや Firebase を作ったときに既定で有効になったもの（BigQuery、Datastore、App Engine、Firebase Hosting など）
 
 ## 確かめ方
 
