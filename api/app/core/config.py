@@ -34,12 +34,21 @@ class Settings(BaseSettings):
     # 振り返りを 1 人ずつ作るタスクを積むキュー（projects/.../locations/.../queues/...）。
     # 空なら積まずに、見つけた相手をログに出すだけ
     tasks_queue: str = ""
+    # 振り返りのセリフを読み上げる tts（Kokoro、Cloud Run）の URL。空なら声にしない
+    tts_url: str = ""
+    # 読み上げ 1 回に待つ上限（429 のやり直しを含む）。超えたら声なし（文字だけ）にする
+    tts_timeout_sec: float = 45.0
+    # 振り返りの音声を置くバケット（gs:// は付けない）。空なら声にしない
+    audio_bucket: str = ""
+    # 音声の署名付き URL の期限
+    audio_url_ttl_sec: int = 3600
 
-    @field_validator("internal_audience")
+    @field_validator("internal_audience", "tts_url")
     @classmethod
     def _drop_trailing_slash(cls, value: str) -> str:
         # Tasks が付ける宛先と窓口が検証する宛先は、文字列が完全に一致しないと 401 になる。
-        # どちらもこの値を使うので、ここで 1 回だけそろえる
+        # どちらもこの値を使うので、ここで 1 回だけそろえる。tts の URL も ID トークンの
+        # 宛先にするので同じ。後ろにパスを足すときに // にもならない
         return value.rstrip("/")
 
 

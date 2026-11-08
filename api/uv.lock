@@ -62,8 +62,10 @@ dependencies = [
     { name = "fastapi" },
     { name = "firebase-admin" },
     { name = "google-auth", extra = ["requests"] },
+    { name = "google-cloud-storage" },
     { name = "google-cloud-tasks" },
     { name = "google-genai" },
+    { name = "httpx" },
     { name = "pydantic-settings" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "typesafe-sdk" },
@@ -73,7 +75,6 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "asyncpg-stubs" },
-    { name = "httpx" },
     { name = "mypy" },
     { name = "polyfactory" },
     { name = "pytest" },
@@ -89,8 +90,10 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.142.2" },
     { name = "firebase-admin", specifier = ">=7.7.0" },
     { name = "google-auth", extras = ["requests"], specifier = ">=2.62.0" },
+    { name = "google-cloud-storage", specifier = ">=3.17.0" },
     { name = "google-cloud-tasks", specifier = ">=2.26.0" },
     { name = "google-genai", specifier = ">=2.34.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "pydantic-settings", specifier = ">=2.15.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.1.4" },
     { name = "typesafe-sdk", specifier = ">=0.7.5" },
@@ -100,7 +103,6 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "asyncpg-stubs", specifier = ">=0.32.0" },
-    { name = "httpx", specifier = ">=0.28.1" },
     { name = "mypy", specifier = ">=2.4.0" },
     { name = "polyfactory", specifier = ">=3.3.0" },
     { name = "pytest", specifier = ">=9.1.1" },

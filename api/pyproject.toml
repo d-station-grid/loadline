@@ -9,8 +9,10 @@ dependencies = [
     "fastapi>=0.142.2",
     "firebase-admin>=7.7.0",
     "google-auth[requests]>=2.62.0",
+    "google-cloud-storage>=3.17.0",
     "google-cloud-tasks>=2.26.0",
     "google-genai>=2.34.0",
+    "httpx>=0.28.1",
     "pydantic-settings>=2.15.0",
     "sqlalchemy[asyncio]>=2.1.4",
     "typesafe-sdk>=0.7.5",
@@ -20,7 +22,6 @@ dependencies = [
 [dependency-groups]
 dev = [
     "asyncpg-stubs>=0.32.0",
-    "httpx>=0.28.1",
     "mypy>=2.4.0",
     "polyfactory>=3.3.0",
     "pytest>=9.1.1",
@@ -41,7 +42,7 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["firebase_admin", "firebase_admin.*"]
+module = ["firebase_admin", "firebase_admin.*", "google.cloud.storage", "google.cloud.storage.*"]
 ignore_missing_imports = true
 
 [tool.coverage.run]
