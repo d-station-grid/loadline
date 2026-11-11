@@ -648,10 +648,19 @@ fieldset.plain {
   gap: var(--space-1);
 }
 
-/* つかんで吹き出しごと動かすところ。指で動かすときに、画面のスクロールにしない */
+/* つかんで吹き出しごと動かすところ */
 .review-avatar-grip {
   cursor: grab;
+}
+
+/* つかむところ（アバターと、畳んだあとのボタン）。指で動かすときに、画面のスクロール、
+   文字の選択、長押しのメニューにしない */
+.review-avatar-grip,
+.review-dock-open {
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .review-avatar-grip:active {
@@ -677,7 +686,6 @@ fieldset.plain {
 
 /* 畳んだときのボタン。押せば吹き出しとアバターを出し直す。つかんで動かせる */
 .review-dock-open {
-  touch-action: none;
   font-size: var(--font-size-sm);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-pill);
@@ -1253,6 +1261,7 @@ dl.rows dd {
 
 /* ---- 狭い画面（スマートフォン） ---- */
 
+/* 幅を変えるときは、src/components/useDockDrag.ts の NARROW も揃える */
 @media (max-width: 640px) {
   .app-header-inner {
     flex-wrap: wrap;
