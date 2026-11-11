@@ -4,12 +4,14 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 
 import type { WeeklyReviewOut } from "../api";
 import AvatarBoundary from "../features/avatar/AvatarBoundary";
+import { currentSentence, splitSentences } from "../features/avatar/captions";
 import { VoiceMeter } from "../features/avatar/voice";
 import {
   ApiError,
@@ -17,6 +19,7 @@ import {
   getCurrentReview,
   selectReviewOption,
 } from "../lib/api";
+import { useDockDrag } from "./useDockDrag";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Something went wrong";
@@ -56,13 +59,14 @@ const AvatarStage = lazy(() => import("../features/avatar/AvatarStage"));
 
 /**
  * 今の週の振り返り。画面の右下に、アバターと吹き出しを重ねて出す（Figma の S08）。
- * 吹き出しにはセリフを字幕として出し、声があれば再生ボタン（Play・Replay）を出し、その週の
- * 過ごし方の選択肢を並べる。声を流すあいだは、アバターの口を声の大きさに合わせて動かす。まだなければ、その場で作るボタンを出す。選んだ後もボタンは
- * 残し、押せば選び直せる。ゲストはデモの振り返りを見るだけ。作るボタンは出さず、
- * 選択肢は押せない。
+ * 吹き出しにはセリフを字幕として出し、声があれば再生ボタン（Play・Pause・Replay）を出し、
+ * その週の過ごし方の選択肢を並べる。声を流すあいだは、アバターの口を声の大きさに合わせて
+ * 動かし、字幕の今読んでいる文を目立たせる。まだなければ、その場で作るボタンを出す。
+ * 選んだ後もボタンは残し、押せば選び直せる。ゲストはデモの振り返りを見るだけ。
+ * 作るボタンは出さず、選択肢は押せない。
  *
  * Hide でアバターごと畳み、Hide text で吹き出しの文字だけを隠す。どちらも外さずに隠すので、
- * 振り返りの状態もアバターのモデルも残る。
+ * 振り返りの状態もアバターのモデルも残る。アバターをつかめば、吹き出しごと動かせる。
  */
 export default function Review({ user, onOpenSettings }: Props) {
   // undefined は読み込み中、null はまだない週
@@ -85,7 +89,12 @@ export default function Review({ user, onOpenSettings }: Props) {
   const [open, setOpen] = useState(true);
   // false で吹き出しを隠し、アバターだけにする
   const [textShown, setTextShown] = useState(true);
+  // 声の今の位置と長さ（秒）。字幕の今読んでいる文を決める
+  const [playback, setPlayback] = useState({ time: 0, duration: 0 });
   const audioRef = useRef<HTMLAudioElement>(null);
+  // 右下からずらした位置。アバターをつかんで動かす
+  const dockRef = useRef<HTMLDivElement>(null);
+  const { offset, handlers: dragHandlers } = useDockDrag(dockRef);
   // 声の大きさを読む。最初に再生を押したときに作る（AudioContext は操作のあとでしか鳴らない）
   const meter = useRef<VoiceMeter | null>(null);
   useEffect(() => () => meter.current?.close(), []);
@@ -117,6 +126,18 @@ export default function Review({ user, onOpenSettings }: Props) {
     });
   }
   const audioUrl = review && audio?.reviewId === review.id ? audio.url : null;
+
+  const script = review?.script ?? "";
+  const sentences = useMemo(() => splitSentences(script), [script]);
+  // 声がないときは目立たせない（字幕だけで読む）
+  const spoken =
+    audioUrl === null
+      ? -1
+      : currentSentence(sentences, playback.time, playback.duration);
+
+  function trackPlayback(element: HTMLAudioElement) {
+    setPlayback({ time: element.currentTime, duration: element.duration });
+  }
 
   useEffect(() => {
     if (!focusAfterToggle.current) return;
@@ -281,7 +302,15 @@ export default function Review({ user, onOpenSettings }: Props) {
   }
 
   return (
-    <div className="review-dock">
+    <div
+      ref={dockRef}
+      className="review-dock"
+      style={
+        offset.x || offset.y
+          ? { transform: `translate(${offset.x}px, ${offset.y}px)` }
+          : undefined
+      }
+    >
       <button
         ref={openRef}
         type="button"
@@ -324,8 +353,15 @@ export default function Review({ user, onOpenSettings }: Props) {
                   }}
                   onPlay={() => setSpeaking(true)}
                   onPause={() => setSpeaking(false)}
-                  onEnded={() => setSpeaking(false)}
-                  onEmptied={() => setSpeaking(false)}
+                  onEnded={(e) => {
+                    setSpeaking(false);
+                    trackPlayback(e.currentTarget);
+                  }}
+                  onEmptied={() => {
+                    setSpeaking(false);
+                    setPlayback({ time: 0, duration: 0 });
+                  }}
+                  onTimeUpdate={(e) => trackPlayback(e.currentTarget)}
                 />
                 <button
                   type="button"
@@ -396,8 +432,18 @@ export default function Review({ user, onOpenSettings }: Props) {
                 <p className="muted small">
                   Week reviewed: {review.period_start} – {review.period_end}
                 </p>
-                {/* 字幕。前後の引用符は CSS で付ける */}
-                <p className="review-script">{review.script}</p>
+                {/* 字幕。前後の引用符は CSS で付ける。声を流すあいだは、今読んでいる文を
+                    目立たせる。文ごとの時刻はないので、声の長さを文字数で配って推し量る */}
+                <p className="review-script">
+                  {sentences.map((sentence, i) => (
+                    <span
+                      key={i}
+                      className={i === spoken ? "review-spoken" : undefined}
+                    >
+                      {sentence}
+                    </span>
+                  ))}
+                </p>
                 <h4 id="review-plan-heading">
                   How will you spend the week ahead?
                 </h4>
@@ -450,20 +496,24 @@ export default function Review({ user, onOpenSettings }: Props) {
         </section>
 
         <div className="review-avatar">
-          {/* アバターを出せなくても、字幕と声は使えるようにする */}
-          <AvatarBoundary>
-            {/* 読み込むあいだも同じ大きさの枠を取り、吹き出しが動かないようにする */}
-            <Suspense
-              fallback={<div className="avatar-stage" aria-hidden="true" />}
-            >
-              <AvatarStage
-                expression={review ? review.expression : "relaxed"}
-                speaking={speaking && audioUrl !== null}
-                visible={open}
-                voiceLevel={voiceLevel}
-              />
-            </Suspense>
-          </AvatarBoundary>
+          {/* アバターをつかんで、吹き出しごと動かす。Figma の S08 のとおり、
+              右下で表やフッターに重なったときに、見たいところを空けられる */}
+          <div className="review-avatar-grip" {...dragHandlers}>
+            {/* アバターを出せなくても、字幕と声は使えるようにする */}
+            <AvatarBoundary>
+              {/* 読み込むあいだも同じ大きさの枠を取り、吹き出しが動かないようにする */}
+              <Suspense
+                fallback={<div className="avatar-stage" aria-hidden="true" />}
+              >
+                <AvatarStage
+                  expression={review ? review.expression : "relaxed"}
+                  speaking={speaking && audioUrl !== null}
+                  visible={open}
+                  voiceLevel={voiceLevel}
+                />
+              </Suspense>
+            </AvatarBoundary>
+          </div>
           <button
             type="button"
             className="review-text-toggle"

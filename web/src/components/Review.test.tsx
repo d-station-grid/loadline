@@ -120,18 +120,21 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  // 画面の大きさなど、spyOn で差し替えたものを戻す
+  vi.restoreAllMocks();
 });
 
 test("今の週の振り返りがあれば、期間とセリフと選択肢を出す", async () => {
   vi.mocked(getCurrentReview).mockResolvedValue(review());
   renderReview();
 
-  // 字幕は本文のまま読み上げる。aria-label で置き換えない
-  expect(
-    await screen.findByText(
-      "A heavy week. Your fatigue is well above your fitness.",
-    ),
-  ).not.toHaveAttribute("aria-label");
+  // 字幕は本文のまま読み上げる。aria-label で置き換えない。文ごとに分けても、
+  // つなぐと元のセリフになる
+  const script = (await screen.findByText(/A heavy week/)).parentElement;
+  expect(script).toHaveTextContent(
+    "A heavy week. Your fatigue is well above your fitness.",
+  );
+  expect(script).not.toHaveAttribute("aria-label");
   // 期間は振り返った週、質問はこれから過ごす週。どちらもラベルで分かる
   expect(
     screen.getByText("Week reviewed: 2026-10-19 – 2026-10-25"),
@@ -888,4 +891,184 @@ test("再生ボタンと Hide は、セリフより前（吹き出しの一番�
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   }
+});
+
+/** 字幕で目立たせている文。なければ null */
+function spokenSentence() {
+  return document.querySelector(".review-spoken")?.textContent ?? null;
+}
+
+/** 声の位置と長さを決めて、timeupdate を送る */
+function playAt(audio: HTMLElement, time: number, duration: number) {
+  Object.defineProperty(audio, "currentTime", {
+    value: time,
+    configurable: true,
+  });
+  Object.defineProperty(audio, "duration", {
+    value: duration,
+    configurable: true,
+  });
+  fireEvent.timeUpdate(audio);
+}
+
+test("声を流すあいだは、字幕の今読んでいる文を目立たせ、鳴らし終えたら外す", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue({
+    ...review(),
+    audio_url: AUDIO,
+  });
+  renderReview();
+  await screen.findByText(/A heavy week/);
+  const audio = screen.getByLabelText("Review voice");
+  // 鳴らす前は、どの文も目立たせない
+  expect(spokenSentence()).toBeNull();
+
+  // 「A heavy week.」は 13 文字、次の文は 41 文字。10 秒の声なら、最初の文は 2.4 秒まで
+  playAt(audio, 1, 10);
+  expect(spokenSentence()).toBe("A heavy week. ");
+  playAt(audio, 6, 10);
+  expect(spokenSentence()).toBe("Your fatigue is well above your fitness.");
+
+  // 止めても、聞いていた文は残す
+  fireEvent.pause(audio);
+  expect(spokenSentence()).toBe("Your fatigue is well above your fitness.");
+
+  playAt(audio, 10, 10);
+  fireEvent.ended(audio);
+  expect(spokenSentence()).toBeNull();
+});
+
+test("声を差し替えたら（読み直しなど）、目立たせていた文を外す", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue({
+    ...review(),
+    audio_url: AUDIO,
+  });
+  renderReview();
+  await screen.findByText(/A heavy week/);
+  const audio = screen.getByLabelText("Review voice");
+  playAt(audio, 1, 10);
+  expect(spokenSentence()).not.toBeNull();
+
+  fireEvent.emptied(audio);
+
+  expect(spokenSentence()).toBeNull();
+});
+
+/** 吹き出しとアバターをまとめた、右下に浮かせた部品 */
+function dock() {
+  return document.querySelector<HTMLElement>(".review-dock")!;
+}
+
+/** 画面 1000×800 の右下に、300×400 の部品を置いたことにする */
+function placeDock() {
+  vi.spyOn(window, "innerWidth", "get").mockReturnValue(1000);
+  vi.spyOn(window, "innerHeight", "get").mockReturnValue(800);
+  vi.spyOn(dock(), "getBoundingClientRect").mockImplementation(() => {
+    const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(
+      dock().style.transform,
+    );
+    const x = m ? Number(m[1]) : 0;
+    const y = m ? Number(m[2]) : 0;
+    return DOMRect.fromRect({
+      x: 684 + x,
+      y: 384 + y,
+      width: 300,
+      height: 400,
+    });
+  });
+}
+
+function grip() {
+  return document.querySelector<HTMLElement>(".review-avatar-grip")!;
+}
+
+function dragBy(dx: number, dy: number) {
+  fireEvent.pointerDown(grip(), {
+    pointerId: 1,
+    button: 0,
+    clientX: 900,
+    clientY: 700,
+  });
+  fireEvent.pointerMove(grip(), {
+    pointerId: 1,
+    clientX: 900 + dx,
+    clientY: 700 + dy,
+  });
+  fireEvent.pointerUp(grip(), { pointerId: 1 });
+}
+
+test("アバターをつかんで、吹き出しごと動かせる", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue(review());
+  renderReview();
+  await screen.findByText(/A heavy week/);
+  placeDock();
+
+  dragBy(-200, -100);
+
+  expect(dock().style.transform).toBe("translate(-200px, -100px)");
+
+  // 離したあとに動かしても、ついてこない
+  fireEvent.pointerMove(grip(), { pointerId: 1, clientX: 0, clientY: 0 });
+  expect(dock().style.transform).toBe("translate(-200px, -100px)");
+});
+
+test("動かしても、画面の外にははみ出さない", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue(review());
+  renderReview();
+  await screen.findByText(/A heavy week/);
+  placeDock();
+
+  // 左上へ大きく。左端と上端で止まる
+  dragBy(-5000, -5000);
+  expect(dock().style.transform).toBe("translate(-684px, -384px)");
+
+  // 右下へ大きく。右端と下端で止まる（元の位置から 16px）
+  dragBy(5000, 5000);
+  expect(dock().style.transform).toBe("translate(16px, 16px)");
+});
+
+test("マウスの右ボタンでは動かさない", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue(review());
+  renderReview();
+  await screen.findByText(/A heavy week/);
+  placeDock();
+
+  fireEvent.pointerDown(grip(), {
+    pointerId: 1,
+    button: 2,
+    clientX: 900,
+    clientY: 700,
+  });
+  fireEvent.pointerMove(grip(), { pointerId: 1, clientX: 500, clientY: 500 });
+
+  expect(dock().style.transform).toBe("");
+});
+
+test("画面が小さくなったら、はみ出さない位置へ戻す", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue(review());
+  renderReview();
+  await screen.findByText(/A heavy week/);
+  placeDock();
+  dragBy(-600, -300);
+  expect(dock().style.transform).toBe("translate(-600px, -300px)");
+
+  // 画面が 1000→700 に縮み、部品は右下からの位置なので左へ 300 ずれる
+  vi.spyOn(window, "innerWidth", "get").mockReturnValue(700);
+  vi.spyOn(dock(), "getBoundingClientRect").mockImplementation(() => {
+    const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(
+      dock().style.transform,
+    );
+    const x = m ? Number(m[1]) : 0;
+    const y = m ? Number(m[2]) : 0;
+    return DOMRect.fromRect({
+      x: 384 + x,
+      y: 384 + y,
+      width: 300,
+      height: 400,
+    });
+  });
+  act(() => {
+    window.dispatchEvent(new Event("resize"));
+  });
+
+  expect(dock().style.transform).toBe("translate(-384px, -300px)");
 });
