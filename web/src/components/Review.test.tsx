@@ -400,6 +400,8 @@ test("Play で鳴らし、鳴っているあいだは Pause で止める。Repla
   fireEvent.pause(audio);
   expect(screen.getByRole("button", { name: "▶ Play" })).toBeInTheDocument();
 
+  // 読み込んだあと（途中まで聞いた）なら、最初に戻す
+  Object.defineProperty(audio, "readyState", { value: 4 });
   audio.currentTime = 5;
   fireEvent.click(screen.getByRole("button", { name: "↻ Replay" }));
   expect(audio.currentTime).toBe(0);
@@ -486,20 +488,119 @@ test("音声を読めなければ、1 回だけ読み直して新しい URL に�
   expect(getCurrentReview).toHaveBeenCalledTimes(2);
 });
 
-test("読み直した URL でも読めなければ、再生ボタンを消して字幕だけにする", async () => {
+test("読み直した URL でも読めなければ CORS を外して読み、それでも読めなければ再生ボタンを消す", async () => {
   vi.mocked(getCurrentReview)
     .mockResolvedValueOnce({ ...review(), audio_url: AUDIO })
     .mockResolvedValue({ ...review(), audio_url: FRESH });
   renderReview();
   fireEvent.error(await screen.findByLabelText("Review voice"));
   await waitFor(() => expect(player()).toHaveAttribute("src", FRESH));
+  expect(player()).toHaveAttribute("crossorigin", "anonymous");
 
+  // 新しい URL でも読めない。CORS の失敗かもしれないので、外して同じ URL を読む
+  const withCors = player();
+  fireEvent.error(withCors!);
+  await waitFor(() => expect(player()).not.toHaveAttribute("crossorigin"));
+  // 要素は作り直す（Web Audio につないだ要素は CORS を外せない）
+  expect(player()).not.toBe(withCors);
+  expect(player()).toHaveAttribute("src", FRESH);
+  expect(screen.getByRole("button", { name: "▶ Play" })).toBeInTheDocument();
+
+  // それでも読めなければ、字幕だけにする
   fireEvent.error(player()!);
-
   await waitFor(() => expect(player()).not.toBeInTheDocument());
+  expect(
+    screen.queryByRole("button", { name: "▶ Play" }),
+  ).not.toBeInTheDocument();
   // もう読み直さない
   expect(getCurrentReview).toHaveBeenCalledTimes(2);
   expect(screen.getByText(/A heavy week/)).toBeInTheDocument();
+});
+
+test("CORS を外した声は、Web Audio につながずに鳴らす（つなぐと無音になる）", async () => {
+  const sources = vi.fn(() => ({ connect() {} }));
+  vi.stubGlobal(
+    "AudioContext",
+    class {
+      destination = {};
+      createAnalyser() {
+        return { fftSize: 0, connect() {}, getByteTimeDomainData() {} };
+      }
+      createMediaElementSource = sources;
+      resume() {
+        return Promise.resolve();
+      }
+      close() {
+        return Promise.resolve();
+      }
+    },
+  );
+  const play = vi
+    .spyOn(HTMLMediaElement.prototype, "play")
+    .mockResolvedValue(undefined);
+  vi.mocked(getCurrentReview)
+    .mockResolvedValueOnce({ ...review(), audio_url: AUDIO })
+    .mockResolvedValue({ ...review(), audio_url: FRESH });
+  renderReview();
+  fireEvent.error(await screen.findByLabelText("Review voice"));
+  await waitFor(() => expect(player()).toHaveAttribute("src", FRESH));
+  fireEvent.error(player()!);
+  await waitFor(() => expect(player()).not.toHaveAttribute("crossorigin"));
+
+  fireEvent.click(screen.getByRole("button", { name: "▶ Play" }));
+
+  expect(play).toHaveBeenCalledTimes(1);
+  expect(sources).not.toHaveBeenCalled();
+  play.mockRestore();
+  vi.unstubAllGlobals();
+});
+
+test("まだ読んでいない声の Replay は、シークせずに鳴らす", async () => {
+  const play = vi
+    .spyOn(HTMLMediaElement.prototype, "play")
+    .mockResolvedValue(undefined);
+  vi.mocked(getCurrentReview).mockResolvedValue({
+    ...review(),
+    audio_url: AUDIO,
+  });
+  renderReview();
+  const audio = await screen.findByLabelText<HTMLAudioElement>("Review voice");
+  // 古い仕様のブラウザは、読み込む前（readyState 0）のシークで例外を出す
+  const seek = vi.fn(() => {
+    throw new DOMException("not loaded", "InvalidStateError");
+  });
+  Object.defineProperty(audio, "currentTime", { get: () => 0, set: seek });
+  expect(audio.readyState).toBe(HTMLMediaElement.HAVE_NOTHING);
+
+  fireEvent.click(screen.getByRole("button", { name: "↻ Replay" }));
+
+  expect(seek).not.toHaveBeenCalled();
+  expect(play).toHaveBeenCalledTimes(1);
+  play.mockRestore();
+});
+
+test("シークで例外が出ても、Replay で鳴らす", async () => {
+  const play = vi
+    .spyOn(HTMLMediaElement.prototype, "play")
+    .mockResolvedValue(undefined);
+  vi.mocked(getCurrentReview).mockResolvedValue({
+    ...review(),
+    audio_url: AUDIO,
+  });
+  renderReview();
+  const audio = await screen.findByLabelText<HTMLAudioElement>("Review voice");
+  Object.defineProperty(audio, "readyState", { value: 4 });
+  Object.defineProperty(audio, "currentTime", {
+    get: () => 3,
+    set: () => {
+      throw new DOMException("cannot seek", "InvalidStateError");
+    },
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "↻ Replay" }));
+
+  expect(play).toHaveBeenCalledTimes(1);
+  play.mockRestore();
 });
 
 test.each([

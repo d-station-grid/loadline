@@ -43,6 +43,9 @@ type Audio = {
   refreshed: boolean;
   // 再生できないと決まった。選び直しで URL が返っても出し直さない
   broken: boolean;
+  // CORS つきで読む。口を動かすために声の大きさを読むには要る。読み直した URL でも
+  // 読めなければ、CORS の失敗かもしれないので、外してもう一度読む（声だけは残す）
+  cors: boolean;
 };
 
 /** 作るあいだに出す目安。本番の実測（Gemini、Jev、声を作るまで）で約 26 秒 */
@@ -110,6 +113,7 @@ export default function Review({ user, onOpenSettings }: Props) {
       url: review.audio_url,
       refreshed: false,
       broken: false,
+      cors: true,
     });
   }
   const audioUrl = review && audio?.reviewId === review.id ? audio.url : null;
@@ -190,14 +194,18 @@ export default function Review({ user, onOpenSettings }: Props) {
   async function onAudioError(failed: Audio) {
     function update(next: Partial<Audio>) {
       setAudio((now) =>
-        now?.reviewId === failed.reviewId && now.url === failed.url
+        now?.reviewId === failed.reviewId &&
+        now.url === failed.url &&
+        now.cors === failed.cors
           ? { ...now, ...next }
           : now,
       );
     }
     const giveUp = { url: null, broken: true };
     if (failed.refreshed) {
-      update(giveUp);
+      // 新しい URL でも読めないなら、期限切れではなく CORS の失敗かもしれない。
+      // CORS を外して同じ URL をもう一度読む。それでも読めなければあきらめる
+      update(failed.cors ? { cors: false } : giveUp);
       return;
     }
     let url: string | null = null;
@@ -236,15 +244,26 @@ export default function Review({ user, onOpenSettings }: Props) {
   function play() {
     const element = audioRef.current;
     if (!element) return;
-    meter.current ??= new VoiceMeter();
-    meter.current.start(element);
+    // CORS なしで読んでいる声は Web Audio につながない。つなぐとブラウザは無音を流す
+    if (audio?.cors) {
+      meter.current ??= new VoiceMeter();
+      meter.current.start(element);
+    }
     void element.play().catch(() => {});
   }
 
   function replay() {
     const element = audioRef.current;
     if (!element) return;
-    element.currentTime = 0;
+    // まだ読んでいない音声はシークしない（古い仕様のブラウザは例外を出す）。
+    // 読んでいなければ、どのみち最初から鳴る
+    if (element.readyState !== HTMLMediaElement.HAVE_NOTHING) {
+      try {
+        element.currentTime = 0;
+      } catch {
+        // 戻せなくても、鳴らすことを優先する
+      }
+    }
     play();
   }
 
@@ -290,10 +309,12 @@ export default function Review({ user, onOpenSettings }: Props) {
                 自動では鳴らさない（ブラウザが止めることが多い）。読み込むのは押してから */}
             {review && audio && audioUrl && (
               <>
-                {/* 再生は下のボタンで操作する。音量を読むため CORS つきで読む */}
+                {/* 再生は下のボタンで操作する。音量を読むため、CORS つきで読む */}
                 <audio
+                  // CORS を外すときは作り直す。一度 Web Audio につないだ要素は外せない
+                  key={audio.cors ? "cors" : "plain"}
                   ref={audioRef}
-                  crossOrigin="anonymous"
+                  crossOrigin={audio.cors ? "anonymous" : undefined}
                   preload="none"
                   src={audioUrl}
                   aria-label="Review voice"
