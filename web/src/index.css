@@ -534,46 +534,141 @@ fieldset.plain {
 
 /* ---- 振り返り ---- */
 
-.review h3 {
-  margin-bottom: var(--space-2);
+/* 画面の右下に、吹き出しとアバターを並べて浮かせる（Figma の S08）。
+   メモのモーダル（z-index 10）より下に置く */
+.review-dock {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 5;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  max-width: calc(100vw - var(--space-8));
 }
 
-.review h4 {
-  margin-top: var(--space-4);
+/* 吹き出し。長くなったら中だけ動かす */
+.review-bubble {
+  width: 340px;
+  min-width: 0;
+  max-height: calc(100svh - 120px);
+  overflow-y: auto;
+  border-radius: 14px;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.14);
+  color: var(--color-text-strong);
+  line-height: 1.7;
+}
+
+.review-bubble[hidden] {
+  display: none;
+}
+
+.review-script::before {
+  content: "“";
+}
+
+.review-script::after {
+  content: "”";
+}
+
+.review-bubble h4 {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-text-strong);
 }
 
 /* 振り返りの声。字幕の下に、横いっぱいの再生ボタン */
 .review-audio {
   display: block;
   width: 100%;
-  margin-bottom: var(--space-3);
+  margin-block: var(--space-2);
 }
 
-/* 選択肢のボタン。文字の下端でそろえると、✓ の付いたボタンだけ上下にずれるので、
-   高さをそろえて並べる。狭い画面では折り返す */
+/* 選択肢のボタン。縦に積む */
 .review-options {
   display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
+  flex-direction: column;
   gap: var(--space-2);
+  margin-top: var(--space-1);
 }
 
 .review-options button {
-  flex: 1 1 200px;
   text-align: left;
-  padding: var(--space-3);
-  line-height: 1.4;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  line-height: 1.7;
 }
 
 .review-options button span {
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
 }
 
 /* 選んだ選択肢 */
 .review-options button[aria-pressed="true"] {
   border-color: var(--color-accent);
   background: var(--color-accent-soft);
+}
+
+/* 吹き出しの下のボタン（Hide など） */
+.review-controls {
+  display: flex;
+  gap: 6px;
+  padding-top: var(--space-2);
+}
+
+.review-controls button {
+  font-size: var(--font-size-xs);
+  padding: 2px var(--space-2);
+}
+
+/* アバターと、その下の Hide text */
+.review-avatar {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.avatar-stage {
+  width: 150px;
+  height: 280px;
+}
+
+.avatar-stage canvas {
+  display: block;
+}
+
+.review-text-toggle,
+.review-dock-open {
+  font-size: var(--font-size-2xs);
+  color: var(--color-text);
+  padding: 1px var(--space-2);
+  border-radius: 10px;
+}
+
+/* 畳んだときのボタン。押せば吹き出しとアバターを出し直す */
+.review-dock-open {
+  font-size: var(--font-size-sm);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.14);
+}
+
+/* 画面にない見出し。読み上げソフトには届ける */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ---- メモ ---- */
@@ -1174,5 +1269,22 @@ dl.rows dd {
 
   dl.rows dd {
     margin-bottom: var(--space-2);
+  }
+
+  /* 振り返りは、アバターを小さくして、吹き出しを残りの幅いっぱいにする */
+  .review-dock {
+    right: var(--space-2);
+    bottom: var(--space-2);
+    max-width: calc(100vw - var(--space-4));
+  }
+
+  .review-bubble {
+    flex: 1 1 auto;
+    max-height: 60svh;
+  }
+
+  .avatar-stage {
+    width: 90px;
+    height: 168px;
   }
 }

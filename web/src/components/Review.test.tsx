@@ -26,6 +26,23 @@ vi.mock("../lib/api", async (importOriginal) => ({
   selectReviewOption: vi.fn(),
 }));
 
+// アバターは WebGL を使うので、jsdom では描けない。受け取った表情だけを見せる部品に替える
+vi.mock("../features/avatar/AvatarStage", () => ({
+  default: ({
+    expression,
+    speaking,
+  }: {
+    expression: string;
+    speaking: boolean;
+  }) => (
+    <div
+      data-testid="avatar"
+      data-expression={expression}
+      data-speaking={String(speaking)}
+    />
+  ),
+}));
+
 const user = { getIdToken: async () => "token" } as unknown as User;
 
 /** 3 つの選択肢を持つ振り返り。chosen を渡すと、その位置を選んだことにする */
@@ -527,4 +544,61 @@ test("作り直すときは、経った秒数を 0 から数える", async () =>
   expect(
     screen.getByText("This usually takes 20–30 seconds. 0s"),
   ).toBeInTheDocument();
+});
+
+test("アバターは振り返りの表情で立ち、声を流すあいだは話す顔にする", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue({
+    ...review(),
+    expression: "happy",
+    audio_url: AUDIO,
+  });
+  renderReview();
+
+  const avatar = await screen.findByTestId("avatar");
+  await waitFor(() =>
+    expect(avatar).toHaveAttribute("data-expression", "happy"),
+  );
+  expect(avatar).toHaveAttribute("data-speaking", "false");
+
+  const audio = screen.getByLabelText("Listen to this review");
+  fireEvent.play(audio);
+  expect(avatar).toHaveAttribute("data-speaking", "true");
+  fireEvent.pause(audio);
+  expect(avatar).toHaveAttribute("data-speaking", "false");
+  fireEvent.play(audio);
+  fireEvent.ended(audio);
+  expect(avatar).toHaveAttribute("data-speaking", "false");
+});
+
+test("Hide text で吹き出しだけを隠し、アバターは残す", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue(review());
+  renderReview();
+
+  const script = await screen.findByText(/A heavy week/);
+  fireEvent.click(screen.getByRole("button", { name: "💬 Hide text" }));
+
+  expect(script).not.toBeVisible();
+  expect(screen.getByTestId("avatar")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "💬 Show text" }));
+  expect(script).toBeVisible();
+});
+
+test("Hide でアバターごと畳み、ボタンで出し直す。選んだ選択肢は残る", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue(review(1));
+  renderReview();
+
+  await screen.findByText(/A heavy week/);
+  fireEvent.click(screen.getByRole("button", { name: "– Hide" }));
+
+  expect(screen.queryByText(/A heavy week/)).not.toBeInTheDocument();
+  expect(screen.queryByTestId("avatar")).not.toBeInTheDocument();
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "💬 This week's review" }),
+  );
+  expect(await screen.findByText(/A heavy week/)).toBeInTheDocument();
+  expect(option("Go easy")).toHaveAttribute("aria-pressed", "true");
+  // 出し直すときに、もう一度読みに行かない
+  expect(getCurrentReview).toHaveBeenCalledTimes(1);
 });
