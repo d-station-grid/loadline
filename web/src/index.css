@@ -582,10 +582,11 @@ fieldset.plain {
   color: var(--color-text-strong);
 }
 
-/* 振り返りの声。下の段に、横いっぱいの再生ボタン */
+/* 振り返りの声。上の段で、Hide の左の幅いっぱい。狭すぎるときは Hide を次の行へ送る */
 .review-audio {
   display: block;
-  width: 100%;
+  flex: 1 1 200px;
+  min-width: 0;
 }
 
 /* 選択肢のボタン。縦に積む */
@@ -615,12 +616,22 @@ fieldset.plain {
   background: var(--color-accent-soft);
 }
 
-/* 吹き出しの下のボタン（Hide など） */
+/* 吹き出しの上の段（再生ボタンと Hide）。スクロールしても上端に残す。
+   下を流れる文字が透けないよう、吹き出しと同じ地の色を敷く */
 .review-controls {
+  position: sticky;
+  /* 貼り付く位置は吹き出しの余白の内側から測るので、余白の分だけ上げて上端に付ける */
+  top: calc(-1 * var(--space-3));
+  z-index: 1;
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
   gap: 6px;
-  padding-top: var(--space-2);
+  /* 吹き出しの上の余白まで地の色で覆い、貼り付いたときも上に余白を残す */
+  margin-top: calc(-1 * var(--space-3));
+  padding-block: var(--space-3) var(--space-2);
+  background: var(--color-surface);
 }
 
 .review-controls button {

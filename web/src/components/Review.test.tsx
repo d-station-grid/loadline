@@ -712,3 +712,22 @@ test("フォーカスを移しても、吹き出しをスクロールしない",
   }
   focus.mockRestore();
 });
+
+test("再生ボタンと Hide は、セリフより前（吹き出しの一番上）に置く", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue({
+    ...review(),
+    audio_url: AUDIO,
+  });
+  renderReview();
+
+  const script = await screen.findByText(/A heavy week/);
+  const audio = screen.getByLabelText("Listen to this review");
+  const hide = screen.getByRole("button", { name: "– Hide" });
+  // 文字が長くても、スクロールせずに押せる位置にある
+  for (const control of [audio, hide]) {
+    expect(
+      control.compareDocumentPosition(script) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  }
+});

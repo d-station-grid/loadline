@@ -253,7 +253,36 @@ export default function Review({ user, onOpenSettings }: Props) {
             This week's review
           </h3>
 
-          {/* Hide text で隠すのは文字だけ。下の段の再生ボタンと Hide は残す */}
+          {/* 再生ボタンと Hide は一番上に置き、吹き出しをスクロールしても上端に残す。
+              Figma では一番下だが、スマートフォンでは文字が長いとスクロールしないと
+              見えず、真っ先に押すボタンが隠れた（iPhone の Safari で確認） */}
+          <div className="review-controls">
+            {/* 声を作れなかった週と、今は署名できなかったときは、字幕だけ。
+                自動では鳴らさない（ブラウザが止めることが多い）。読み込むのは押してから */}
+            {review && audio && audioUrl && (
+              <audio
+                ref={audioRef}
+                className="review-audio"
+                controls
+                preload="none"
+                src={audioUrl}
+                aria-label="Listen to this review"
+                onError={() => {
+                  setSpeaking(false);
+                  void onAudioError(audio);
+                }}
+                onPlay={() => setSpeaking(true)}
+                onPause={() => setSpeaking(false)}
+                onEnded={() => setSpeaking(false)}
+                onEmptied={() => setSpeaking(false)}
+              />
+            )}
+            <button ref={hideRef} type="button" onClick={hide}>
+              – Hide
+            </button>
+          </div>
+
+          {/* Hide text で隠すのは文字だけ。上の段の再生ボタンと Hide は残す */}
           <div className="review-text" hidden={!textShown}>
             {loadError && (
               <p role="alert">
@@ -354,32 +383,6 @@ export default function Review({ user, onOpenSettings }: Props) {
                 )}
               </>
             )}
-          </div>
-
-          <div className="review-controls">
-            {/* 声を作れなかった週と、今は署名できなかったときは、字幕だけ。
-                自動では鳴らさない（ブラウザが止めることが多い）。読み込むのは押してから */}
-            {review && audio && audioUrl && (
-              <audio
-                ref={audioRef}
-                className="review-audio"
-                controls
-                preload="none"
-                src={audioUrl}
-                aria-label="Listen to this review"
-                onError={() => {
-                  setSpeaking(false);
-                  void onAudioError(audio);
-                }}
-                onPlay={() => setSpeaking(true)}
-                onPause={() => setSpeaking(false)}
-                onEnded={() => setSpeaking(false)}
-                onEmptied={() => setSpeaking(false)}
-              />
-            )}
-            <button ref={hideRef} type="button" onClick={hide}>
-              – Hide
-            </button>
           </div>
         </section>
 
