@@ -1,8 +1,16 @@
 import type { User } from "firebase/auth";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import type { WeeklyReviewOut } from "../api";
 import AvatarBoundary from "../features/avatar/AvatarBoundary";
+import { VoiceMeter } from "../features/avatar/voice";
 import {
   ApiError,
   createReview,
@@ -45,8 +53,8 @@ const AvatarStage = lazy(() => import("../features/avatar/AvatarStage"));
 
 /**
  * 今の週の振り返り。画面の右下に、アバターと吹き出しを重ねて出す（Figma の S08）。
- * 吹き出しにはセリフを字幕として出し、声があれば再生ボタンを出し、その週の
- * 過ごし方の選択肢を並べる。まだなければ、その場で作るボタンを出す。選んだ後もボタンは
+ * 吹き出しにはセリフを字幕として出し、声があれば再生ボタン（Play・Replay）を出し、その週の
+ * 過ごし方の選択肢を並べる。声を流すあいだは、アバターの口を声の大きさに合わせて動かす。まだなければ、その場で作るボタンを出す。選んだ後もボタンは
  * 残し、押せば選び直せる。ゲストはデモの振り返りを見るだけ。作るボタンは出さず、
  * 選択肢は押せない。
  *
@@ -75,6 +83,11 @@ export default function Review({ user, onOpenSettings }: Props) {
   // false で吹き出しを隠し、アバターだけにする
   const [textShown, setTextShown] = useState(true);
   const audioRef = useRef<HTMLAudioElement>(null);
+  // 声の大きさを読む。最初に再生を押したときに作る（AudioContext は操作のあとでしか鳴らない）
+  const meter = useRef<VoiceMeter | null>(null);
+  useEffect(() => () => meter.current?.close(), []);
+  // アバターが毎フレーム読む。同じ関数を渡し続け、アバターの effect を走らせ直さない
+  const voiceLevel = useCallback(() => meter.current?.level() ?? 0, []);
   // Hide と出し直しで押したボタンが隠れるので、次に押すボタンへフォーカスを移す。
   // 最初に開いたときは動かさない
   const openRef = useRef<HTMLButtonElement>(null);
@@ -219,6 +232,22 @@ export default function Review({ user, onOpenSettings }: Props) {
     }
   }
 
+  /** 再生。押した操作の中で Web Audio につなぐ。鳴らせなかったときは onError に任せる */
+  function play() {
+    const element = audioRef.current;
+    if (!element) return;
+    meter.current ??= new VoiceMeter();
+    meter.current.start(element);
+    void element.play().catch(() => {});
+  }
+
+  function replay() {
+    const element = audioRef.current;
+    if (!element) return;
+    element.currentTime = 0;
+    play();
+  }
+
   // 畳むときは声を止める。外さずに隠すので、止めないと見えないまま鳴り続ける
   function hide() {
     audioRef.current?.pause();
@@ -260,22 +289,35 @@ export default function Review({ user, onOpenSettings }: Props) {
             {/* 声を作れなかった週と、今は署名できなかったときは、字幕だけ。
                 自動では鳴らさない（ブラウザが止めることが多い）。読み込むのは押してから */}
             {review && audio && audioUrl && (
-              <audio
-                ref={audioRef}
-                className="review-audio"
-                controls
-                preload="none"
-                src={audioUrl}
-                aria-label="Listen to this review"
-                onError={() => {
-                  setSpeaking(false);
-                  void onAudioError(audio);
-                }}
-                onPlay={() => setSpeaking(true)}
-                onPause={() => setSpeaking(false)}
-                onEnded={() => setSpeaking(false)}
-                onEmptied={() => setSpeaking(false)}
-              />
+              <>
+                {/* 再生は下のボタンで操作する。音量を読むため CORS つきで読む */}
+                <audio
+                  ref={audioRef}
+                  crossOrigin="anonymous"
+                  preload="none"
+                  src={audioUrl}
+                  aria-label="Review voice"
+                  onError={() => {
+                    setSpeaking(false);
+                    void onAudioError(audio);
+                  }}
+                  onPlay={() => setSpeaking(true)}
+                  onPause={() => setSpeaking(false)}
+                  onEnded={() => setSpeaking(false)}
+                  onEmptied={() => setSpeaking(false)}
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    speaking ? audioRef.current?.pause() : play()
+                  }
+                >
+                  {speaking ? "❚❚ Pause" : "▶ Play"}
+                </button>
+                <button type="button" onClick={replay}>
+                  ↻ Replay
+                </button>
+              </>
             )}
             <button ref={hideRef} type="button" onClick={hide}>
               – Hide
@@ -397,6 +439,7 @@ export default function Review({ user, onOpenSettings }: Props) {
                 expression={review ? review.expression : "relaxed"}
                 speaking={speaking && audioUrl !== null}
                 visible={open}
+                voiceLevel={voiceLevel}
               />
             </Suspense>
           </AvatarBoundary>

@@ -6,6 +6,7 @@ import {
   faceEasing,
   faceTarget,
   nextBlinkDelay,
+  nextMouth,
 } from "./face";
 
 test("話していないときは、振り返りの表情だけを出す", () => {
@@ -55,4 +56,19 @@ test("表情の寄せ方は、画面の書き換えの回数によらない", ()
   // 60Hz では、試作と同じく 1 フレームに約 8% 寄せる
   expect(faceEasing(1 / 60)).toBeCloseTo(0.08, 2);
   expect(faceEasing(0)).toBe(0);
+});
+
+test("口は声へ寄せる。開くのは速く、閉じるのはゆっくり", () => {
+  const opened = nextMouth(0, 1, 1 / 60);
+  const closed = nextMouth(1, 0, 1 / 60);
+  // 60Hz の 1 フレームで、開くときは約半分、閉じるときは約 4 分の 1 詰める
+  expect(opened).toBeCloseTo(0.5, 1);
+  expect(1 - closed).toBeCloseTo(0.25, 1);
+  // 画面の書き換えの回数によらない
+  let at30 = 0;
+  let at120 = 0;
+  for (let i = 0; i < 3; i++) at30 = nextMouth(at30, 1, 1 / 30);
+  for (let i = 0; i < 12; i++) at120 = nextMouth(at120, 1, 1 / 120);
+  expect(at30).toBeCloseTo(at120, 10);
+  expect(nextMouth(0.3, 0.3, 1 / 60)).toBe(0.3);
 });

@@ -61,3 +61,22 @@ const FACE_RATE = 5;
 export function faceEasing(delta: number): number {
   return 1 - Math.exp(-FACE_RATE * Math.max(delta, 0));
 }
+
+/**
+ * 口を寄せる速さ（1 秒あたり）。開くのは速く、閉じるのは少しゆっくり。
+ * 60Hz で 1 フレームに、開くときは差の約半分、閉じるときは約 4 分の 1 を詰める（試作の値）
+ */
+const MOUTH_OPEN_RATE = 42;
+const MOUTH_CLOSE_RATE = 17;
+
+/** 口の開きを、今の開き（current）から声の大きさ（target）へ、delta 秒ぶん寄せる */
+export function nextMouth(
+  current: number,
+  target: number,
+  delta: number,
+): number {
+  const rate = target > current ? MOUTH_OPEN_RATE : MOUTH_CLOSE_RATE;
+  return (
+    current + (target - current) * (1 - Math.exp(-rate * Math.max(delta, 0)))
+  );
+}

@@ -37,10 +37,12 @@ vi.mock("../features/avatar/AvatarStage", async () => {
       expression,
       speaking,
       visible,
+      voiceLevel,
     }: {
       expression: string;
       speaking: boolean;
       visible?: boolean;
+      voiceLevel?: () => number;
     }) {
       if (avatar.fail) throw new Error("chunk load failed");
       useEffect(() => {
@@ -52,6 +54,7 @@ vi.mock("../features/avatar/AvatarStage", async () => {
           data-expression={expression}
           data-speaking={String(speaking)}
           data-visible={String(visible)}
+          data-voice-level={String(voiceLevel?.())}
         />
       );
     },
@@ -355,19 +358,72 @@ test("ゲストには振り返りを作るボタンを出さない", async () =>
 
 const AUDIO = "https://storage.example/users/1/reviews/7.wav?signed";
 
-test("声があれば、字幕の下に再生ボタンを出す", async () => {
+test("声があれば、Play と Replay を出す。音声は CORS つきで、押すまで読まない", async () => {
   vi.mocked(getCurrentReview).mockResolvedValue({
     ...review(),
     audio_url: AUDIO,
   });
   renderReview();
 
-  const audio = await screen.findByLabelText("Listen to this review");
+  expect(await screen.findByRole("button", { name: "▶ Play" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "↻ Replay" })).toBeVisible();
+  const audio = screen.getByLabelText("Review voice");
   expect(audio).toHaveAttribute("src", AUDIO);
-  expect(audio).toHaveAttribute("controls");
-  // 自動では鳴らさない。読み込むのも押してから
+  // 音量を読んで口を動かすため、CORS つきで読む
+  expect(audio).toHaveAttribute("crossorigin", "anonymous");
+  // ブラウザ標準の再生ボタンは出さない。自動では鳴らさず、読み込むのも押してから
+  expect(audio).not.toHaveAttribute("controls");
   expect(audio).not.toHaveAttribute("autoplay");
   expect(audio).toHaveAttribute("preload", "none");
+});
+
+test("Play で鳴らし、鳴っているあいだは Pause で止める。Replay は最初から", async () => {
+  const play = vi
+    .spyOn(HTMLMediaElement.prototype, "play")
+    .mockResolvedValue(undefined);
+  const pause = vi
+    .spyOn(HTMLMediaElement.prototype, "pause")
+    .mockImplementation(() => {});
+  vi.mocked(getCurrentReview).mockResolvedValue({
+    ...review(),
+    audio_url: AUDIO,
+  });
+  renderReview();
+
+  fireEvent.click(await screen.findByRole("button", { name: "▶ Play" }));
+  expect(play).toHaveBeenCalledTimes(1);
+
+  const audio = screen.getByLabelText<HTMLAudioElement>("Review voice");
+  fireEvent.play(audio);
+  fireEvent.click(screen.getByRole("button", { name: "❚❚ Pause" }));
+  expect(pause).toHaveBeenCalledTimes(1);
+  fireEvent.pause(audio);
+  expect(screen.getByRole("button", { name: "▶ Play" })).toBeInTheDocument();
+
+  audio.currentTime = 5;
+  fireEvent.click(screen.getByRole("button", { name: "↻ Replay" }));
+  expect(audio.currentTime).toBe(0);
+  expect(play).toHaveBeenCalledTimes(2);
+
+  play.mockRestore();
+  pause.mockRestore();
+});
+
+test("Web Audio がなくても（このテストの環境）、Play で声は鳴らせる", async () => {
+  const play = vi
+    .spyOn(HTMLMediaElement.prototype, "play")
+    .mockResolvedValue(undefined);
+  vi.mocked(getCurrentReview).mockResolvedValue({
+    ...review(),
+    audio_url: AUDIO,
+  });
+  renderReview();
+
+  expect(window.AudioContext).toBeUndefined();
+  fireEvent.click(await screen.findByRole("button", { name: "▶ Play" }));
+
+  expect(play).toHaveBeenCalledTimes(1);
+  play.mockRestore();
 });
 
 test("声がなければ、字幕だけを出す", async () => {
@@ -376,8 +432,9 @@ test("声がなければ、字幕だけを出す", async () => {
 
   expect(await screen.findByText(/A heavy week/)).toBeInTheDocument();
   expect(
-    screen.queryByLabelText("Listen to this review"),
+    screen.queryByRole("button", { name: "▶ Play" }),
   ).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Review voice")).not.toBeInTheDocument();
 });
 
 test("作っているあいだは、目安と経った秒数を出す", async () => {
@@ -406,16 +463,14 @@ test("作っているあいだは、目安と経った秒数を出す", async ()
     screen.getByText("This usually takes 20–30 seconds. 12s"),
   ).toBeInTheDocument();
   finish({ ...review(), audio_url: AUDIO });
-  expect(
-    await screen.findByLabelText("Listen to this review"),
-  ).toBeInTheDocument();
+  expect(await screen.findByLabelText("Review voice")).toBeInTheDocument();
   expect(screen.queryByText(/This usually takes/)).not.toBeInTheDocument();
 });
 
 const FRESH = `${AUDIO}&fresh`;
 
 function player() {
-  return screen.queryByLabelText("Listen to this review");
+  return screen.queryByLabelText("Review voice");
 }
 
 test("音声を読めなければ、1 回だけ読み直して新しい URL にする", async () => {
@@ -425,7 +480,7 @@ test("音声を読めなければ、1 回だけ読み直して新しい URL に�
     .mockResolvedValue({ ...review(), audio_url: FRESH });
   renderReview();
 
-  fireEvent.error(await screen.findByLabelText("Listen to this review"));
+  fireEvent.error(await screen.findByLabelText("Review voice"));
 
   await waitFor(() => expect(player()).toHaveAttribute("src", FRESH));
   expect(getCurrentReview).toHaveBeenCalledTimes(2);
@@ -436,7 +491,7 @@ test("読み直した URL でも読めなければ、再生ボタンを消して
     .mockResolvedValueOnce({ ...review(), audio_url: AUDIO })
     .mockResolvedValue({ ...review(), audio_url: FRESH });
   renderReview();
-  fireEvent.error(await screen.findByLabelText("Listen to this review"));
+  fireEvent.error(await screen.findByLabelText("Review voice"));
   await waitFor(() => expect(player()).toHaveAttribute("src", FRESH));
 
   fireEvent.error(player()!);
@@ -456,7 +511,7 @@ test.each([
     .mockImplementation(next);
   renderReview();
 
-  fireEvent.error(await screen.findByLabelText("Listen to this review"));
+  fireEvent.error(await screen.findByLabelText("Review voice"));
 
   await waitFor(() => expect(player()).not.toBeInTheDocument());
   expect(screen.getByText(/A heavy week/)).toBeInTheDocument();
@@ -473,7 +528,7 @@ test("選択肢を選んでも、再生している URL は替えない", async 
     audio_url: FRESH,
   });
   renderReview();
-  await screen.findByLabelText("Listen to this review");
+  await screen.findByLabelText("Review voice");
 
   fireEvent.click(option("Go easy"));
 
@@ -493,7 +548,7 @@ test("読み直しが遅れて返っても、そのあいだに選んだ選択�
     audio_url: FRESH,
   });
   renderReview();
-  fireEvent.error(await screen.findByLabelText("Listen to this review"));
+  fireEvent.error(await screen.findByLabelText("Review voice"));
   fireEvent.click(option("Go easy"));
   await waitFor(() =>
     expect(option("Go easy")).toHaveAttribute("aria-pressed", "true"),
@@ -517,7 +572,7 @@ test("表示している振り返りが替わっていたら、読み直した U
     .mockResolvedValueOnce({ ...review(), id: 8, audio_url: next });
   vi.mocked(selectReviewOption).mockRejectedValue(new ApiError(409));
   renderReview();
-  fireEvent.error(await screen.findByLabelText("Listen to this review"));
+  fireEvent.error(await screen.findByLabelText("Review voice"));
   // 開いているあいだに週が替わり、今の週を読み直す
   fireEvent.click(option("Go easy"));
   fireEvent.click(
@@ -577,9 +632,11 @@ test("アバターは振り返りの表情で立ち、声を流すあいだは�
   );
   expect(avatar).toHaveAttribute("data-speaking", "false");
 
-  const audio = screen.getByLabelText("Listen to this review");
+  const audio = screen.getByLabelText("Review voice");
   fireEvent.play(audio);
   expect(avatar).toHaveAttribute("data-speaking", "true");
+  // 口を動かすための声の大きさも渡す（まだ Web Audio につないでいないので 0）
+  expect(avatar).toHaveAttribute("data-voice-level", "0");
   fireEvent.pause(audio);
   expect(avatar).toHaveAttribute("data-speaking", "false");
   fireEvent.play(audio);
@@ -600,7 +657,7 @@ test("Hide text で文字だけを隠し、再生ボタンと Hide とアバタ�
   expect(script).not.toBeVisible();
   expect(screen.getByText("Go easy")).not.toBeVisible();
   // 隠しているあいだも、声を止めたり畳んだりできる
-  expect(screen.getByLabelText("Listen to this review")).toBeVisible();
+  expect(screen.getByRole("button", { name: "▶ Play" })).toBeVisible();
   expect(screen.getByRole("button", { name: "– Hide" })).toBeVisible();
   expect(screen.getByTestId("avatar")).toBeVisible();
 
@@ -661,7 +718,7 @@ test("Hide を押すと、流れている声を止める", async () => {
   });
   renderReview();
 
-  const audio = await screen.findByLabelText("Listen to this review");
+  const audio = await screen.findByLabelText("Review voice");
   fireEvent.play(audio);
   expect(screen.getByTestId("avatar")).toHaveAttribute("data-speaking", "true");
 
@@ -687,7 +744,7 @@ test("アバターを出せなくても（ファイルを取れないなど）�
 
   expect(await screen.findByText(/A heavy week/)).toBeVisible();
   expect(option("Go easy")).toBeInTheDocument();
-  expect(screen.getByLabelText("Listen to this review")).toBeInTheDocument();
+  expect(screen.getByLabelText("Review voice")).toBeInTheDocument();
   expect(screen.queryByTestId("avatar")).not.toBeInTheDocument();
   expect(
     screen.getByRole("button", { name: "💬 Hide text" }),
@@ -721,7 +778,7 @@ test("再生ボタンと Hide は、セリフより前（吹き出しの一番�
   renderReview();
 
   const script = await screen.findByText(/A heavy week/);
-  const audio = screen.getByLabelText("Listen to this review");
+  const audio = screen.getByLabelText("Review voice");
   const hide = screen.getByRole("button", { name: "– Hide" });
   // 文字が長くても、スクロールせずに押せる位置にある
   for (const control of [audio, hide]) {
