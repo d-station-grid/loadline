@@ -335,6 +335,8 @@ export default function Review({ user, onOpenSettings }: Props) {
         className="review-dock-open"
         hidden={open}
         onClick={show}
+        // 畳んだあとも、つかんで動かせる。動かしたあとに離しても開かない
+        {...dragHandlers}
       >
         💬 This week's review
       </button>

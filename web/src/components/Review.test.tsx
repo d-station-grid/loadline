@@ -1171,3 +1171,179 @@ test("動かしているあいだに画面が縮んでも、離したら画面�
 
   expect(dock().style.transform).toBe("translate(-384px, -300px)");
 });
+
+/** Hide で畳んだあとの、出し直すボタン */
+async function collapse() {
+  vi.mocked(getCurrentReview).mockResolvedValue(review());
+  renderReview();
+  await screen.findByText(/A heavy week/);
+  fireEvent.click(screen.getByRole("button", { name: "– Hide" }));
+  placeDock();
+  return screen.getByRole("button", { name: "💬 This week's review" });
+}
+
+function isOpen() {
+  return screen.queryByRole("button", { name: "– Hide" }) !== null;
+}
+
+test("畳んだあとのボタンも、つかんで動かせる。動かしたあとに離しても開かない", async () => {
+  const reopen = await collapse();
+
+  fireEvent.pointerDown(reopen, {
+    pointerId: 1,
+    button: 0,
+    clientX: 900,
+    clientY: 700,
+  });
+  fireEvent.pointerMove(reopen, { pointerId: 1, clientX: 700, clientY: 600 });
+  fireEvent.pointerUp(reopen, { pointerId: 1 });
+  fireEvent.click(reopen, { detail: 1 });
+
+  expect(dock().style.transform).toBe("translate(-200px, -100px)");
+  expect(isOpen()).toBe(false);
+});
+
+test("畳んだあとのボタンは、動かさずに押せば開く。手のぶれ程度なら動かさない", async () => {
+  const reopen = await collapse();
+
+  fireEvent.pointerDown(reopen, {
+    pointerId: 1,
+    button: 0,
+    clientX: 900,
+    clientY: 700,
+  });
+  fireEvent.pointerMove(reopen, { pointerId: 1, clientX: 902, clientY: 701 });
+  fireEvent.pointerUp(reopen, { pointerId: 1 });
+  fireEvent.click(reopen, { detail: 1 });
+
+  expect(dock().style.transform).toBe("");
+  expect(isOpen()).toBe(true);
+});
+
+test("動かしたあとでも、キーボードで押せば開く", async () => {
+  const reopen = await collapse();
+  // 指で動かしたあとは click が来ないことがあり、止める印が残る
+  fireEvent.pointerDown(reopen, {
+    pointerId: 1,
+    button: 0,
+    clientX: 900,
+    clientY: 700,
+  });
+  fireEvent.pointerMove(reopen, { pointerId: 1, clientX: 700, clientY: 600 });
+  fireEvent.pointerUp(reopen, { pointerId: 1 });
+
+  // キーボードで押した click は detail が 0
+  fireEvent.click(reopen, { detail: 0 });
+
+  expect(isOpen()).toBe(true);
+});
+
+/** 畳んだあとのボタンを、指またはマウスで dx だけ動かして離し、click を送る */
+function pressAndSlide(
+  reopen: HTMLElement,
+  pointerType: "touch" | "mouse",
+  dx: number,
+) {
+  const down = fireEvent.pointerDown(reopen, {
+    pointerId: 1,
+    pointerType,
+    button: 0,
+    clientX: 900,
+    clientY: 700,
+  });
+  fireEvent.pointerMove(reopen, {
+    pointerId: 1,
+    pointerType,
+    clientX: 900 + dx,
+    clientY: 700,
+  });
+  fireEvent.pointerUp(reopen, { pointerId: 1, pointerType });
+  fireEvent.click(reopen, { detail: 1 });
+  // fireEvent は preventDefault されたら false を返す
+  return { defaultPrevented: !down };
+}
+
+test("指は少し滑っても（16 px 未満）、動かさずに開く", async () => {
+  const reopen = await collapse();
+  pressAndSlide(reopen, "touch", -12);
+  expect(dock().style.transform).toBe("");
+  expect(isOpen()).toBe(true);
+});
+
+test("指でも 16 px 以上動かせば、動かして開かない", async () => {
+  const reopen = await collapse();
+  pressAndSlide(reopen, "touch", -20);
+  expect(dock().style.transform).toBe("translate(-20px, 0px)");
+  expect(isOpen()).toBe(false);
+});
+
+test("マウスは 12 px でも動かしたとみなし、開かない", async () => {
+  const reopen = await collapse();
+  pressAndSlide(reopen, "mouse", -12);
+  expect(dock().style.transform).toBe("translate(-12px, 0px)");
+  expect(isOpen()).toBe(false);
+});
+
+test("指でつかんだときは preventDefault しない（タップの click を消さない）。マウスはする", async () => {
+  const reopen = await collapse();
+  expect(pressAndSlide(reopen, "touch", 0).defaultPrevented).toBe(false);
+
+  fireEvent.click(screen.getByRole("button", { name: "– Hide" }));
+  expect(
+    pressAndSlide(
+      screen.getByRole("button", { name: "💬 This week's review" }),
+      "mouse",
+      0,
+    ).defaultPrevented,
+  ).toBe(true);
+});
+
+/** スマートフォンの幅（640 px 以下）にする */
+function narrowScreen() {
+  vi.stubGlobal(
+    "matchMedia",
+    (query: string) =>
+      ({ matches: query === "(max-width: 640px)" }) as MediaQueryList,
+  );
+}
+
+test("スマートフォンの幅では、上下にだけ動かす", async () => {
+  narrowScreen();
+  vi.mocked(getCurrentReview).mockResolvedValue(review());
+  renderReview();
+  await screen.findByText(/A heavy week/);
+  placeDock();
+
+  dragBy(-200, -100);
+
+  expect(dock().style.transform).toBe("translate(0px, -100px)");
+  vi.unstubAllGlobals();
+});
+
+test("スマートフォンの幅では、指を左右に滑らせても動かしたとみなさず、開く", async () => {
+  narrowScreen();
+  const reopen = await collapse();
+
+  pressAndSlide(reopen, "touch", -30);
+
+  expect(dock().style.transform).toBe("");
+  expect(isOpen()).toBe(true);
+  vi.unstubAllGlobals();
+});
+
+test("動かしたあとにスマートフォンの幅になったら、左右を右下の置き場所に戻す", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue(review());
+  renderReview();
+  await screen.findByText(/A heavy week/);
+  placeDock();
+  dragBy(-200, -100);
+  expect(dock().style.transform).toBe("translate(-200px, -100px)");
+
+  narrowScreen();
+  act(() => {
+    window.dispatchEvent(new Event("resize"));
+  });
+
+  expect(dock().style.transform).toBe("translate(0px, -100px)");
+  vi.unstubAllGlobals();
+});
