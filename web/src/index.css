@@ -575,6 +575,14 @@ fieldset.plain {
   content: "”";
 }
 
+/* 声を流すあいだ、今読んでいる文。文の切り替わりで字が動かないよう、地の色だけ変える */
+.review-spoken {
+  background: var(--color-accent-soft);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  border-radius: 3px;
+}
+
 .review-bubble h4 {
   margin-top: var(--space-2);
   font-size: var(--font-size-sm);
@@ -638,6 +646,16 @@ fieldset.plain {
   flex-direction: column;
   align-items: center;
   gap: var(--space-1);
+}
+
+/* つかんで吹き出しごと動かすところ。指で動かすときに、画面のスクロールにしない */
+.review-avatar-grip {
+  cursor: grab;
+  touch-action: none;
+}
+
+.review-avatar-grip:active {
+  cursor: grabbing;
 }
 
 .avatar-stage {
