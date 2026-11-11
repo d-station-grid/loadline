@@ -1171,3 +1171,69 @@ test("動かしているあいだに画面が縮んでも、離したら画面�
 
   expect(dock().style.transform).toBe("translate(-384px, -300px)");
 });
+
+/** Hide で畳んだあとの、出し直すボタン */
+async function collapse() {
+  vi.mocked(getCurrentReview).mockResolvedValue(review());
+  renderReview();
+  await screen.findByText(/A heavy week/);
+  fireEvent.click(screen.getByRole("button", { name: "– Hide" }));
+  placeDock();
+  return screen.getByRole("button", { name: "💬 This week's review" });
+}
+
+function isOpen() {
+  return screen.queryByRole("button", { name: "– Hide" }) !== null;
+}
+
+test("畳んだあとのボタンも、つかんで動かせる。動かしたあとに離しても開かない", async () => {
+  const reopen = await collapse();
+
+  fireEvent.pointerDown(reopen, {
+    pointerId: 1,
+    button: 0,
+    clientX: 900,
+    clientY: 700,
+  });
+  fireEvent.pointerMove(reopen, { pointerId: 1, clientX: 700, clientY: 600 });
+  fireEvent.pointerUp(reopen, { pointerId: 1 });
+  fireEvent.click(reopen, { detail: 1 });
+
+  expect(dock().style.transform).toBe("translate(-200px, -100px)");
+  expect(isOpen()).toBe(false);
+});
+
+test("畳んだあとのボタンは、動かさずに押せば開く。手のぶれ程度なら動かさない", async () => {
+  const reopen = await collapse();
+
+  fireEvent.pointerDown(reopen, {
+    pointerId: 1,
+    button: 0,
+    clientX: 900,
+    clientY: 700,
+  });
+  fireEvent.pointerMove(reopen, { pointerId: 1, clientX: 902, clientY: 701 });
+  fireEvent.pointerUp(reopen, { pointerId: 1 });
+  fireEvent.click(reopen, { detail: 1 });
+
+  expect(dock().style.transform).toBe("");
+  expect(isOpen()).toBe(true);
+});
+
+test("動かしたあとでも、キーボードで押せば開く", async () => {
+  const reopen = await collapse();
+  // 指で動かしたあとは click が来ないことがあり、止める印が残る
+  fireEvent.pointerDown(reopen, {
+    pointerId: 1,
+    button: 0,
+    clientX: 900,
+    clientY: 700,
+  });
+  fireEvent.pointerMove(reopen, { pointerId: 1, clientX: 700, clientY: 600 });
+  fireEvent.pointerUp(reopen, { pointerId: 1 });
+
+  // キーボードで押した click は detail が 0
+  fireEvent.click(reopen, { detail: 0 });
+
+  expect(isOpen()).toBe(true);
+});

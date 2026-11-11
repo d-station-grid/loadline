@@ -1,10 +1,17 @@
 import {
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
   useEffect,
   useRef,
   useState,
 } from "react";
+
+/**
+ * これより動いたら、押したのではなく動かしたとみなす（px）。ボタンをつかんだときに、
+ * 手のぶれで押せなくならないようにする
+ */
+const DRAG_THRESHOLD = 4;
 
 /** 右下の置き場所からのずれ（px）。右と下が正 */
 export type Offset = { x: number; y: number };
@@ -56,7 +63,8 @@ function fitted(element: HTMLElement, from: Offset): Offset | null {
 /**
  * 画面に浮かせた部品を、つかんで動かす。返すずれを transform で当て、
  * handlers をつかむところに付ける。マウスでも指でも動かせる。
- * 画面の大きさや部品の大きさが変わったら、はみ出さないよう収め直す
+ * 画面の大きさや部品の大きさが変わったら、はみ出さないよう収め直す。
+ * ボタンにも付けられる。動かしたあとに離しても、押したことにはしない
  */
 export function useDockDrag(target: RefObject<HTMLElement | null>) {
   const [offset, setOffset] = useState<Offset>({ x: 0, y: 0 });
@@ -71,7 +79,10 @@ export function useDockDrag(target: RefObject<HTMLElement | null>) {
     startY: number;
     from: Offset;
     base: Bounds;
+    moved: boolean;
   } | null>(null);
+  // 動かし終えた直後の click を 1 回だけ止める（ボタンを開かない）
+  const swallowClick = useRef(false);
 
   useEffect(() => {
     const element = target.current;
@@ -99,6 +110,7 @@ export function useDockDrag(target: RefObject<HTMLElement | null>) {
    */
   function release(pointer: number) {
     if (drag.current?.pointer !== pointer) return;
+    swallowClick.current = drag.current.moved;
     drag.current = null;
     const element = target.current;
     if (!element) return;
@@ -116,12 +128,14 @@ export function useDockDrag(target: RefObject<HTMLElement | null>) {
       if (e.button !== 0) return;
       const element = target.current;
       if (!element) return;
+      swallowClick.current = false;
       drag.current = {
         pointer: e.pointerId,
         startX: e.clientX,
         startY: e.clientY,
         from: current.current,
         base: baseOf(element, current.current),
+        moved: false,
       };
       // 指を部品の外へ動かしても追えるよう、つかんだまま離さない
       e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -131,6 +145,11 @@ export function useDockDrag(target: RefObject<HTMLElement | null>) {
     onPointerMove(e: ReactPointerEvent<HTMLElement>) {
       const d = drag.current;
       if (!d || d.pointer !== e.pointerId) return;
+      if (!d.moved) {
+        const distance = Math.hypot(e.clientX - d.startX, e.clientY - d.startY);
+        if (distance < DRAG_THRESHOLD) return;
+        d.moved = true;
+      }
       const next = clampOffset(
         {
           x: d.from.x + e.clientX - d.startX,
@@ -147,6 +166,14 @@ export function useDockDrag(target: RefObject<HTMLElement | null>) {
     },
     onPointerCancel(e: ReactPointerEvent<HTMLElement>) {
       release(e.pointerId);
+    },
+    onClickCapture(e: ReactMouseEvent<HTMLElement>) {
+      // キーボードで押したとき（detail が 0）は止めない。指で動かしたあとは click が
+      // 来ないことがあり、止める印が残っていても、キーボードでは開けるようにする
+      if (!swallowClick.current || e.detail === 0) return;
+      swallowClick.current = false;
+      e.preventDefault();
+      e.stopPropagation();
     },
   };
 

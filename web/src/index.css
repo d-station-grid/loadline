@@ -675,8 +675,9 @@ fieldset.plain {
   border-radius: 10px;
 }
 
-/* 畳んだときのボタン。押せば吹き出しとアバターを出し直す */
+/* 畳んだときのボタン。押せば吹き出しとアバターを出し直す。つかんで動かせる */
 .review-dock-open {
+  touch-action: none;
   font-size: var(--font-size-sm);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-pill);
