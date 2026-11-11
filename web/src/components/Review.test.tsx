@@ -694,3 +694,21 @@ test("アバターを出せなくても（ファイルを取れないなど）�
   ).toBeInTheDocument();
   error.mockRestore();
 });
+
+test("フォーカスを移しても、吹き出しをスクロールしない", async () => {
+  const focus = vi.spyOn(HTMLElement.prototype, "focus");
+  vi.mocked(getCurrentReview).mockResolvedValue(review());
+  renderReview();
+
+  await screen.findByText(/A heavy week/);
+  fireEvent.click(screen.getByRole("button", { name: "– Hide" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "💬 This week's review" }),
+  );
+
+  expect(focus).toHaveBeenCalledTimes(2);
+  for (const [options] of focus.mock.calls) {
+    expect(options).toEqual({ preventScroll: true });
+  }
+  focus.mockRestore();
+});

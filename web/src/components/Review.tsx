@@ -104,7 +104,9 @@ export default function Review({ user, onOpenSettings }: Props) {
   useEffect(() => {
     if (!focusAfterToggle.current) return;
     focusAfterToggle.current = false;
-    (open ? hideRef : openRef).current?.focus();
+    // 「– Hide」は吹き出しの末尾にあるので、そのままだと吹き出しが末尾までスクロールし、
+    // 長いときは開き直すたびにセリフが見えなくなる。フォーカスだけ移し、位置は動かさない
+    (open ? hideRef : openRef).current?.focus({ preventScroll: true });
   }, [open]);
 
   useEffect(() => {
