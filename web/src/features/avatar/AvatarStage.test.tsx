@@ -207,3 +207,59 @@ test("外れたら、描画を止めて片づける", () => {
 
   expectCleanedUp();
 });
+
+/** 読めた VRM の代わり。表情に入れた値を覚える */
+function loadFakeVrm() {
+  const values = new Map<string, number>();
+  const vrm = {
+    scene: { traverse() {} },
+    humanoid: { getNormalizedBoneNode: () => null },
+    expressionManager: {
+      setValue: (name: string, value: number) => values.set(name, value),
+    },
+    lookAt: null,
+    update() {},
+  };
+  act(() => gl.loads[0].onLoad({ userData: { vrm }, scene: {} }));
+  return values;
+}
+
+test("話しているあいだは、声の大きさに合わせて口を開く", () => {
+  const level = vi.fn(() => 1);
+  render(<AvatarStage expression="relaxed" speaking voiceLevel={level} />);
+  const values = loadFakeVrm();
+
+  runFrame();
+
+  expect(level).toHaveBeenCalled();
+  expect(values.get("aa")).toBeGreaterThan(0.3);
+});
+
+test("話していないときは声を読まず、口は閉じたまま", () => {
+  const level = vi.fn(() => 1);
+  render(
+    <AvatarStage expression="relaxed" speaking={false} voiceLevel={level} />,
+  );
+  const values = loadFakeVrm();
+
+  runFrame();
+
+  expect(level).not.toHaveBeenCalled();
+  expect(values.get("aa")).toBe(0);
+});
+
+test("話し終えたら、口を閉じていく", () => {
+  const { rerender } = render(
+    <AvatarStage expression="relaxed" speaking voiceLevel={() => 1} />,
+  );
+  const values = loadFakeVrm();
+  runFrame();
+  const open = values.get("aa") ?? 0;
+
+  rerender(
+    <AvatarStage expression="relaxed" speaking={false} voiceLevel={() => 1} />,
+  );
+  runFrame();
+
+  expect(values.get("aa")).toBeLessThan(open);
+});

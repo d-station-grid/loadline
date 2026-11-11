@@ -1,10 +1,10 @@
 # GCP の設定
 
-loadline が GCP（プロジェクト `loadline-app`）に持っている設定の一覧です。2026-11-08 に、実際の GCP を読み取って書きました。
+loadline が GCP（プロジェクト `loadline-app`）に持っている設定の一覧です。2026-11-08 に、実際の GCP を読み取って書きました。音声のバケットの CORS は、2026-11-11 に入れて書き足しました。
 
 - リージョンは `asia-northeast1`（東京）にそろえています。例外は Gemini（Vertex AI）で、api は `global` のエンドポイントを呼びます（api の設定 `gemini_location` の既定。`deploy.yml` は `GEMINI_LOCATION` を渡していない）
 - Cloud Run へのデプロイ（`.github/workflows/deploy.yml`、`deploy-tts.yml`）が入れる設定以外は、コンソールやコマンドで手で入れたもので、コードには残りません。変えたら、この文書も直します
-- 振り返りの音声は、api が tts で声にして音声のバケットに置き、署名付き URL を返します。web はその URL を、ブラウザから直接読んで再生します
+- 振り返りの音声は、api が tts で声にして音声のバケットに置き、署名付き URL を返します。web はその URL を、ブラウザから直接読んで再生します。CORS つきで読み、声の大きさでアバターの口を動かします
 - データベースは GCP ではなく Neon（AWS シンガポール）です。接続の URL だけを Secret Manager に置いています
 - 今の設定を確かめるコマンドは、最後の「確かめ方」にあります
 
@@ -21,7 +21,7 @@ flowchart LR
   A -- セリフを書く --> V[Vertex AI: Gemini<br>global]
   A -- 置く・署名付き URL・消す --> S[(gs://loadline-app-audio)]
   A -- 読む --> SM[Secret Manager]
-  U -- 署名付き URL で再生 --> S
+  U -- 署名付き URL で再生（CORS つき） --> S
   GA[GitHub Actions<br>loadline-deploy] -- イメージ --> AR[Artifact Registry<br>loadline]
   GA -- 読む --> M[(gs://loadline-app-models)]
   GA -- デプロイ --> A
@@ -240,6 +240,33 @@ gcloud artifacts repositories set-cleanup-policies loadline \
 
 api から Cloud Storage と IAM への通信には、上限を付けています（`api/app/adapters/audio_storage.py`）。置く・一覧・消すは 1 回 10 秒、やり直しを含めて 20 秒、署名は 5 秒です。SDK の既定（1 回 60 秒、やり直しを含めて 120 秒）のままだと、振り返りを作る処理が Tasks の期限を超え、DB の行も長く持つためです。署名が間に合わなければ `audio_url` を null にして文字だけで返し、次に読むときにもう一度署名します。モデルは誤って消したときに戻せるよう、既定の 7 日のままにしています。
 
+音声のバケットには CORS を設定しています（2026-11-11）。web は声の大きさを読み取ってアバターの口を動かすので（Web Audio）、音声を CORS つきで読むためです。
+
+| 項目 | 値 |
+|---|---|
+| 許すオリジン | `https://api-qbvpsx77dq-an.a.run.app`（本番の画面）だけ |
+| 許すメソッド | `GET`、`HEAD` |
+| 返すヘッダー | `Content-Type`、`Content-Length`、`Content-Range`、`Accept-Ranges` |
+| 事前確認を覚える時間 | 3600 秒 |
+
+手元（localhost）は声を作らない設定なので、オリジンに入れていません。設定がないと、画面は音声を読めず、再生のボタンが消えます。独自のドメインを使うなど、画面のオリジンが変わったら、ここにも足します。`cors-file` は今の設定を丸ごと置き換えるので、足すときも全部のオリジンを書きます。
+
+```sh
+# どこでも。設定を書いたファイルを作って当てる
+cat > /tmp/audio-cors.json <<'JSON'
+[
+  {
+    "origin": ["https://api-qbvpsx77dq-an.a.run.app"],
+    "method": ["GET", "HEAD"],
+    "responseHeader": ["Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"],
+    "maxAgeSeconds": 3600
+  }
+]
+JSON
+gcloud storage buckets update gs://loadline-app-audio \
+  --cors-file=/tmp/audio-cors.json --project loadline-app
+```
+
 モデルを音声と別のバケットにしたのは、api が音声のバケットに持つ書き込みと削除の権限を、モデルに届かせないためです。モデルは配布元（kokoro-onnx の GitHub Releases の `model-files-v1.0`）が消えたときの控えも兼ねます。
 
 ```sh
@@ -309,6 +336,7 @@ gcloud secrets list --project loadline-app
 gcloud artifacts repositories list --project loadline-app
 gcloud storage buckets list --project loadline-app
 gcloud storage buckets get-iam-policy gs://loadline-app-audio --project loadline-app
+gcloud storage buckets describe gs://loadline-app-audio --project loadline-app --format='json(cors_config)'
 
 # Workload Identity Federation
 gcloud iam workload-identity-pools providers describe github-oidc \

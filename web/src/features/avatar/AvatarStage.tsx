@@ -11,6 +11,7 @@ import {
   faceEasing,
   faceTarget,
   nextBlinkDelay,
+  nextMouth,
 } from "./face";
 
 /**
@@ -41,6 +42,10 @@ type Props = {
    * 外すと、出し直すたびにモデルを読み直すことになる
    */
   visible?: boolean;
+  /**
+   * 今の声の大きさ（0〜1）。毎フレーム読み、口の開きにする。話していないときは読まない
+   */
+  voiceLevel?: () => number;
 };
 
 /**
@@ -53,13 +58,17 @@ export default function AvatarStage({
   expression,
   speaking,
   visible = true,
+  voiceLevel,
 }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
   // 描画のループからは props を直接見られないので、ref で渡す
   const face = useRef(faceTarget(expression, speaking));
+  // 口は話しているあいだだけ、声の大きさに合わせて動かす
+  const voice = useRef<(() => number) | null>(null);
   useEffect(() => {
     face.current = faceTarget(expression, speaking);
-  }, [expression, speaking]);
+    voice.current = speaking && voiceLevel ? voiceLevel : null;
+  }, [expression, speaking, voiceLevel]);
   const [failed, setFailed] = useState(() => !canUseWebGL());
   // 描画のループを止めたり動かしたりする。下の effect が用意する
   const loop = useRef<{ start: () => void; stop: () => void } | null>(null);
@@ -170,6 +179,7 @@ export default function AvatarStage({
       },
     );
 
+    let mouth = 0;
     let nextBlinkAt = nextBlinkDelay(Math.random());
     let blinkStartedAt = -1;
     const weights: Record<Expression, number> = {
@@ -198,9 +208,13 @@ export default function AvatarStage({
         const chest = bone("chest") ?? bone("spine");
         if (chest) chest.rotation.x = Math.sin(t * 1.4) * 0.012;
         const head = bone("head");
+        // 口は声の大きさへ寄せる。話し終えたら閉じる
+        mouth = nextMouth(mouth, voice.current?.() ?? 0, delta);
         if (head) {
           head.rotation.y = Math.sin(t * 0.5) * 0.05;
           head.rotation.z = Math.sin(t * 0.37) * 0.02;
+          // 話している間は、口の開きに合わせて少しうなずく
+          head.rotation.x = mouth * 0.05;
         }
 
         const em = vrm.expressionManager;
@@ -213,6 +227,8 @@ export default function AvatarStage({
               nextBlinkAt = t + nextBlinkDelay(Math.random());
             }
           }
+
+          em.setValue("aa", mouth);
 
           // 表情はなめらかに切り替える。速さは画面の書き換えの回数によらない
           const easing = faceEasing(delta);
