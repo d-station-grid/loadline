@@ -2,6 +2,7 @@ import type { User } from "firebase/auth";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 
 import type { WeeklyReviewOut } from "../api";
+import AvatarBoundary from "../features/avatar/AvatarBoundary";
 import {
   ApiError,
   createReview,
@@ -49,7 +50,8 @@ const AvatarStage = lazy(() => import("../features/avatar/AvatarStage"));
  * 残し、押せば選び直せる。ゲストはデモの振り返りを見るだけ。作るボタンは出さず、
  * 選択肢は押せない。
  *
- * Hide でアバターごと畳み、Hide text で吹き出しだけを隠す。畳んでも振り返りの状態は残す。
+ * Hide でアバターごと畳み、Hide text で吹き出しの文字だけを隠す。どちらも外さずに隠すので、
+ * 振り返りの状態もアバターのモデルも残る。
  */
 export default function Review({ user, onOpenSettings }: Props) {
   // undefined は読み込み中、null はまだない週
@@ -72,6 +74,12 @@ export default function Review({ user, onOpenSettings }: Props) {
   const [open, setOpen] = useState(true);
   // false で吹き出しを隠し、アバターだけにする
   const [textShown, setTextShown] = useState(true);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  // Hide と出し直しで押したボタンが隠れるので、次に押すボタンへフォーカスを移す。
+  // 最初に開いたときは動かさない
+  const openRef = useRef<HTMLButtonElement>(null);
+  const hideRef = useRef<HTMLButtonElement>(null);
+  const focusAfterToggle = useRef(false);
   // 連打よけ。disabled は描画のあとにしか効かないので、送った直後にここで止める
   const busy = useRef(false);
   const guest = user.isAnonymous;
@@ -92,6 +100,12 @@ export default function Review({ user, onOpenSettings }: Props) {
     });
   }
   const audioUrl = review && audio?.reviewId === review.id ? audio.url : null;
+
+  useEffect(() => {
+    if (!focusAfterToggle.current) return;
+    focusAfterToggle.current = false;
+    (open ? hideRef : openRef).current?.focus();
+  }, [open]);
 
   useEffect(() => {
     if (!creating) return;
@@ -203,92 +217,149 @@ export default function Review({ user, onOpenSettings }: Props) {
     }
   }
 
-  // 畳むと声も止まる（再生ボタンごと外す）ので、話す顔も戻す
+  // 畳むときは声を止める。外さずに隠すので、止めないと見えないまま鳴り続ける
   function hide() {
+    audioRef.current?.pause();
     setSpeaking(false);
+    focusAfterToggle.current = true;
     setOpen(false);
   }
 
-  if (!open) {
-    return (
-      <div className="review-dock">
-        <button
-          type="button"
-          className="review-dock-open"
-          onClick={() => setOpen(true)}
-        >
-          💬 This week's review
-        </button>
-      </div>
-    );
+  function show() {
+    focusAfterToggle.current = true;
+    setOpen(true);
   }
 
   return (
     <div className="review-dock">
-      {/* 吹き出しは外さずに隠す。隠しても声は続ける */}
-      <section
-        className="review review-bubble"
-        aria-labelledby="review-heading"
-        hidden={!textShown}
+      <button
+        ref={openRef}
+        type="button"
+        className="review-dock-open"
+        hidden={open}
+        onClick={show}
       >
-        <h3 id="review-heading" className="visually-hidden">
-          This week's review
-        </h3>
+        💬 This week's review
+      </button>
+      {/* 畳んでも外さずに隠す。外すと、出し直すたびにアバターのモデルを読み直す */}
+      <div className="review-dock-body" hidden={!open}>
+        <section
+          className="review review-bubble"
+          aria-labelledby="review-heading"
+        >
+          <h3 id="review-heading" className="visually-hidden">
+            This week's review
+          </h3>
 
-        {loadError && (
-          <p role="alert">
-            {loadError}{" "}
-            <button type="button" onClick={retry}>
-              Retry
-            </button>
-          </p>
-        )}
-        {review === undefined && !loadError && <p>Loading…</p>}
-
-        {review === null && (
-          <>
-            <p>No review for this week yet.</p>
-            {!guest && (
-              <button type="button" onClick={create} disabled={creating}>
-                {creating
-                  ? "Writing your review…"
-                  : "Create this week's review"}
-              </button>
-            )}
-            {creating && (
-              <p className="muted small">
-                {CREATE_HINT} {elapsed}s
-              </p>
-            )}
-            {createError?.kind === "settings" && (
+          {/* Hide text で隠すのは文字だけ。下の段の再生ボタンと Hide は残す */}
+          <div className="review-text" hidden={!textShown}>
+            {loadError && (
               <p role="alert">
-                Set your max and resting heart rate before creating a review.{" "}
-                <button type="button" onClick={onOpenSettings}>
-                  Open settings
+                {loadError}{" "}
+                <button type="button" onClick={retry}>
+                  Retry
                 </button>
               </p>
             )}
-            {createError?.kind === "guest" && (
-              <p role="alert">Guests can't create reviews.</p>
-            )}
-            {createError?.kind === "other" && (
-              <p role="alert">{createError.message}</p>
-            )}
-          </>
-        )}
+            {review === undefined && !loadError && <p>Loading…</p>}
 
-        {review && (
-          <>
-            {/* 期間は振り返った週。下の質問はこれから過ごす週なので、取り違えないようラベルを付ける */}
-            <p className="muted small">
-              Week reviewed: {review.period_start} – {review.period_end}
-            </p>
-            {/* 字幕。前後の引用符は CSS で付ける */}
-            <p className="review-script">{review.script}</p>
+            {review === null && (
+              <>
+                <p>No review for this week yet.</p>
+                {!guest && (
+                  <button type="button" onClick={create} disabled={creating}>
+                    {creating
+                      ? "Writing your review…"
+                      : "Create this week's review"}
+                  </button>
+                )}
+                {creating && (
+                  <p className="muted small">
+                    {CREATE_HINT} {elapsed}s
+                  </p>
+                )}
+                {createError?.kind === "settings" && (
+                  <p role="alert">
+                    Set your max and resting heart rate before creating a
+                    review.{" "}
+                    <button type="button" onClick={onOpenSettings}>
+                      Open settings
+                    </button>
+                  </p>
+                )}
+                {createError?.kind === "guest" && (
+                  <p role="alert">Guests can't create reviews.</p>
+                )}
+                {createError?.kind === "other" && (
+                  <p role="alert">{createError.message}</p>
+                )}
+              </>
+            )}
+
+            {review && (
+              <>
+                {/* 期間は振り返った週。下の質問はこれから過ごす週なので、取り違えないようラベルを付ける */}
+                <p className="muted small">
+                  Week reviewed: {review.period_start} – {review.period_end}
+                </p>
+                {/* 字幕。前後の引用符は CSS で付ける */}
+                <p className="review-script">{review.script}</p>
+                <h4 id="review-plan-heading">
+                  How will you spend the week ahead?
+                </h4>
+                <div
+                  className="review-options"
+                  role="group"
+                  aria-labelledby="review-plan-heading"
+                >
+                  {review.options.map((o) => {
+                    const chosen = o.selected_at !== null;
+                    return (
+                      <button
+                        key={o.id}
+                        type="button"
+                        aria-pressed={chosen}
+                        disabled={selecting || guest}
+                        onClick={() => {
+                          if (!chosen) void select(review.id, o.id);
+                        }}
+                      >
+                        <strong>
+                          {chosen ? "✓ " : ""}
+                          {o.label}
+                        </strong>
+                        <br />
+                        <span>{o.description}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {guest && (
+                  <p>
+                    Guests can't choose an option. Sign in to plan your week.
+                  </p>
+                )}
+                {selectError?.kind === "closed" && (
+                  <p role="alert">
+                    This review is from a past week.{" "}
+                    <button type="button" onClick={retry}>
+                      Load this week's review
+                    </button>
+                  </p>
+                )}
+                {selectError?.kind === "other" && (
+                  <p role="alert">{selectError.message}</p>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="review-controls">
             {/* 声を作れなかった週と、今は署名できなかったときは、字幕だけ。
-              自動では鳴らさない（ブラウザが止めることが多い）。読み込むのは押してから */}
-            {audio && audioUrl && (
+                自動では鳴らさない（ブラウザが止めることが多い）。読み込むのは押してから */}
+            {review && audio && audioUrl && (
               <audio
+                ref={audioRef}
                 className="review-audio"
                 controls
                 preload="none"
@@ -304,75 +375,34 @@ export default function Review({ user, onOpenSettings }: Props) {
                 onEmptied={() => setSpeaking(false)}
               />
             )}
-            <h4 id="review-plan-heading">How will you spend the week ahead?</h4>
-            <div
-              className="review-options"
-              role="group"
-              aria-labelledby="review-plan-heading"
-            >
-              {review.options.map((o) => {
-                const chosen = o.selected_at !== null;
-                return (
-                  <button
-                    key={o.id}
-                    type="button"
-                    aria-pressed={chosen}
-                    disabled={selecting || guest}
-                    onClick={() => {
-                      if (!chosen) void select(review.id, o.id);
-                    }}
-                  >
-                    <strong>
-                      {chosen ? "✓ " : ""}
-                      {o.label}
-                    </strong>
-                    <br />
-                    <span>{o.description}</span>
-                  </button>
-                );
-              })}
-            </div>
-            {guest && (
-              <p>Guests can't choose an option. Sign in to plan your week.</p>
-            )}
-            {selectError?.kind === "closed" && (
-              <p role="alert">
-                This review is from a past week.{" "}
-                <button type="button" onClick={retry}>
-                  Load this week's review
-                </button>
-              </p>
-            )}
-            {selectError?.kind === "other" && (
-              <p role="alert">{selectError.message}</p>
-            )}
-          </>
-        )}
+            <button ref={hideRef} type="button" onClick={hide}>
+              – Hide
+            </button>
+          </div>
+        </section>
 
-        <div className="review-controls">
-          <button type="button" onClick={hide}>
-            – Hide
+        <div className="review-avatar">
+          {/* アバターを出せなくても、字幕と声は使えるようにする */}
+          <AvatarBoundary>
+            {/* 読み込むあいだも同じ大きさの枠を取り、吹き出しが動かないようにする */}
+            <Suspense
+              fallback={<div className="avatar-stage" aria-hidden="true" />}
+            >
+              <AvatarStage
+                expression={review ? review.expression : "relaxed"}
+                speaking={speaking && audioUrl !== null}
+                visible={open}
+              />
+            </Suspense>
+          </AvatarBoundary>
+          <button
+            type="button"
+            className="review-text-toggle"
+            onClick={() => setTextShown((shown) => !shown)}
+          >
+            {textShown ? "💬 Hide text" : "💬 Show text"}
           </button>
         </div>
-      </section>
-
-      <div className="review-avatar">
-        {/* 読み込むあいだも同じ大きさの枠を取り、吹き出しが動かないようにする */}
-        <Suspense
-          fallback={<div className="avatar-stage" aria-hidden="true" />}
-        >
-          <AvatarStage
-            expression={review ? review.expression : "relaxed"}
-            speaking={speaking && audioUrl !== null}
-          />
-        </Suspense>
-        <button
-          type="button"
-          className="review-text-toggle"
-          onClick={() => setTextShown((shown) => !shown)}
-        >
-          {textShown ? "💬 Hide text" : "💬 Show text"}
-        </button>
       </div>
     </div>
   );

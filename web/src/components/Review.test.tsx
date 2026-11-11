@@ -27,21 +27,36 @@ vi.mock("../lib/api", async (importOriginal) => ({
 }));
 
 // アバターは WebGL を使うので、jsdom では描けない。受け取った表情だけを見せる部品に替える
-vi.mock("../features/avatar/AvatarStage", () => ({
-  default: ({
-    expression,
-    speaking,
-  }: {
-    expression: string;
-    speaking: boolean;
-  }) => (
-    <div
-      data-testid="avatar"
-      data-expression={expression}
-      data-speaking={String(speaking)}
-    />
-  ),
-}));
+// アバターは WebGL を使うので、jsdom では描けない。受け取ったものだけを見せる部品に替える。
+// mounts は作られた回数、fail を true にすると描くときに例外を出す
+const avatar = vi.hoisted(() => ({ mounts: 0, fail: false }));
+vi.mock("../features/avatar/AvatarStage", async () => {
+  const { useEffect } = await import("react");
+  return {
+    default: function FakeAvatar({
+      expression,
+      speaking,
+      visible,
+    }: {
+      expression: string;
+      speaking: boolean;
+      visible?: boolean;
+    }) {
+      if (avatar.fail) throw new Error("chunk load failed");
+      useEffect(() => {
+        avatar.mounts += 1;
+      }, []);
+      return (
+        <div
+          data-testid="avatar"
+          data-expression={expression}
+          data-speaking={String(speaking)}
+          data-visible={String(visible)}
+        />
+      );
+    },
+  };
+});
 
 const user = { getIdToken: async () => "token" } as unknown as User;
 
@@ -96,6 +111,8 @@ function option(name: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  avatar.mounts = 0;
+  avatar.fail = false;
 });
 
 afterEach(() => {
@@ -570,35 +587,110 @@ test("アバターは振り返りの表情で立ち、声を流すあいだは�
   expect(avatar).toHaveAttribute("data-speaking", "false");
 });
 
-test("Hide text で吹き出しだけを隠し、アバターは残す", async () => {
-  vi.mocked(getCurrentReview).mockResolvedValue(review());
+test("Hide text で文字だけを隠し、再生ボタンと Hide とアバターは残す", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue({
+    ...review(),
+    audio_url: AUDIO,
+  });
   renderReview();
 
   const script = await screen.findByText(/A heavy week/);
   fireEvent.click(screen.getByRole("button", { name: "💬 Hide text" }));
 
   expect(script).not.toBeVisible();
-  expect(screen.getByTestId("avatar")).toBeInTheDocument();
+  expect(screen.getByText("Go easy")).not.toBeVisible();
+  // 隠しているあいだも、声を止めたり畳んだりできる
+  expect(screen.getByLabelText("Listen to this review")).toBeVisible();
+  expect(screen.getByRole("button", { name: "– Hide" })).toBeVisible();
+  expect(screen.getByTestId("avatar")).toBeVisible();
 
   fireEvent.click(screen.getByRole("button", { name: "💬 Show text" }));
   expect(script).toBeVisible();
 });
 
-test("Hide でアバターごと畳み、ボタンで出し直す。選んだ選択肢は残る", async () => {
+test("Hide でアバターごと畳み、出し直しても振り返りもアバターも作り直さない", async () => {
   vi.mocked(getCurrentReview).mockResolvedValue(review(1));
   renderReview();
 
-  await screen.findByText(/A heavy week/);
+  const script = await screen.findByText(/A heavy week/);
+  await waitFor(() => expect(avatar.mounts).toBe(1));
   fireEvent.click(screen.getByRole("button", { name: "– Hide" }));
 
-  expect(screen.queryByText(/A heavy week/)).not.toBeInTheDocument();
-  expect(screen.queryByTestId("avatar")).not.toBeInTheDocument();
+  expect(script).not.toBeVisible();
+  expect(screen.getByTestId("avatar")).not.toBeVisible();
+  // 隠しているあいだは描かない
+  expect(screen.getByTestId("avatar")).toHaveAttribute("data-visible", "false");
 
   fireEvent.click(
     screen.getByRole("button", { name: "💬 This week's review" }),
   );
-  expect(await screen.findByText(/A heavy week/)).toBeInTheDocument();
+  expect(script).toBeVisible();
+  expect(screen.getByTestId("avatar")).toHaveAttribute("data-visible", "true");
   expect(option("Go easy")).toHaveAttribute("aria-pressed", "true");
-  // 出し直すときに、もう一度読みに行かない
+  // 振り返りを読み直さず、アバター（モデル）も作り直さない
   expect(getCurrentReview).toHaveBeenCalledTimes(1);
+  expect(avatar.mounts).toBe(1);
+});
+
+test("Hide と出し直しで、次に押すボタンへフォーカスを移す", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue(review());
+  renderReview();
+
+  await screen.findByText(/A heavy week/);
+  // 最初に開いたときは動かさない
+  expect(document.body).toHaveFocus();
+
+  fireEvent.click(screen.getByRole("button", { name: "– Hide" }));
+  expect(
+    screen.getByRole("button", { name: "💬 This week's review" }),
+  ).toHaveFocus();
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "💬 This week's review" }),
+  );
+  expect(screen.getByRole("button", { name: "– Hide" })).toHaveFocus();
+});
+
+test("Hide を押すと、流れている声を止める", async () => {
+  const pause = vi
+    .spyOn(HTMLMediaElement.prototype, "pause")
+    .mockImplementation(() => {});
+  vi.mocked(getCurrentReview).mockResolvedValue({
+    ...review(),
+    audio_url: AUDIO,
+  });
+  renderReview();
+
+  const audio = await screen.findByLabelText("Listen to this review");
+  fireEvent.play(audio);
+  expect(screen.getByTestId("avatar")).toHaveAttribute("data-speaking", "true");
+
+  fireEvent.click(screen.getByRole("button", { name: "– Hide" }));
+
+  expect(pause).toHaveBeenCalled();
+  expect(screen.getByTestId("avatar")).toHaveAttribute(
+    "data-speaking",
+    "false",
+  );
+  pause.mockRestore();
+});
+
+test("アバターを出せなくても（ファイルを取れないなど）、字幕と選択肢と声は残る", async () => {
+  avatar.fail = true;
+  // React が受け止めたエラーを出すので、テストの出力を汚さないよう黙らせる
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.mocked(getCurrentReview).mockResolvedValue({
+    ...review(),
+    audio_url: AUDIO,
+  });
+  renderReview();
+
+  expect(await screen.findByText(/A heavy week/)).toBeVisible();
+  expect(option("Go easy")).toBeInTheDocument();
+  expect(screen.getByLabelText("Listen to this review")).toBeInTheDocument();
+  expect(screen.queryByTestId("avatar")).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "💬 Hide text" }),
+  ).toBeInTheDocument();
+  error.mockRestore();
 });

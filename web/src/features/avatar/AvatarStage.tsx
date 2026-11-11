@@ -8,6 +8,7 @@ import {
   blinkWeight,
   BLINK_SECONDS,
   EXPRESSIONS,
+  faceEasing,
   faceTarget,
   nextBlinkDelay,
 } from "./face";
@@ -20,9 +21,6 @@ const MODEL_URL = "/models/sample.vrm";
 
 /** カメラ。height は見る高さ（m）、distance はモデルからの距離（m）、fov は縦の画角（度） */
 const CAMERA = { fov: 28, height: 0.82, distance: 3.7 };
-
-/** 表情を切り替える速さ。1 フレームで目標との差のこの割合だけ近づける */
-const FACE_EASING = 0.08;
 
 /** WebGL2 が使えるか。three.js は WebGL2 だけに対応する */
 function canUseWebGL(): boolean {
@@ -38,14 +36,24 @@ type Props = {
   expression: Expression;
   /** 声を再生しているあいだ true。表情を relaxed にそろえる */
   speaking: boolean;
+  /**
+   * false のあいだは描画を止める。畳んだときに外さずに隠すためのもの。
+   * 外すと、出し直すたびにモデルを読み直すことになる
+   */
+  visible?: boolean;
 };
 
 /**
  * 振り返りを話すアバター。three-vrm で VRM を描き、まばたき、呼吸と首の揺れ、
  * 表情の切り替えをする。字幕は別に出すので、読み上げソフトには見せない。
- * WebGL が使えない、モデルを読めない、のときは何も出さない（字幕と声だけで成り立つ）
+ * WebGL が使えない、モデルを読めない、のときは描画を片づけて何も出さない
+ * （字幕と声だけで成り立つ）
  */
-export default function AvatarStage({ expression, speaking }: Props) {
+export default function AvatarStage({
+  expression,
+  speaking,
+  visible = true,
+}: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
   // 描画のループからは props を直接見られないので、ref で渡す
   const face = useRef(faceTarget(expression, speaking));
@@ -53,6 +61,8 @@ export default function AvatarStage({ expression, speaking }: Props) {
     face.current = faceTarget(expression, speaking);
   }, [expression, speaking]);
   const [failed, setFailed] = useState(() => !canUseWebGL());
+  // 描画のループを止めたり動かしたりする。下の effect が用意する
+  const loop = useRef<{ start: () => void; stop: () => void } | null>(null);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -87,16 +97,60 @@ export default function AvatarStage({ expression, speaking }: Props) {
     light.position.set(1, 2, 2);
     scene.add(light);
 
-    let disposed = false;
+    const timer = new THREE.Timer();
+    // タブを隠して戻ったときに、止まっていた時間ぶん動きが飛ばないようにする
+    timer.connect(document);
+
+    // 画面の幅に合わせて描き直す。並びが変わると、窓の大きさが同じでも枠が変わる。
+    // 隠しているあいだは大きさが 0 になるので、そのときは変えない
+    const observer = new ResizeObserver(() => {
+      const width = mount.clientWidth;
+      const height = mount.clientHeight;
+      if (width === 0 || height === 0) return;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height);
+    });
+    observer.observe(mount);
+
     let vrm: VRM | null = null;
+    let frame = 0;
+    let disposed = false;
+
+    /**
+     * 描画を片づける。読み込みに失敗したときと、外れるときに呼ぶ。2 回呼んでもよい。
+     * 失敗したときは部品が残るので、外れるのを待たずにここで止める
+     */
+    function dispose() {
+      if (disposed) return;
+      disposed = true;
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      if (vrm) VRMUtils.deepDispose(vrm.scene);
+      vrm = null;
+      timer.dispose();
+      renderer.dispose();
+      renderer.domElement.remove();
+    }
+
+    function fail() {
+      dispose();
+      setFailed(true);
+    }
+
     const loader = new GLTFLoader();
     loader.register((parser) => new VRMLoaderPlugin(parser));
     loader.load(
       MODEL_URL,
       (gltf) => {
-        const loaded = gltf.userData.vrm as VRM;
+        const loaded = gltf.userData.vrm as VRM | undefined;
         if (disposed) {
-          VRMUtils.deepDispose(loaded.scene);
+          if (loaded) VRMUtils.deepDispose(loaded.scene);
+          return;
+        }
+        // glTF としては読めても VRM でなければ、失敗として止める
+        if (!loaded) {
+          fail();
           return;
         }
         VRMUtils.removeUnnecessaryVertices(gltf.scene);
@@ -112,13 +166,10 @@ export default function AvatarStage({ expression, speaking }: Props) {
       },
       undefined,
       () => {
-        if (!disposed) setFailed(true);
+        if (!disposed) fail();
       },
     );
 
-    const timer = new THREE.Timer();
-    // タブを隠して戻ったときに、止まっていた時間ぶん動きが飛ばないようにする
-    timer.connect(document);
     let nextBlinkAt = nextBlinkDelay(Math.random());
     let blinkStartedAt = -1;
     const weights: Record<Expression, number> = {
@@ -128,7 +179,6 @@ export default function AvatarStage({ expression, speaking }: Props) {
       surprised: 0,
     };
 
-    let frame = 0;
     const tick = (now: number) => {
       frame = requestAnimationFrame(tick);
       timer.update(now);
@@ -164,9 +214,10 @@ export default function AvatarStage({ expression, speaking }: Props) {
             }
           }
 
-          // 表情はなめらかに切り替える
+          // 表情はなめらかに切り替える。速さは画面の書き換えの回数によらない
+          const easing = faceEasing(delta);
           for (const e of EXPRESSIONS) {
-            weights[e] += (face.current[e] - weights[e]) * FACE_EASING;
+            weights[e] += (face.current[e] - weights[e]) * easing;
             em.setValue(e, weights[e]);
           }
         }
@@ -176,28 +227,33 @@ export default function AvatarStage({ expression, speaking }: Props) {
 
       renderer.render(scene, camera);
     };
-    frame = requestAnimationFrame(tick);
 
-    // 画面の幅に合わせて描き直す。並びが変わると、窓の大きさが同じでも枠が変わる
-    const observer = new ResizeObserver(() => {
-      const width = mount.clientWidth;
-      const height = Math.max(mount.clientHeight, 1);
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
-      renderer.setSize(width, height);
-    });
-    observer.observe(mount);
+    let running = false;
+    loop.current = {
+      start() {
+        if (disposed || running) return;
+        running = true;
+        // 止めていたあいだの時間を、動きに入れない
+        timer.reset();
+        frame = requestAnimationFrame(tick);
+      },
+      stop() {
+        running = false;
+        cancelAnimationFrame(frame);
+      },
+    };
 
     return () => {
-      disposed = true;
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-      if (vrm) VRMUtils.deepDispose(vrm.scene);
-      timer.dispose();
-      renderer.dispose();
-      mount.removeChild(renderer.domElement);
+      loop.current = null;
+      dispose();
     };
   }, []);
+
+  // 見えているあいだだけ描く。effect は宣言の順に走るので、ループの用意のあとになる
+  useEffect(() => {
+    if (visible) loop.current?.start();
+    else loop.current?.stop();
+  }, [visible]);
 
   if (failed) return null;
   return <div ref={mountRef} className="avatar-stage" aria-hidden="true" />;

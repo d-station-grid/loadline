@@ -541,10 +541,18 @@ fieldset.plain {
   right: var(--space-4);
   bottom: var(--space-4);
   z-index: 5;
+  max-width: calc(100vw - var(--space-8));
+}
+
+.review-dock-body {
   display: flex;
   align-items: flex-end;
   gap: var(--space-2);
-  max-width: calc(100vw - var(--space-8));
+}
+
+/* 畳んだもの、隠した文字。display を指定した部品にも hidden を効かせる */
+.review-dock [hidden] {
+  display: none;
 }
 
 /* 吹き出し。長くなったら中だけ動かす */
@@ -557,10 +565,6 @@ fieldset.plain {
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.14);
   color: var(--color-text-strong);
   line-height: 1.7;
-}
-
-.review-bubble[hidden] {
-  display: none;
 }
 
 .review-script::before {
@@ -578,11 +582,10 @@ fieldset.plain {
   color: var(--color-text-strong);
 }
 
-/* 振り返りの声。字幕の下に、横いっぱいの再生ボタン */
+/* 振り返りの声。下の段に、横いっぱいの再生ボタン */
 .review-audio {
   display: block;
   width: 100%;
-  margin-block: var(--space-2);
 }
 
 /* 選択肢のボタン。縦に積む */
@@ -615,6 +618,7 @@ fieldset.plain {
 /* 吹き出しの下のボタン（Hide など） */
 .review-controls {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   padding-top: var(--space-2);
 }

@@ -46,3 +46,18 @@ export function blinkWeight(sinceStart: number): number {
   const p = sinceStart / BLINK_SECONDS;
   return p <= 0 || p >= 1 ? 0 : Math.sin(p * Math.PI);
 }
+
+/**
+ * 表情を目標に寄せる速さ（1 秒あたり）。60Hz で 1 フレームに差の約 8% だけ寄せる速さ
+ * （試作で見た目を決めた値）
+ */
+const FACE_RATE = 5;
+
+/**
+ * 前のフレームから delta 秒たったときに、目標との差のどれだけを詰めるか。
+ * フレームごとに同じ割合を掛けると、120Hz と 30Hz で切り替わる速さが変わるので、
+ * 経った時間から出す
+ */
+export function faceEasing(delta: number): number {
+  return 1 - Math.exp(-FACE_RATE * Math.max(delta, 0));
+}
