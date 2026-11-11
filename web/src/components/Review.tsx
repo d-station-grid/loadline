@@ -89,8 +89,12 @@ export default function Review({ user, onOpenSettings }: Props) {
   const [open, setOpen] = useState(true);
   // false で吹き出しを隠し、アバターだけにする
   const [textShown, setTextShown] = useState(true);
-  // 声の今の位置と長さ（秒）。字幕の今読んでいる文を決める
-  const [playback, setPlayback] = useState({ time: 0, duration: 0 });
+  // 声の今の位置と長さ（秒）。字幕の今読んでいる文を決める。source はどの声の位置か
+  const [playback, setPlayback] = useState({
+    source: "",
+    time: 0,
+    duration: 0,
+  });
   const audioRef = useRef<HTMLAudioElement>(null);
   // 右下からずらした位置。アバターをつかんで動かす
   const dockRef = useRef<HTMLDivElement>(null);
@@ -129,14 +133,25 @@ export default function Review({ user, onOpenSettings }: Props) {
 
   const script = review?.script ?? "";
   const sentences = useMemo(() => splitSentences(script), [script]);
+  // 今の声。別の週、取り直した URL、CORS を外して作り直した <audio> は、別の声として扱う。
+  // <audio> が外れたり作り直されたりしても emptied は届かないので、前の声の位置を
+  // 今の声に使わないよう、どの声の位置かを一緒に覚える
+  const source =
+    audio && audioUrl !== null
+      ? `${audio.reviewId} ${audio.cors ? "cors" : "plain"} ${audioUrl}`
+      : "";
   // 声がないときは目立たせない（字幕だけで読む）
   const spoken =
-    audioUrl === null
+    source === "" || playback.source !== source
       ? -1
       : currentSentence(sentences, playback.time, playback.duration);
 
   function trackPlayback(element: HTMLAudioElement) {
-    setPlayback({ time: element.currentTime, duration: element.duration });
+    setPlayback({
+      source,
+      time: element.currentTime,
+      duration: element.duration,
+    });
   }
 
   useEffect(() => {
@@ -174,6 +189,9 @@ export default function Review({ user, onOpenSettings }: Props) {
   }, [user, attempt]);
 
   function retry() {
+    // 読み直すと同じ振り返りの同じ URL が返ることがあり、どの声かでは区別できない。
+    // <audio> は作り直されて最初からになるので、位置もここで戻す
+    setPlayback({ source: "", time: 0, duration: 0 });
     setLoadError(null);
     setSelectError(null);
     setReview(undefined);
@@ -359,7 +377,7 @@ export default function Review({ user, onOpenSettings }: Props) {
                   }}
                   onEmptied={() => {
                     setSpeaking(false);
-                    setPlayback({ time: 0, duration: 0 });
+                    setPlayback({ source: "", time: 0, duration: 0 });
                   }}
                   onTimeUpdate={(e) => trackPlayback(e.currentTarget)}
                 />

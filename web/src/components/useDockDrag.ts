@@ -45,6 +45,15 @@ function baseOf(element: HTMLElement, offset: Offset): Bounds {
 }
 
 /**
+ * 今の位置から測り直して、画面に収めたずれ。隠れているとき（大きさが 0）は null
+ */
+function fitted(element: HTMLElement, from: Offset): Offset | null {
+  const r = element.getBoundingClientRect();
+  if (r.width === 0 && r.height === 0) return null;
+  return clampOffset(from, baseOf(element, from), viewport());
+}
+
+/**
  * 画面に浮かせた部品を、つかんで動かす。返すずれを transform で当て、
  * handlers をつかむところに付ける。マウスでも指でも動かせる。
  * 画面の大きさや部品の大きさが変わったら、はみ出さないよう収め直す
@@ -68,13 +77,11 @@ export function useDockDrag(target: RefObject<HTMLElement | null>) {
     const element = target.current;
     if (!element) return;
     function refit() {
+      // 動かしているあいだは、離したときにまとめて収める
       if (!element || drag.current) return;
       const from = current.current;
-      // 隠れているとき（大きさが 0）は収め直さない
-      const r = element.getBoundingClientRect();
-      if (r.width === 0 && r.height === 0) return;
-      const next = clampOffset(from, baseOf(element, from), viewport());
-      if (next.x !== from.x || next.y !== from.y) setOffset(next);
+      const next = fitted(element, from);
+      if (next && (next.x !== from.x || next.y !== from.y)) setOffset(next);
     }
     window.addEventListener("resize", refit);
     const observer =
@@ -85,6 +92,23 @@ export function useDockDrag(target: RefObject<HTMLElement | null>) {
       observer?.disconnect();
     };
   }, [target]);
+
+  /**
+   * 離したとき。動かしているあいだに画面の大きさが変わっていたら、つかんだときに
+   * 測った位置は古いので、今の位置から測り直して画面に収める
+   */
+  function release(pointer: number) {
+    if (drag.current?.pointer !== pointer) return;
+    drag.current = null;
+    const element = target.current;
+    if (!element) return;
+    const from = current.current;
+    const next = fitted(element, from);
+    if (next && (next.x !== from.x || next.y !== from.y)) {
+      current.current = next;
+      setOffset(next);
+    }
+  }
 
   const handlers = {
     onPointerDown(e: ReactPointerEvent<HTMLElement>) {
@@ -119,10 +143,10 @@ export function useDockDrag(target: RefObject<HTMLElement | null>) {
       setOffset(next);
     },
     onPointerUp(e: ReactPointerEvent<HTMLElement>) {
-      if (drag.current?.pointer === e.pointerId) drag.current = null;
+      release(e.pointerId);
     },
     onPointerCancel(e: ReactPointerEvent<HTMLElement>) {
-      if (drag.current?.pointer === e.pointerId) drag.current = null;
+      release(e.pointerId);
     },
   };
 

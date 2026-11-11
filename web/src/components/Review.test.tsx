@@ -1072,3 +1072,102 @@ test("画面が小さくなったら、はみ出さない位置へ戻す", async
 
   expect(dock().style.transform).toBe("translate(-384px, -300px)");
 });
+
+test("前の週の声を途中まで聞いてから次の週を読み込んでも、前の位置で文を目立たせない", async () => {
+  const next: WeeklyReviewOut = {
+    ...review(),
+    id: 8,
+    script: "A steady week. Keeping this rhythm is how fitness builds.",
+    audio_url: `${AUDIO}&next`,
+  };
+  vi.mocked(getCurrentReview)
+    .mockResolvedValueOnce({ ...review(), audio_url: AUDIO })
+    .mockResolvedValueOnce(next);
+  vi.mocked(selectReviewOption).mockRejectedValue(new ApiError(409));
+  renderReview();
+  await screen.findByText(/A heavy week/);
+  playAt(screen.getByLabelText("Review voice"), 6, 10);
+  expect(spokenSentence()).not.toBeNull();
+
+  fireEvent.click(option("Go easy"));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Load this week's review" }),
+  );
+
+  await screen.findByText(/A steady week/);
+  expect(spokenSentence()).toBeNull();
+});
+
+test("読み直して同じ声が返っても、前の位置で文を目立たせない（<audio> は最初から）", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue({
+    ...review(),
+    audio_url: AUDIO,
+  });
+  vi.mocked(selectReviewOption).mockRejectedValue(new ApiError(409));
+  renderReview();
+  await screen.findByText(/A heavy week/);
+  playAt(screen.getByLabelText("Review voice"), 6, 10);
+  expect(spokenSentence()).not.toBeNull();
+
+  fireEvent.click(option("Go easy"));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Load this week's review" }),
+  );
+
+  await screen.findByLabelText("Review voice");
+  expect(spokenSentence()).toBeNull();
+});
+
+test("CORS を外して <audio> を作り直したら、前の位置で文を目立たせない", async () => {
+  vi.mocked(getCurrentReview)
+    .mockResolvedValueOnce({ ...review(), audio_url: AUDIO })
+    .mockResolvedValue({ ...review(), audio_url: FRESH });
+  renderReview();
+  fireEvent.error(await screen.findByLabelText("Review voice"));
+  await waitFor(() => expect(player()).toHaveAttribute("src", FRESH));
+  playAt(player()!, 6, 10);
+  expect(spokenSentence()).not.toBeNull();
+
+  // 作り直した要素からは emptied が届かない
+  fireEvent.error(player()!);
+  await waitFor(() => expect(player()).not.toHaveAttribute("crossorigin"));
+
+  expect(spokenSentence()).toBeNull();
+});
+
+test("動かしているあいだに画面が縮んでも、離したら画面に収める", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue(review());
+  renderReview();
+  await screen.findByText(/A heavy week/);
+  placeDock();
+  fireEvent.pointerDown(grip(), {
+    pointerId: 1,
+    button: 0,
+    clientX: 900,
+    clientY: 700,
+  });
+  fireEvent.pointerMove(grip(), { pointerId: 1, clientX: 300, clientY: 400 });
+  expect(dock().style.transform).toBe("translate(-600px, -300px)");
+
+  // 動かしているあいだに、画面が 1000→700 に縮む。部品は右下からの位置なので左へ 300 ずれる
+  vi.spyOn(window, "innerWidth", "get").mockReturnValue(700);
+  vi.spyOn(dock(), "getBoundingClientRect").mockImplementation(() => {
+    const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(
+      dock().style.transform,
+    );
+    const x = m ? Number(m[1]) : 0;
+    const y = m ? Number(m[2]) : 0;
+    return DOMRect.fromRect({
+      x: 384 + x,
+      y: 384 + y,
+      width: 300,
+      height: 400,
+    });
+  });
+  act(() => {
+    window.dispatchEvent(new Event("resize"));
+  });
+  fireEvent.pointerUp(grip(), { pointerId: 1 });
+
+  expect(dock().style.transform).toBe("translate(-384px, -300px)");
+});
