@@ -46,7 +46,7 @@ export type Changes = {
  * zones、workouts、zone_weeks、totals、previous_totals だけ。最大心拍か安静時心拍が
  * 未設定なら、負荷が出ないので days は空で、needs_heart_rate_settings が true。
  *
- * changes と form も全種目。form は until の余力の区分（週次レビューの週の判定と同じ境目）で、
+ * changes と form も全種目。form は until の余力の区分（週次レビューの判定と同じ境目）で、
  * days が空なら None。zone_weeks は until から 7 日ずつ区切った強度の時間で、古い順。
  * 境目がそろわなければ None。totals は期間の合計、previous_totals は since の前の同じ
  * 日数の合計。last_received_at は Health Auto Export からの取り込みが最後に成功した日時で、
@@ -1202,7 +1202,7 @@ export type ReadCurrentReviewReviewsCurrentGetData = {
 
 export type ReadCurrentReviewReviewsCurrentGetErrors = {
   /**
-   * 今の週の週次レビューはまだない（ゲストは、デモの週次レビューがない）
+   * 今の週の週次レビューはまだない（ゲストは、デモの週次レビューがひとつもない）
    */
   404: unknown;
 };
@@ -1235,7 +1235,7 @@ export type PutSelectionReviewsReviewIdSelectionPutErrors = {
    */
   403: unknown;
   /**
-   * 週次レビューか、その選択肢がない
+   * 週次レビューか、その週次レビューの選択肢がない
    */
   404: unknown;
   /**

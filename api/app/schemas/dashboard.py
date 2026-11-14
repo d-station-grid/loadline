@@ -92,7 +92,7 @@ class Dashboard(BaseModel):
     zones、workouts、zone_weeks、totals、previous_totals だけ。最大心拍か安静時心拍が
     未設定なら、負荷が出ないので days は空で、needs_heart_rate_settings が true。
 
-    changes と form も全種目。form は until の余力の区分（週次レビューの週の判定と同じ境目）で、
+    changes と form も全種目。form は until の余力の区分（週次レビューの判定と同じ境目）で、
     days が空なら None。zone_weeks は until から 7 日ずつ区切った強度の時間で、古い順。
     境目がそろわなければ None。totals は期間の合計、previous_totals は since の前の同じ
     日数の合計。last_received_at は Health Auto Export からの取り込みが最後に成功した日時で、

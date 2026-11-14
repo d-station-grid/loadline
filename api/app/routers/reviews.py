@@ -72,7 +72,9 @@ async def add_review(
     response_model=WeeklyReviewOut,
     responses={
         status.HTTP_404_NOT_FOUND: {
-            "description": "今の週の週次レビューはまだない（ゲストは、デモの週次レビューがない）"
+            "description": (
+                "今の週の週次レビューはまだない（ゲストは、デモの週次レビューがひとつもない）"
+            )
         }
     },
 )
@@ -95,7 +97,9 @@ async def read_current_review(
     response_model=WeeklyReviewOut,
     responses={
         status.HTTP_403_FORBIDDEN: {"description": "ゲスト（デモの利用者）は選べない"},
-        status.HTTP_404_NOT_FOUND: {"description": "週次レビューか、その選択肢がない"},
+        status.HTTP_404_NOT_FOUND: {
+            "description": "週次レビューか、その週次レビューの選択肢がない",
+        },
         status.HTTP_409_CONFLICT: {"description": "今の週の週次レビューではない"},
     },
 )
