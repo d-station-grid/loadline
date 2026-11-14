@@ -38,6 +38,7 @@ async def test_read_returns_defaults_for_new_user(client: AsyncClient) -> None:
         "timezone": "Asia/Tokyo",
         "review_weekday": 0,
         "send_notes_to_ai": True,
+        "language": "en",
         "ingest_token_last_four": None,
     }
 
@@ -51,6 +52,7 @@ async def test_update_then_read_back(client: AsyncClient) -> None:
         "timezone": "Europe/London",
         "review_weekday": 6,
         "send_notes_to_ai": False,
+        "language": "ja",
     }
 
     put = await client.put("/settings", json=body, headers=HEADERS)
@@ -76,6 +78,8 @@ VALID = {
         # 範囲の中で、安静時が最大と同じ（前後関係の検査で落ちる）
         {"max_heart_rate": 110, "resting_heart_rate": 110},
         {"timezone": "Mars/Olympus"},
+        # 言語は英語と日本語だけ
+        {"language": "fr"},
         # 心拍の 4 つは必須。空も省略も保存させない
         {"max_heart_rate": None},
         {"resting_heart_rate": None},

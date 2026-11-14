@@ -11,7 +11,7 @@
           "auth"
         ],
         "summary": "Login",
-        "description": "ID トークンで本人を確かめ、初回なら利用者の行を作って返す。\n\n初回は本文の timezone（ブラウザのタイムゾーン）を利用者の設定にする。空や知らない名前\nなら既定値。2 回目からは本文を見ない。アカウントを消した人のトークンは 401（行を作り\n直さない）。ゲスト（Firebase の匿名ログイン）は行を作らず、デモの利用者を返す。",
+        "description": "ID トークンで本人を確かめ、初回なら利用者の行を作って返す。\n\n初回は本文の timezone と language（ブラウザのタイムゾーンと言語）を利用者の設定にする。\n空や知らない値なら既定値。2 回目からは本文を見ない。アカウントを消した人のトークンは\n401（行を作り直さない）。ゲスト（Firebase の匿名ログイン）は行を作らず、デモの利用者を返す。",
         "operationId": "login_auth_login_post",
         "requestBody": {
           "content": {
@@ -1265,6 +1265,14 @@
         "title": "IngestTokenOut",
         "description": "POST /settings/ingest-token の返事。平文のトークンはこのときだけ返す。"
       },
+      "Language": {
+        "type": "string",
+        "enum": [
+          "en",
+          "ja"
+        ],
+        "title": "Language"
+      },
       "LoginIn": {
         "properties": {
           "timezone": {
@@ -1277,6 +1285,17 @@
               }
             ],
             "title": "Timezone"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
           }
         },
         "type": "object",
@@ -1581,6 +1600,10 @@
             "type": "boolean",
             "title": "Send Notes To Ai",
             "default": true
+          },
+          "language": {
+            "$ref": "#/components/schemas/Language",
+            "default": "en"
           }
         },
         "type": "object",
@@ -1663,6 +1686,10 @@
             "type": "boolean",
             "title": "Send Notes To Ai",
             "default": true
+          },
+          "language": {
+            "$ref": "#/components/schemas/Language",
+            "default": "en"
           },
           "ingest_token_last_four": {
             "anyOf": [

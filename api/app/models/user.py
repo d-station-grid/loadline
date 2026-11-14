@@ -38,6 +38,8 @@ class User(Base):
     timezone: Mapped[str] = mapped_column(String(64), server_default="Asia/Tokyo")
     review_weekday: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"))  # 0 が月曜
     send_notes_to_ai: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    # 画面と週次レビューの言語。app.domain.language.Language の値
+    language: Mapped[str] = mapped_column(String(8), server_default="en")
     # Health Auto Export からの取り込みが最後に成功した日時。保存と同じトランザクションで書く。
     # 取り込み用トークンの last_used_at は認証の時点で進むので、失敗した送信でも変わる
     last_ingested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -70,6 +70,7 @@ class UserFactory(BaseFactory[User]):
     timezone = "Asia/Tokyo"
     review_weekday = 0
     send_notes_to_ai = True
+    language = "en"
     # 取り込みに成功するまで空
     last_ingested_at = None
     created_at = Ignore()

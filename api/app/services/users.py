@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import Identity
 from app.domain.calendar import is_known_timezone, today_in
+from app.domain.language import language_from_browser
 from app.models import DeletedAccount, User, Workout
 
 
@@ -43,12 +44,15 @@ async def today_of(session: AsyncSession, user: User) -> date:
 
 
 async def get_or_create_user(
-    session: AsyncSession, identity: Identity, timezone: str | None = None
+    session: AsyncSession,
+    identity: Identity,
+    timezone: str | None = None,
+    language: str | None = None,
 ) -> User:
     """firebase_uid で探し、なければ作る。初回ログインで行ができる。
 
-    timezone は行を作るときだけ使う（ブラウザのタイムゾーン）。空や知らない名前なら列の
-    既定値にする。行がある人の値は変えない（設定の画面で変える）。
+    timezone と language は行を作るときだけ使う（ブラウザのタイムゾーンと言語）。空や
+    知らない値なら列の既定値にする。行がある人の値は変えない（設定の画面で変える）。
 
     アカウントを消した人の uid なら作らずに AccountDeletedError を上げる。行がある人は
     消していないので、見るのは行がないときだけ。
@@ -66,6 +70,8 @@ async def get_or_create_user(
     user = User(firebase_uid=identity.uid, email=identity.email)
     if timezone is not None and is_known_timezone(timezone):
         user.timezone = timezone
+    if (lang := language_from_browser(language)) is not None:
+        user.language = lang.value
     session.add(user)
     try:
         await session.commit()

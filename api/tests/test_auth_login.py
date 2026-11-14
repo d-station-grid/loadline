@@ -119,3 +119,42 @@ async def test_later_login_keeps_existing_timezone(
     timezone = await _login_and_get_timezone(client, session, {"timezone": "America/New_York"})
 
     assert timezone == "Europe/London"
+
+
+async def _login_and_get_language(
+    client: AsyncClient, session: AsyncSession, body: dict[str, object] | None
+) -> str:
+    res = await client.post("/auth/login", headers=HEADERS, json=body)
+    assert res.status_code == 200
+    user = await session.scalar(select(User).where(User.firebase_uid == "uid-1"))
+    assert user is not None
+    await session.refresh(user)
+    return user.language
+
+
+@pytest.mark.parametrize("tag", ["ja", "ja-JP", "JA-jp", "ja_JP"])
+async def test_first_login_uses_browser_language(
+    client: AsyncClient, session: AsyncSession, tag: str
+) -> None:
+    """地域の部分と大文字・小文字は見ない。"""
+    assert await _login_and_get_language(client, session, {"language": tag}) == "ja"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [None, {}, {"language": None}, {"language": ""}, {"language": "fr-FR"}, {"language": "en-GB"}],
+)
+async def test_first_login_falls_back_to_english(
+    client: AsyncClient, session: AsyncSession, body: dict[str, object] | None
+) -> None:
+    """知らない言語は 422 にせず、英語で作る。"""
+    assert await _login_and_get_language(client, session, body) == "en"
+
+
+async def test_later_login_keeps_existing_language(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """2 回目からは本文を見ない。設定の画面で変える。"""
+    await client.post("/auth/login", headers=HEADERS, json={"language": "en-US"})
+
+    assert await _login_and_get_language(client, session, {"language": "ja-JP"}) == "en"
