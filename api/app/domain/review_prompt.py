@@ -1,8 +1,9 @@
 """LLM に週次レビューを書いてもらうための指示と材料、返ってきた文の検査。
 
 数字の比較はここ（コード）で済ませ、LLM には結果だけを渡す。状況の判定、前の週との差、
-量を増やす選択肢を出してよいかは、どれもコードで決めてから渡す。出してよいかは、状況と
-メモの体調のフラグ（note_check）から決める。
+練習の量と強度の配分（effort）、量を増やす選択肢を出してよいかは、どれもコードで決めてから
+渡す。出してよいかは、状況、メモの体調のフラグ（note_check）、練習の量から決める。
+負荷の比の数値は渡さない（「1.6 倍」のように話させない）。区分だけを渡す。
 渡す数字は、定型と同じく回数、分、休んだ日数とその差だけ。体力と疲労の値は渡さない。
 今の計算の単位では体力が 20 前後になり、一般的な目安の数字と比べると誤解を招くため。
 メモは、呼ぶ側が「メモを AI に送らない」設定を見て、送ってよいものだけを渡す。
@@ -13,6 +14,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 
+from app.domain.effort import NO_EFFORT, Effort, Volume
 from app.domain.fallback_review import ReviewContent, ReviewOption
 from app.domain.review_material import ReviewMaterial
 from app.domain.situation import Situation
@@ -31,9 +33,10 @@ DESCRIPTION_MAX_CHARS = 255
 _MAY_OFFER_MORE = frozenset({Situation.FRESH, Situation.STEADY})
 
 
-def may_offer_more(situation: Situation, health_flag: bool) -> bool:
-    """量や強度を上げる選択肢を出してよいか。痛みや病気に触れたメモがある週は出さない。"""
-    return situation in _MAY_OFFER_MORE and not health_flag
+def may_offer_more(situation: Situation, health_flag: bool, effort: Effort = NO_EFFORT) -> bool:
+    """量や強度を上げる選択肢を出してよいか。痛みや病気に触れたメモがある週と、練習の量が
+    普段より多めだった週は出さない。"""
+    return situation in _MAY_OFFER_MORE and not health_flag and effort.volume is not Volume.HEAVY
 
 
 SYSTEM_INSTRUCTION = """\
@@ -58,6 +61,18 @@ numbers and never give fitness or fatigue as a number.
 - If the notes explain the week, connect them to it. The notes are the person's own words; \
 refer to them naturally instead of quoting them.
 - Never invent events, feelings or places that are not in the notes or the numbers.
+- `effort` was also decided by our own code. Trust it.
+  - `volume_vs_usual` compares this week's training load with the person's own recent weeks: \
+light, usual or heavy. null means there is not enough history to compare. Notice the effort: \
+usual means they kept up their routine, so praise the consistency. heavy means they did \
+clearly more than usual, so recognise the work and suggest letting it sink in. light is never \
+a failure; do not blame.
+  - `mostly_moderate_intensity`: true means more time at moderate effort than at easy effort. \
+Mention it as a plain observation, not as a mistake, and offer one option that replaces some \
+moderate sessions with easy ones. Replace, do not add: never suggest more sessions or more \
+time for this.
+  - `hard_efforts_jumped`: true means the jump in load came mostly from hard efforts. Suggest \
+going easy on hard sessions for now.
 - `last_choice` is the option they picked for this week, if any. You may mention it kindly, \
 but do not judge whether they followed it.
 - You never give orders and never hand out a fixed plan. You offer two or three options and \
@@ -96,8 +111,10 @@ def review_prompt(
     """LLM に渡す本文。その週の材料を JSON にして、何を書いてほしいかを添える。
 
     health_flag はメモの体調のフラグ。立っていれば may_offer_more を false にする。
+    練習の量が多めの週も false にする。
     """
     week = material.week
+    effort = material.effort
     previous = material.previous_choice
     data = {
         "situation": week.situation.value,
@@ -115,7 +132,12 @@ def review_prompt(
             "sessions": week.workouts_change,
             "minutes": _minutes(week.total_sec_change),
         },
-        "may_offer_more": may_offer_more(week.situation, health_flag),
+        "effort": {
+            "volume_vs_usual": None if effort.volume is None else effort.volume.value,
+            "mostly_moderate_intensity": effort.mostly_moderate,
+            "hard_efforts_jumped": effort.hard_spike,
+        },
+        "may_offer_more": may_offer_more(week.situation, health_flag, effort),
         "last_choice": None
         if previous is None
         else {"label": previous.label, "description": previous.description},

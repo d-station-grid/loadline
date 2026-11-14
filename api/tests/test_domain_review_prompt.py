@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from app.domain.effort import Effort, Volume
 from app.domain.fallback_review import ReviewContent, ReviewOption
 from app.domain.review_material import ReviewMaterial
 from app.domain.review_prompt import (
@@ -43,8 +44,14 @@ OPTIONS = (
 )
 
 
-def material(previous_choice: ReviewOption | None = None, **changes: Any) -> ReviewMaterial:
-    return ReviewMaterial(week=replace(BASE, **changes), previous_choice=previous_choice)
+def material(
+    previous_choice: ReviewOption | None = None, effort: Effort | None = None, **changes: Any
+) -> ReviewMaterial:
+    m = ReviewMaterial(week=replace(BASE, **changes), previous_choice=previous_choice)
+    return m if effort is None else replace(m, effort=effort)
+
+
+HEAVY_HARD = Effort(volume=Volume.HEAVY, load_ratio=1.62, mostly_moderate=True, hard_spike=True)
 
 
 def prompt_data(
@@ -109,6 +116,56 @@ def test_health_flag_keeps_options_from_adding_load(situation: Situation) -> Non
     data = prompt_data(material(situation=situation), health_flag=True)
 
     assert data["may_offer_more"] is False
+
+
+def test_prompt_passes_the_effort_decided_by_code_without_the_ratio() -> None:
+    """練習の量は区分だけを渡し、負荷の比の数値は渡さない。"""
+    text = review_prompt(material(effort=HEAVY_HARD), [], health_flag=False)
+    data = json.loads(text[text.index("{") :])
+
+    assert data["effort"] == {
+        "volume_vs_usual": "heavy",
+        "mostly_moderate_intensity": True,
+        "hard_efforts_jumped": True,
+    }
+    assert "1.62" not in text
+
+
+def test_prompt_passes_null_when_the_volume_cannot_be_judged() -> None:
+    assert prompt_data(material())["effort"] == {
+        "volume_vs_usual": None,
+        "mostly_moderate_intensity": False,
+        "hard_efforts_jumped": False,
+    }
+
+
+@pytest.mark.parametrize("situation", [Situation.FRESH, Situation.STEADY])
+def test_heavy_week_keeps_options_from_adding_load(situation: Situation) -> None:
+    """普段より多めに練習した週は、休めている週や順調な週でも量を増やす選択肢を出さない。"""
+    heavy = Effort(volume=Volume.HEAVY, load_ratio=1.6, mostly_moderate=False, hard_spike=False)
+
+    assert prompt_data(material(situation=situation, effort=heavy))["may_offer_more"] is False
+
+
+@pytest.mark.parametrize("volume", [Volume.LIGHT, Volume.USUAL, None])
+def test_other_volumes_leave_rested_weeks_free_to_add_load(volume: Volume | None) -> None:
+    effort = Effort(volume=volume, load_ratio=None, mostly_moderate=False, hard_spike=False)
+
+    assert prompt_data(material(situation=Situation.FRESH, effort=effort))["may_offer_more"] is True
+
+
+def test_system_instruction_explains_the_effort() -> None:
+    for key in ("volume_vs_usual", "mostly_moderate_intensity", "hard_efforts_jumped"):
+        assert f"`{key}`" in SYSTEM_INSTRUCTION
+    assert "not as a mistake" in SYSTEM_INSTRUCTION
+
+
+def test_system_instruction_replaces_moderate_sessions_instead_of_adding_easy_ones() -> None:
+    """中強度寄りの選択肢は、置き換える形にする。足す形だと、量が多めの週に「増やすな」と
+    ぶつかり、Jev に引っかかって定型に落ち、中強度の話が消えるため。"""
+    assert "replaces some moderate sessions with easy ones" in SYSTEM_INSTRUCTION
+    assert "Replace, do not add" in SYSTEM_INSTRUCTION
+    assert "more easy sessions" not in SYSTEM_INSTRUCTION
 
 
 def test_prompt_passes_the_previous_choice() -> None:

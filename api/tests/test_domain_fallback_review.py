@@ -3,6 +3,7 @@ from datetime import date, timedelta
 
 import pytest
 
+from app.domain.effort import Effort, Volume
 from app.domain.fallback_review import fallback_review
 from app.domain.load import FitnessPoint
 from app.domain.situation import Situation, WeekInput, WeekSituation, judge_week
@@ -274,3 +275,25 @@ def test_without_the_health_flag_rested_weeks_may_add_load(situation: Situation)
     options = fallback_review(week(situation)).options
 
     assert adds_load(" ".join(f"{o.label} {o.description}" for o in options)) != []
+
+
+HEAVY = Effort(volume=Volume.HEAVY, load_ratio=1.6, mostly_moderate=False, hard_spike=False)
+
+
+@pytest.mark.parametrize("situation", list(Situation))
+def test_heavy_week_removes_options_that_add_load(situation: Situation) -> None:
+    """普段より多めに練習した週は、休めている週や順調な週でも増やす選択肢を外す。"""
+    review = fallback_review(week(situation, rest_days_before=20), effort=HEAVY)
+
+    assert adds_load(" ".join(f"{o.label} {o.description}" for o in review.options)) == []
+    assert len(review.options) >= 2
+    assert adds_load(review.script) == []
+
+
+@pytest.mark.parametrize("volume", [Volume.LIGHT, Volume.USUAL, None])
+def test_other_volumes_leave_the_fresh_week_as_it_was(volume: Volume | None) -> None:
+    effort = Effort(volume=volume, load_ratio=None, mostly_moderate=False, hard_spike=False)
+
+    assert fallback_review(week(Situation.FRESH), effort=effort) == fallback_review(
+        week(Situation.FRESH)
+    )

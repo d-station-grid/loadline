@@ -16,10 +16,11 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.calendar import start_of_day, today_for
+from app.domain.effort import HISTORY_WEEKS, Effort, PastWeek, judge_effort
 from app.domain.expression import DEFAULT_EXPRESSION, Expression, expression_for
 from app.domain.fallback_review import ReviewContent, ReviewOption, fallback_review
 from app.domain.line_check import LineCheck, flagged
-from app.domain.load import FitnessPoint
+from app.domain.load import FitnessPoint, ZoneTimes
 from app.domain.note_check import NoteCheck, health_flag
 from app.domain.review_material import ReviewMaterial
 from app.domain.review_prompt import NoteForReview, may_offer_more, review_prompt
@@ -87,6 +88,18 @@ async def judge_review_week(
     today は利用者のタイムゾーンでの今日。週は今日より前に終わっていなければならない。
     ダッシュボードの計算は今日で切るので、終わっていない週では最終日の値がない。
     """
+    week, _ = await _judge(session, user, start, today)
+    return week
+
+
+async def _judge(
+    session: AsyncSession, user: User, start: date, today: date
+) -> tuple[WeekSituation, Effort]:
+    """start から 7 日間の状況と、練習の量と強度の配分を判定する。
+
+    量は、その週より前の HISTORY_WEEKS 週と比べる。ダッシュボードの計算を
+    その分だけ前から読み、1 回の計算で状況と量の両方を出す。
+    """
     if user.max_heart_rate is None or user.resting_heart_rate is None:
         raise HeartRateSettingsMissingError
     tz = ZoneInfo(user.timezone)
@@ -94,6 +107,7 @@ async def judge_review_week(
     if end >= today:
         raise ValueError(f"the week must end before today ({today}), got {end}")
     previous_start = start - timedelta(days=DAYS_IN_WEEK)
+    history_start = start - timedelta(days=DAYS_IN_WEEK * HISTORY_WEEKS)
 
     first_at, last_before_at = (
         await session.execute(
@@ -115,19 +129,21 @@ async def judge_review_week(
     this_week = [(day, sec) for day, sec in sessions if day >= start]
     last_week = [(day, sec) for day, sec in sessions if day < start]
 
-    dashboard = await build_dashboard(session, user, since=previous_start, until=end, today=today)
+    dashboard = await build_dashboard(session, user, since=history_start, until=end, today=today)
     days = {p.day: p for p in dashboard.days}
     last_before = None if last_before_at is None else last_before_at.astimezone(tz).date()
+    first_day = None if first_at is None else first_at.astimezone(tz).date()
+    # 負荷が分からない日は、心拍のないワークアウトを含む日
+    unknown_load_days = sum(1 for day in {d for d, _ in this_week} if days[day].load is None)
 
-    return judge_week(
+    week = judge_week(
         WeekInput(
             start=start,
-            first_workout_day=None if first_at is None else first_at.astimezone(tz).date(),
+            first_workout_day=first_day,
             last_workout_day_before=last_before,
             workout_days=[day for day, _ in this_week],
             total_sec=sum(sec for _, sec in this_week),
-            # 負荷が分からない日は、心拍のないワークアウトを含む日
-            unknown_load_days=sum(1 for day in {d for d, _ in this_week} if days[day].load is None),
+            unknown_load_days=unknown_load_days,
             end=_point(days[end]),
             # それより前に記録がなければ、前の週と比べるものはない
             previous=None
@@ -140,6 +156,48 @@ async def judge_review_week(
         )
     )
 
+    # 強度ごとの時間は、ダッシュボードが until（週の最終日）から 7 日ずつ区切ったもの。
+    # 区切りが週次レビューの週とそろう。境目が未設定なら None
+    zone_weeks = {w.start: w for w in dashboard.by_sport.all.zone_weeks or []}
+
+    def week_days(week_start: date) -> list[date]:
+        return [week_start + timedelta(days=i) for i in range(DAYS_IN_WEEK)]
+
+    def week_load(week_start: date) -> float:
+        return sum(days[d].load or 0.0 for d in week_days(week_start))
+
+    def has_unknown_load(week_start: date) -> bool:
+        return any(days[d].load is None for d in week_days(week_start))
+
+    def high_sec(week_start: date) -> int:
+        zw = zone_weeks.get(week_start)
+        return 0 if zw is None else zw.zones.high
+
+    this_zones = zone_weeks.get(start)
+    history = [
+        PastWeek(load=week_load(ws), high_sec=high_sec(ws))
+        for ws in (start - timedelta(days=DAYS_IN_WEEK * i) for i in range(HISTORY_WEEKS, 0, -1))
+        # 記録を始める前の週（始めた日を含む途中の週も）は比べない。平均が下がるため
+        if first_day is not None
+        and ws >= first_day
+        # 心拍のないワークアウトを含む週も比べない。その日の負荷は 0 として数えられ、高強度の
+        # 時間も心拍のある回だけになるので、普段が低く出て「多め」になりやすい。
+        # ワークアウトのない週（休んだ週）は欠けではないので、負荷 0 のまま比べる
+        and not has_unknown_load(ws)
+    ]
+    effort = judge_effort(
+        load=week_load(start),
+        unknown_load_days=unknown_load_days,
+        # 心拍のないワークアウトがあれば、強度の時間は一部しか分からないので使わない
+        zones=None
+        if this_zones is None or this_zones.workouts_without_zones > 0
+        else ZoneTimes(
+            low=this_zones.zones.low, mid=this_zones.zones.mid, high=this_zones.zones.high
+        ),
+        history=history,
+    )
+    return week, effort
+
 
 async def review_material(
     session: AsyncSession, user: User, start: date, today: date
@@ -149,7 +207,7 @@ async def review_material(
     1 週前は start の 7 日前に始まる回だけを見る。間が空いた後や、週次レビューの曜日を変えた
     直後は、前の回の選択が今の週と離れているので渡さない。
     """
-    week = await judge_review_week(session, user, start, today)
+    week, effort = await _judge(session, user, start, today)
     chosen = (
         await session.execute(
             select(WeeklyReviewOption.label, WeeklyReviewOption.description)
@@ -163,6 +221,7 @@ async def review_material(
     ).one_or_none()
     return ReviewMaterial(
         week=week,
+        effort=effort,
         previous_choice=None if chosen is None else ReviewOption(chosen.label, chosen.description),
     )
 
@@ -263,7 +322,7 @@ async def _write(
             user.id,
         )
         return _Written(None, flag)
-    if risks := flagged(check, may_offer_more(week.situation, flag)):
+    if risks := flagged(check, may_offer_more(week.situation, flag, material.effort)):
         logger.warning(
             "review: the line was flagged (%s); falling back to the fixed script for user %s",
             # 境目ぎりぎりか、はっきり「はい」かを見分けられるように確率も残す。セリフは残さない
@@ -369,7 +428,9 @@ async def create_review(
     written = await _write(session, user, material, writer, checker)
     # 定型は前の週の選択とメモを読まない。メモを Jev で確かめたフラグだけを使う。
     # 定型のときの表情は relaxed（_Written の既定）
-    content = written.content or fallback_review(material.week, written.health_flag)
+    content = written.content or fallback_review(
+        material.week, written.health_flag, material.effort
+    )
     wav = await _speak(session, user, content.script, voice, audio)
     review = await session.scalar(
         insert(WeeklyReview)

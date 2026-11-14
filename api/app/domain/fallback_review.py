@@ -14,6 +14,7 @@ LLM が使えないときや、作ったセリフを確かめられなかった�
 
 from dataclasses import dataclass
 
+from app.domain.effort import NO_EFFORT, Effort, Volume
 from app.domain.situation import Situation, WeekSituation
 
 
@@ -67,22 +68,29 @@ _OPTIONS: dict[Situation, tuple[ReviewOption, ...]] = {
 }
 
 
-# 量や強度を上げる選択肢。体調のフラグが立った週は外す。外しても 2 個は残る
+# 量や強度を上げる選択肢。体調のフラグが立った週と、練習の量が多めだった週は外す。
+# 外しても 2 個は残る
 _ADDS_LOAD = frozenset({"Add a bit more", "Add one session"})
 
 
-def fallback_review(week: WeekSituation, health_flag: bool = False) -> ReviewContent:
+def fallback_review(
+    week: WeekSituation, health_flag: bool = False, effort: Effort = NO_EFFORT
+) -> ReviewContent:
     """判定した状況から、定型のセリフと選択肢を作る。
 
     health_flag はメモの体調のフラグ。メモを確かめていなければ False のまま呼ぶ。
+    effort は練習の量と強度の配分の判定。量が多めの週は、量を増やす選択肢を出さず、
+    セリフも増やすことを勧めない言い方にする。
     """
+    holds_back = health_flag or effort.volume is Volume.HEAVY
     options = _OPTIONS[week.situation]
-    if health_flag:
+    if holds_back:
         options = tuple(o for o in options if o.label not in _ADDS_LOAD)
-    return ReviewContent(script=_script(week, health_flag), options=options)
+    return ReviewContent(script=_script(week, holds_back), options=options)
 
 
-def _script(week: WeekSituation, health_flag: bool) -> str:
+def _script(week: WeekSituation, holds_back: bool) -> str:
+    """holds_back は、量を増やすことを勧めない週（体調のフラグか、量が多め）。"""
     sessions = _count(week.workouts, "session")
     match week.situation:
         case Situation.NOT_ENOUGH_DATA:
@@ -111,9 +119,10 @@ def _script(week: WeekSituation, health_flag: bool) -> str:
                 "so your body is asking for some recovery. "
                 "A lighter week helps the work you've done sink in."
             )
-        case Situation.FRESH if health_flag:
+        case Situation.FRESH if holds_back:
             # 選択肢と食い違わないように、増やすことを勧めない。痛みや病気がある週か、メモを
-            # 確かめられなかった週なので、休めた、回復したとは言い切らず、メモの中身にも触れない
+            # 確かめられなかった週か、量が多めだった週。休めた、回復したとは言い切らず、
+            # メモの中身にも触れない
             return (
                 "Your fatigue is below your fitness right now. "
                 "Numbers are only part of the picture, though. "

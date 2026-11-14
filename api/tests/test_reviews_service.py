@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from app.domain.effort import Volume
 from app.domain.expression import ExpressionAnswer
 from app.domain.fallback_review import ReviewContent, ReviewOption, fallback_review
 from app.domain.line_check import LineCheck
@@ -48,6 +49,8 @@ async def _user(**fields: Any) -> User:
     defaults: dict[str, Any] = {
         "max_heart_rate": 177,
         "resting_heart_rate": 75,
+        "zone_boundary_1": 130,
+        "zone_boundary_2": 155,
         "timezone": "Asia/Tokyo",
         "review_weekday": 0,
     }
@@ -382,6 +385,90 @@ async def test_select_option_of_someone_else_is_not_found(session: AsyncSession)
     # 自分の週次レビューに、他人の週次レビューの選択肢
     with pytest.raises(ReviewNotFoundError):
         await select_option(session, me, my_review, their_options[0], today=TODAY)
+
+
+async def _weekly_rides(user: User, first_monday: date, weeks: int) -> None:
+    """first_monday から weeks 週、毎週月曜に 60 分（心拍 140、境目 130 / 155 なので中強度）。"""
+    for i in range(weeks):
+        await _ride(user, f"{(first_monday + timedelta(weeks=i)).isoformat()}T07:00")
+
+
+async def test_material_judges_the_volume_against_the_past_weeks(session: AsyncSession) -> None:
+    """過去 5 週は毎週 1 回、この週は 2 回。負荷は普段の 2 倍で「多め」。"""
+    user = await _user()
+    await _weekly_rides(user, MONDAY - timedelta(weeks=5), 5)
+    await _ride(user, "2026-10-13T07:00")
+    await _ride(user, "2026-10-15T07:00")
+
+    material = await review_material(session, user, MONDAY, TODAY)
+
+    assert material.effort.volume is Volume.HEAVY
+    assert material.effort.load_ratio == pytest.approx(2.0)
+    # 時間はすべて中強度
+    assert material.effort.mostly_moderate is True
+    # 高強度はどの週も 0 なので、急に増えたとは言わない
+    assert material.effort.hard_spike is False
+
+
+async def test_volume_is_not_judged_with_fewer_than_four_full_weeks(
+    session: AsyncSession,
+) -> None:
+    """記録を始めた日を含む途中の週は数えない。9/16（水）に始めたので、比べられるのは
+    9/21・9/28・10/5 の 3 週だけで、量は判定しない。"""
+    user = await _user()
+    await _ride(user, "2026-09-16T07:00")
+    await _weekly_rides(user, MONDAY - timedelta(weeks=3), 3)
+    await _ride(user, "2026-10-13T07:00")
+
+    material = await review_material(session, user, MONDAY, TODAY)
+
+    assert material.effort.volume is None
+    assert material.effort.mostly_moderate is True
+
+
+async def test_past_weeks_missing_heart_rate_are_not_compared(session: AsyncSession) -> None:
+    """毎週同じ 60 分でも、過去 5 週のうち 3 週に心拍がない。その 3 週を負荷 0 として
+    比べると今週は 2.5 倍の「多め」になるので、比べずに外す。残りは 2 週で、量は判定しない。"""
+    user = await _user()
+    for i in range(5, 0, -1):
+        bpm = None if i in (5, 3, 1) else 140
+        await _ride(user, f"{(MONDAY - timedelta(weeks=i)).isoformat()}T07:00", bpm=bpm)
+    await _ride(user, "2026-10-13T07:00")
+
+    material = await review_material(session, user, MONDAY, TODAY)
+
+    assert material.effort.volume is None
+    assert material.effort.load_ratio is None
+
+
+async def test_past_weeks_missing_heart_rate_leave_the_rest_to_compare(
+    session: AsyncSession,
+) -> None:
+    """心拍のない週を外しても 4 週残れば、残りの週と比べる。外した週は平均を下げない。"""
+    user = await _user()
+    await _weekly_rides(user, MONDAY - timedelta(weeks=5), 5)
+    # 3 週前の週に、心拍のないワークアウトを足す
+    await _ride(user, f"{(MONDAY - timedelta(weeks=3, days=-2)).isoformat()}T07:00", bpm=None)
+    await _ride(user, "2026-10-13T07:00")
+
+    material = await review_material(session, user, MONDAY, TODAY)
+
+    assert material.effort.volume is Volume.USUAL
+    assert material.effort.load_ratio == pytest.approx(1.0)
+
+
+async def test_heavy_week_keeps_the_writer_from_offering_more(session: AsyncSession) -> None:
+    """普段より多めに練習した週は、量を増やす選択肢を出させない。コードで決めて渡す。"""
+    user = await _user()
+    await _weekly_rides(user, MONDAY - timedelta(weeks=5), 5)
+    await _ride(user, "2026-10-13T07:00")
+    await _ride(user, "2026-10-15T07:00")
+    writer = FakeWriter(WRITTEN)
+
+    await create_review(session, user, writer, FakeChecker(SAFE), today=TODAY)
+
+    assert writer.data()["effort"]["volume_vs_usual"] == "heavy"
+    assert writer.data()["may_offer_more"] is False
 
 
 async def test_material_has_the_choice_of_the_week_before(session: AsyncSession) -> None:
