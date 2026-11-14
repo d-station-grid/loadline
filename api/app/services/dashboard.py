@@ -172,7 +172,6 @@ async def build_dashboard(
     until: date | None,
     weeks: int | None = None,
     today: date | None = None,
-    sport: Sport = "all",
 ) -> Dashboard:
     """期間（両端を含む）のダッシュボード。since がなければ最初のワークアウトの日から、
     until がなければ今日まで。保存はせず、呼ばれるたびに計算する。
@@ -184,9 +183,6 @@ async def build_dashboard(
     today は利用者のタイムゾーンでの今日。週次レビューの service が自分の決めた今日と同じ日で
     切るために渡す。省けば today_of で決める（ふだんは今の日付、デモの利用者は最後の
     ワークアウトの日）。
-
-    sport は、by_sport を読まない前の web のために残しているトップレベルの項目を、どの種目で
-    埋めるか。by_sport は sport によらず 3 種目ぶん入る。
     """
     tz = ZoneInfo(user.timezone)
     today = today or await today_of(session, user)
@@ -246,8 +242,6 @@ async def build_dashboard(
         )
 
     views = SportViews(all=view("all"), ride=view("ride"), run=view("run"))
-    # 前の web のために残している項目。sport の by_sport と同じ値
-    legacy = {"all": views.all, "ride": views.ride, "run": views.run}[sport]
 
     return Dashboard(
         since=since,
@@ -265,10 +259,4 @@ async def build_dashboard(
         form=form,
         by_sport=views,
         last_received_at=user.last_ingested_at,
-        sport=sport,
-        zones=legacy.zones,
-        workouts=legacy.workouts,
-        zone_weeks=legacy.zone_weeks,
-        totals=legacy.totals,
-        previous_totals=legacy.previous_totals,
     )

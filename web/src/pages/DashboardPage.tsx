@@ -12,7 +12,7 @@ import Chart from "../components/Chart";
 import Notes from "../components/Notes";
 import Review from "../components/Review";
 import ZoneBreakdown from "../components/ZoneBreakdown";
-import { getDashboard, getWorkouts } from "../lib/api";
+import { getWorkouts } from "../lib/api";
 import {
   TREND_CHART_HEIGHT,
   trendOption,
@@ -26,6 +26,8 @@ import {
   formatDuration,
   SPORT_LABEL,
 } from "../lib/format";
+import { EMPTY_NOTE_DRAFT, type NoteDraft } from "../lib/noteDraft";
+import { useDashboard, useNotes } from "../lib/queries";
 import {
   FORM_LABEL,
   formatChange,
@@ -48,72 +50,14 @@ const SPORTS: { key: Sport; label: string }[] = [
   { key: "run", label: "Run" },
 ];
 
+/** メモがまだ届いていないときの空の一覧。描くたびに新しい配列を作ると、チャートを描き直すため */
+const NO_NOTES: NoteOut[] = [];
+
 /** Recent workouts に出す件数 */
 const RECENT_COUNT = 3;
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Something went wrong";
-}
-
-/** 読んだ結果か、失敗の文。まだ読んでいない期間は置き場にない */
-type Entry = { data: Dashboard | null; error: string | null };
-
-/**
- * GET /dashboard を期間（週の数）ごとに読み、ダッシュボードを開いている間は結果を期間ごとに持つ。
- * 始まりの日は api が設定のタイムゾーンで決める。種目は api が 3 つまとめて返すので、
- * 種目を切り替えても読み直さない。
- *
- * 上の期間と Intensity は同じ置き場を見る。同じ期間は 1 回だけ読み、片方の期間を
- * 変えても、もう片方は持っている結果をそのまま使う。前に読んだ期間に戻したときも
- * 読み直さない。ほかの画面から戻れば、ページごと作り直すので読み直す。
- */
-function useDashboards(user: User, weeksList: number[]) {
-  const [entries, setEntries] = useState<Record<number, Entry>>({});
-  // 読んでいる最中の期間。同じ期間を 2 か所から頼んでも、重ねて読まない
-  const loading = useRef(new Set<number>());
-  const mounted = useRef(true);
-  const wanted = [...new Set(weeksList)].join(",");
-
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    for (const weeks of wanted.split(",").map(Number)) {
-      if (weeks in entries || loading.current.has(weeks)) continue;
-      loading.current.add(weeks);
-      void (async () => {
-        let entry: Entry;
-        try {
-          const data = await getDashboard({ weeks }, await user.getIdToken());
-          entry = { data, error: null };
-        } catch (e) {
-          entry = { data: null, error: errorMessage(e) };
-        }
-        loading.current.delete(weeks);
-        if (mounted.current)
-          setEntries((prev) => ({ ...prev, [weeks]: entry }));
-      })();
-    }
-  }, [user, wanted, entries]);
-
-  return (weeks: number) => {
-    const entry = entries[weeks];
-    return {
-      data: entry?.data ?? null,
-      error: entry?.error ?? null,
-      // 置き場から外すと、effect がその期間だけを読み直す
-      retry: () =>
-        setEntries((prev) => {
-          const next = { ...prev };
-          delete next[weeks];
-          return next;
-        }),
-    };
-  };
 }
 
 type SegmentedProps<K extends string> = {
@@ -181,24 +125,28 @@ export default function DashboardPage({
   // Intensity の欄だけの条件。上の期間とは別に選べる
   const [intensityRange, setIntensityRange] = useState<Range>(DEFAULT_RANGE);
   const [intensitySport, setIntensitySport] = useState<Sport>("all");
-  // Notes が読んだ期間のメモ。ラベルのある日にチャートの点線を出す
-  const [notes, setNotes] = useState<NoteOut[]>([]);
-  // メモのモーダル。閉じても Notes は外さない。チャートの印のために一覧を読み続けるため
+  // メモのモーダル。閉じたら Notes ごと外す。書きかけは noteDraft に残す
   const [noteOpen, setNoteOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState<NoteDraft>(EMPTY_NOTE_DRAFT);
   const [notePick, setNotePick] = useState<{ date: string; at: number }>();
 
   const mainWeeks = rangeOf(range).weeks;
   const intensityWeeks = rangeOf(intensityRange).weeks;
-  const dashboardOf = useDashboards(user, [mainWeeks, intensityWeeks]);
-  const main = dashboardOf(mainWeeks);
-  const intensity = dashboardOf(intensityWeeks);
-  const data = main.data;
+  // 上の期間と Intensity は同じ SWR のキャッシュを見る。同じ期間なら 1 回だけ読み、
+  // 片方の期間を変えても、もう片方は持っている結果をそのまま使う
+  const main = useDashboard(user, mainWeeks);
+  const intensity = useDashboard(user, intensityWeeks);
+  // 読み直しに失敗したら、SWR は前の結果を残すが、画面はエラーと Retry だけにする。
+  // 古い数字を今の値のように見せないため
+  const data = main.error ? null : (main.data ?? null);
 
   // 上の期間を切り替えて読み込む間も、メモの欄と Recent workouts の負荷は前の結果で出す
   // 描画の中で前の結果を覚える（React の「前の描画の情報を持つ」書き方）
   const [previous, setPrevious] = useState<Dashboard | null>(null);
   if (data && data !== previous) setPrevious(data);
   const last = data ?? previous;
+  // メモのモーダルと同じキャッシュ。ラベルのある日にチャートの点線を出す
+  const notes = useNotes(user, last?.since).data ?? NO_NOTES;
 
   /** メモのモーダルを、その日を選んで開く */
   function openNote(day: string) {
@@ -258,7 +206,12 @@ export default function DashboardPage({
           読み上げの順で、数字より先に届くよう、ここに置く */}
       <Review user={user} onOpenSettings={onOpenSettings} />
 
-      {main.error && <ErrorLine error={main.error} retry={main.retry} />}
+      {main.error && (
+        <ErrorLine
+          error={errorMessage(main.error)}
+          retry={() => void main.mutate()}
+        />
+      )}
       {data === null && !main.error && <p className="muted">Loading…</p>}
 
       {data && (
@@ -332,9 +285,13 @@ export default function DashboardPage({
 
       {/* Intensity の欄は自分の条件で読むので、上の読み込みとは別に出す */}
       <IntensityCard
-        data={intensity.data?.by_sport[intensitySport] ?? null}
-        error={intensity.error}
-        retry={intensity.retry}
+        data={
+          intensity.error
+            ? null
+            : (intensity.data?.by_sport[intensitySport] ?? null)
+        }
+        error={intensity.error ? errorMessage(intensity.error) : null}
+        retry={() => void intensity.mutate()}
         range={intensityRange}
         sport={intensitySport}
         onRange={setIntensityRange}
@@ -350,14 +307,15 @@ export default function DashboardPage({
         onOpenWorkout={onOpenWorkout}
       />
 
-      {/* 期間を切り替えて読み込み直す間も、前の結果で出し続ける。書きかけのメモを消さないため */}
-      {last && (
-        <NoteDialog open={noteOpen} onClose={() => setNoteOpen(false)}>
+      {/* 期間を切り替えて読み込み直す間も、前の結果の期間で開いたままにする */}
+      {last && noteOpen && (
+        <NoteDialog onClose={() => setNoteOpen(false)}>
           <Notes
             user={user}
             since={last.since}
             today={last.until}
-            onNotesChange={setNotes}
+            draft={noteDraft}
+            onDraftChange={setNoteDraft}
             pick={notePick}
           />
         </NoteDialog>
@@ -367,7 +325,6 @@ export default function DashboardPage({
 }
 
 type NoteDialogProps = {
-  open: boolean;
   onClose: () => void;
   children: ReactNode;
 };
@@ -377,11 +334,10 @@ const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
- * メモのモーダル。閉じている間も中身は外さずに隠すだけにする（Notes が一覧を読み続け、
- * 書きかけの本文も残る）。Esc、Close、外側を押すと閉じる。
+ * メモのモーダル。開いている間だけ描き、閉じたら外す。Esc、Close、外側を押すと閉じる。
  * 開いている間は Tab をモーダルの中で回し、閉じたら開く前の場所（「+ Note」など）にフォーカスを戻す。
  */
-function NoteDialog({ open, onClose, children }: NoteDialogProps) {
+function NoteDialog({ onClose, children }: NoteDialogProps) {
   const box = useRef<HTMLDivElement>(null);
   // 閉じる関数が変わっても、開いている間の仕掛けは張り直さない
   const close = useRef(onClose);
@@ -390,7 +346,6 @@ function NoteDialog({ open, onClose, children }: NoteDialogProps) {
   }, [onClose]);
 
   useEffect(() => {
-    if (!open) return;
     const opener =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
@@ -433,12 +388,11 @@ function NoteDialog({ open, onClose, children }: NoteDialogProps) {
       document.removeEventListener("keydown", onKeyDown);
       if (opener?.isConnected) opener.focus();
     };
-  }, [open]);
+  }, []);
 
   return (
     <div
       className="modal-backdrop"
-      hidden={!open}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

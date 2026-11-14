@@ -6,7 +6,7 @@ from fastapi.exceptions import RequestValidationError
 
 from app.domain.period import InvalidPeriodError
 from app.routers.deps import CurrentUser, DbSession
-from app.schemas.dashboard import Dashboard, Sport
+from app.schemas.dashboard import Dashboard
 from app.services.dashboard import build_dashboard
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -19,11 +19,10 @@ async def read_dashboard(
     since: Annotated[date | None, Query()] = None,
     until: Annotated[date | None, Query()] = None,
     weeks: Annotated[int | None, Query(ge=1, le=520)] = None,
-    sport: Annotated[Sport, Query(deprecated=True)] = "all",
 ) -> Dashboard:
     """本人の負荷と推移。since と until は利用者のタイムゾーンでの日付で、両端を含む。
-    種目で変わる部分は全種目・サイクリング・ランの 3 つを by_sport にまとめて返す。
-    sport は前の web のためだけに受け取り、トップレベルの zones などをその種目で埋める。
+    種目で変わる部分は全種目・サイクリング・ランの 3 つを by_sport にまとめて返すので、
+    種目では絞らない。
 
     weeks は「直近 N 週」。until（省けば今日）までのちょうど N × 7 日で、since は N 週前の
     翌日になる。since とは
@@ -41,7 +40,7 @@ async def read_dashboard(
             ]
         )
     try:
-        return await build_dashboard(session, user, since, until, weeks, sport=sport)
+        return await build_dashboard(session, user, since, until, weeks)
     except InvalidPeriodError as e:
         raise RequestValidationError(
             [

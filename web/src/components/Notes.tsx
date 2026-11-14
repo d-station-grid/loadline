@@ -1,9 +1,17 @@
 import type { User } from "firebase/auth";
-import { type SubmitEvent, useEffect, useRef, useState } from "react";
+import {
+  type Dispatch,
+  type SetStateAction,
+  type SubmitEvent,
+  useRef,
+  useState,
+} from "react";
 
 import type { NoteOut } from "../api";
-import { addNote, ApiError, deleteNote, editNote, getNotes } from "../lib/api";
+import { addNote, ApiError, deleteNote, editNote } from "../lib/api";
 import { displayWidth, MAX_LABEL_WIDTH, normalizeLabel } from "../lib/label";
+import type { EditDraft, EditDrafts, NoteDraft } from "../lib/noteDraft";
+import { useNotes, useUpdateNotes } from "../lib/queries";
 
 const MAX_BODY = 2000;
 
@@ -25,17 +33,15 @@ function newestFirst(notes: NoteOut[]): NoteOut[] {
   return [...notes].sort((a, b) => b.date.localeCompare(a.date));
 }
 
-/** since 以降のメモ。since は読んだときの期間の始まり。 */
-type NoteList = { since: string; items: NoteOut[] };
-
 type Props = {
   user: User;
   /** 一覧に出す最初の日。ダッシュボードの期間の始まり */
   since: string;
   /** 利用者のタイムゾーンでの今日。api が決めた日をそのまま使い、端末の日付は使わない */
   today: string;
-  /** 読み込んだ一覧を渡す。チャートにラベルの印を出すため。保存や削除のあとも呼ぶ */
-  onNotesChange?: (notes: NoteOut[]) => void;
+  /** 書きかけの本文とラベル。モーダルを閉じて Notes が外れても残るよう、親が持つ */
+  draft: NoteDraft;
+  onDraftChange: Dispatch<SetStateAction<NoteDraft>>;
   /** 外から日を選ぶ（チャートの日付や「+ Note」）。at が変わるたびに、その日を選び直す */
   pick?: { date: string; at: number };
 };
@@ -75,9 +81,10 @@ function LabelField({
   );
 }
 
-/** 直している途中の本文とラベル。メモの id ごとに持ち、別のメモへ移っても残す */
-type EditDraft = { body: string; label: string };
-type EditDrafts = Record<number, EditDraft>;
+/** 下書きが、送ったときの本文とラベルのままか */
+function sameDraft(draft: EditDraft | undefined, sent: EditDraft): boolean {
+  return draft?.body === sent.body && draft.label === sent.label;
+}
 
 /** 1 件の下書きを消す。保存や削除が済んだメモの分だけ */
 function withoutDraft(drafts: EditDrafts, id: number): EditDrafts {
@@ -89,18 +96,20 @@ function withoutDraft(drafts: EditDrafts, id: number): EditDrafts {
  * ダッシュボードの期間のメモと、日付を選んで書く欄。走らなかった日にも書ける。
  * 書いてある日を選ぶと、同じ欄でそのメモを直したり消したりできる。
  * ゲストは読むだけ。日付は選べるが、書く欄とボタンは押せない。
+ *
+ * 一覧はチャートと同じ SWR のキャッシュを見る。保存や削除のあとは、手元の一覧を先に直してから
+ * 裏で読み直す。書きかけは親が持つので、モーダルを閉じて外しても、開き直せば続きから書ける。
  */
 export default function Notes({
   user,
   since,
   today,
-  onNotesChange,
+  draft: written,
+  onDraftChange,
   pick,
 }: Props) {
-  // どの since で読んだ一覧かを組で持つ。今の since と違う間は読み込み中として扱う
-  const [list, setList] = useState<NoteList | null>(null);
-  // 保存のあとに一覧を読み直すために進める
-  const [reload, setReload] = useState(0);
+  const list = useNotes(user, since);
+  const updateNotes = useUpdateNotes(user);
   const [date, setDate] = useState(pick?.date ?? today);
   // 外から選ばれた日。描画の中で前の値と比べ、変わったときだけ選び直す
   const [pickedAt, setPickedAt] = useState(pick?.at);
@@ -109,38 +118,26 @@ export default function Notes({
     setDate(pick.date);
   }
   // 新しく書く本文。書いてある日を選んで直している間も残しておく
-  const [body, setBody] = useState("");
-  const [label, setLabel] = useState("");
+  const { body, label } = written;
+  const setBody = (value: string) =>
+    onDraftChange((d) => ({ ...d, body: value }));
+  const setLabel = (value: string) =>
+    onDraftChange((d) => ({ ...d, label: value }));
   // 直している本文。そのメモの下書きがなければ、メモの本文を見せる
-  const [editDrafts, setEditDrafts] = useState<EditDrafts>({});
+  const editDrafts = written.edits;
+  const setEditDrafts = (change: (edits: EditDrafts) => EditDrafts) =>
+    onDraftChange((d) => ({ ...d, edits: change(d.edits) }));
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  // 一覧の失敗と保存の失敗は分ける。一覧は読み直しに成功したら消し、Retry で読み直せる
-  const [listError, setListError] = useState<string | null>(null);
+  // 一覧の失敗と保存の失敗は分ける。一覧は読み直しに成功したら消え、Retry で読み直せる
+  const listError = list.error ? errorMessage(list.error) : null;
   const [saveError, setSaveError] = useState<string | null>(null);
   // 保存の連打よけ。disabled は描画のあとにしか効かないので、送った直後にここで止める
   const savingNow = useRef(false);
   const guest = user.isAnonymous;
 
-  useEffect(() => {
-    // 読み直すと、前に頼んだ一覧の返事は捨てる。保存より前の一覧で上書きしないため
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await getNotes({ since }, await user.getIdToken());
-        if (cancelled) return;
-        setList({ since, items: res.items });
-        setListError(null);
-      } catch (e) {
-        if (!cancelled) setListError(errorMessage(e));
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [user, since, reload]);
-
-  const notes = list && list.since === since ? list.items : null;
+  // 期間を切り替えた直後は、その期間の一覧が届くまで読み込み中として扱う
+  const notes = list.data ?? null;
   // 1 日 1 件。書いてある日を選んだら、書く欄をそのメモを直す欄に切り替える。
   // 一覧が届くまでは、書いてある日か分からないので保存させない
   const existing = notes?.find((n) => n.date === date) ?? null;
@@ -174,11 +171,6 @@ export default function Notes({
     (editBody.trim() !== existing.body ||
       normalizeLabel(editLabel) !== existing.label);
 
-  // 一覧が変わったら親に渡す。チャートの印を、保存や削除の直後に合わせるため
-  useEffect(() => {
-    if (notes) onNotesChange?.(notes);
-  }, [notes, onNotesChange]);
-
   /** 直している本文かラベルを書き換える */
   function changeDraft(change: Partial<EditDraft>) {
     if (!existing || !draft) return;
@@ -187,7 +179,7 @@ export default function Notes({
     setEditDrafts((d) => ({ ...d, [id]: { ...(d[id] ?? base), ...change } }));
   }
 
-  /** 保存・削除の共通の手順。連打を止め、終わったら一覧を読み直す */
+  /** 保存・削除の共通の手順。連打を止める */
   async function run(action: () => Promise<string>) {
     if (savingNow.current) return;
     savingNow.current = true;
@@ -199,7 +191,7 @@ export default function Notes({
     } catch (e) {
       setSaveError(errorMessage(e));
       // 別の画面で消されていたときは、一覧を読み直して書く欄に戻す
-      if (e instanceof ApiError && e.status === 404) setReload((n) => n + 1);
+      if (e instanceof ApiError && e.status === 404) void updateNotes(since);
     } finally {
       savingNow.current = false;
       setSaving(false);
@@ -213,17 +205,10 @@ export default function Notes({
     setSaveError(null);
   }
 
-  /** 手元の一覧のメモを差し替える。読み直しが届くまでの間も見えるように */
-  function replaceInList(id: number, next: NoteOut | null) {
-    setList((prev) =>
-      prev
-        ? {
-            ...prev,
-            items: prev.items.flatMap((n) =>
-              n.id !== id ? [n] : next ? [next] : [],
-            ),
-          }
-        : prev,
+  /** 読んだ期間の一覧のメモを差し替え（next が null なら外し）、裏で読み直す */
+  function replaceInList(listSince: string, id: number, next: NoteOut | null) {
+    return updateNotes(listSince, (items) =>
+      items.flatMap((n) => (n.id !== id ? [n] : next ? [next] : [])),
     );
   }
 
@@ -232,36 +217,39 @@ export default function Notes({
     if (existing) {
       if (!canSaveEdit) return;
       const target = existing;
+      const listSince = since;
+      const sent: EditDraft = { body: editBody, label: editLabel };
       await run(async () => {
         const note = await editNote(
           target.id,
           { body: editBody, label: normalizeLabel(editLabel) },
           await user.getIdToken(),
         );
-        replaceInList(target.id, note);
-        setReload((n) => n + 1);
-        setEditDrafts((d) => withoutDraft(d, target.id));
+        await replaceInList(listSince, target.id, note);
+        // 消すのは送った下書きだけ。保存中にモーダルを開き直して書き足した分は残す
+        setEditDrafts((d) =>
+          sameDraft(d[target.id], sent) ? withoutDraft(d, target.id) : d,
+        );
         return "Saved";
       });
       return;
     }
     if (!canSave) return;
+    const listSince = since;
+    const sent: EditDraft = { body, label };
     await run(async () => {
       const note = await addNote(
         { date, body, label: normalizeLabel(label) },
         await user.getIdToken(),
       );
-      // 読み直しが届くまでの間も見えるよう、手元の一覧に足しておく。
-      // 保存中に期間を切り替えられたら、前の期間の一覧には足さない
-      setList((prev) =>
-        prev && note.date >= prev.since
-          ? { ...prev, items: newestFirst([...prev.items, note]) }
-          : prev,
+      // 読み直しが届くまでの間も見えるよう、書いたときの期間の一覧に足しておく。
+      // 保存中に期間を切り替えられても、足すのはその期間の一覧だけ
+      await updateNotes(listSince, (items) => newestFirst([...items, note]));
+      // 消すのは送った本文とラベルだけ。保存中はこの欄を止めているが、モーダルを閉じて
+      // 開き直すと書ける（Notes が作り直されて saving が戻る）。そこで書いた分は残す
+      onDraftChange((d) =>
+        sameDraft(d, sent) ? { ...d, body: "", label: "" } : d,
       );
-      setReload((n) => n + 1);
-      // 保存中は欄を無効にしているので、ここで消すのは送った本文だけ
-      setBody("");
-      setLabel("");
       return "Saved";
     });
   }
@@ -269,12 +257,12 @@ export default function Notes({
   async function handleDelete() {
     if (!existing || saving) return;
     const target = existing;
+    const listSince = since;
     if (!window.confirm(`Delete the note for ${target.date}?`)) return;
     await run(async () => {
       await deleteNote(target.id, await user.getIdToken());
       // 消した日は空くので、書く欄に戻る
-      replaceInList(target.id, null);
-      setReload((n) => n + 1);
+      await replaceInList(listSince, target.id, null);
       // 消したメモの下書きだけ消す。ほかのメモの書きかけは残す
       setEditDrafts((d) => withoutDraft(d, target.id));
       return "Deleted";
@@ -355,13 +343,7 @@ export default function Notes({
       {listError && (
         <p role="alert">
           {listError}{" "}
-          <button
-            type="button"
-            onClick={() => {
-              setListError(null);
-              setReload((n) => n + 1);
-            }}
-          >
+          <button type="button" onClick={() => void list.mutate()}>
             Retry
           </button>
         </p>

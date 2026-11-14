@@ -51,10 +51,6 @@ export type Changes = {
  * days が空なら None。last_received_at は Health Auto Export からの取り込みが最後に
  * 成功した日時で、成功したことがなければ None（デモの利用者は常に None）。新しい記録が
  * 保存されたとは限らない（同じ記録が届き直しただけでも進む）。
- *
- * sport から previous_totals までは、by_sport を読まない前の web のために残している項目で、
- * sport クエリ（省けば all）の by_sport と同じ値。配信の前に開いたタブが、新しい応答で
- * 落ちないようにするため。今の web は読まない。web が SWR に替わる PR で消す。
  */
 export type Dashboard = {
   /**
@@ -84,36 +80,6 @@ export type Dashboard = {
    * Last Received At
    */
   last_received_at: string | null;
-  /**
-   * Sport
-   *
-   * @deprecated
-   */
-  sport: "all" | "ride" | "run";
-  /**
-   * @deprecated
-   */
-  zones: ZoneSeconds | null;
-  /**
-   * Workouts
-   *
-   * @deprecated
-   */
-  workouts: Array<WorkoutPoint>;
-  /**
-   * Zone Weeks
-   *
-   * @deprecated
-   */
-  zone_weeks: Array<ZoneWeek> | null;
-  /**
-   * @deprecated
-   */
-  totals: Totals;
-  /**
-   * @deprecated
-   */
-  previous_totals: Totals;
 };
 
 /**
@@ -999,12 +965,6 @@ export type ReadDashboardDashboardGetData = {
      * Weeks
      */
     weeks?: number | null;
-    /**
-     * Sport
-     *
-     * @deprecated
-     */
-    sport?: "all" | "ride" | "run";
   };
   url: "/dashboard";
 };
