@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { User } from "firebase/auth";
 import { beforeEach, expect, test, vi } from "vitest";
 
-import type { Dashboard, WorkoutSummary } from "../api";
+import type { Dashboard, SportView, WorkoutSummary } from "../api";
 import { getDashboard, getWorkouts } from "../lib/api";
 import { formatDay } from "../lib/format";
 import DashboardPage from "./DashboardPage";
@@ -22,14 +22,38 @@ vi.mock("../components/Chart", () => ({ default: () => null }));
 
 const user = { getIdToken: async () => "token" } as unknown as User;
 
+/** extra のうち zones・workouts・zone_weeks・totals・previous_totals は、3 種目とも同じ値にする */
 function dashboard(
-  workouts: Dashboard["workouts"],
-  extra: Partial<Dashboard> = {},
+  workouts: SportView["workouts"],
+  extra: Partial<Dashboard & SportView> = {},
 ): Dashboard {
+  const { zones, zone_weeks, totals, previous_totals, ...rest } = extra;
+  const view: SportView = {
+    zones: zones === undefined ? { low: 3600, mid: 1800, high: 600 } : zones,
+    workouts,
+    zone_weeks: zone_weeks === undefined ? [] : zone_weeks,
+    totals: totals ?? {
+      start: "2026-08-10",
+      end: "2026-11-01",
+      workouts: workouts.length,
+      total_sec: 3600 * workouts.length,
+      load: null,
+      load_per_workout: null,
+      workouts_without_load: 0,
+    },
+    previous_totals: previous_totals ?? {
+      start: "2026-05-18",
+      end: "2026-08-09",
+      workouts: 0,
+      total_sec: 0,
+      load: 0,
+      load_per_workout: null,
+      workouts_without_load: 0,
+    },
+  };
   return {
     since: "2026-08-10",
     until: "2026-11-01",
-    sport: "all",
     needs_heart_rate_settings: false,
     days: [
       {
@@ -41,8 +65,6 @@ function dashboard(
       },
     ],
     vo2max: [{ day: "2026-10-26", value: 48.7, average: 48.5 }],
-    zones: { low: 3600, mid: 1800, high: 600 },
-    workouts,
     changes: {
       fitness: 5,
       fatigue: 5,
@@ -51,27 +73,12 @@ function dashboard(
       vo2max_since: "2026-09-20",
     },
     form: "steady",
-    zone_weeks: [],
-    totals: {
-      start: "2026-08-10",
-      end: "2026-11-01",
-      workouts: workouts.length,
-      total_sec: 3600 * workouts.length,
-      load: null,
-      load_per_workout: null,
-      workouts_without_load: 0,
-    },
-    previous_totals: {
-      start: "2026-05-18",
-      end: "2026-08-09",
-      workouts: 0,
-      total_sec: 0,
-      load: 0,
-      load_per_workout: null,
-      workouts_without_load: 0,
-    },
+    by_sport: { all: view, ride: view, run: view },
     last_received_at: null,
-    ...extra,
+    // 前の web のために api が残している項目。今の画面は読まない
+    sport: "all",
+    ...view,
+    ...rest,
   };
 }
 
@@ -109,22 +116,37 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-test("上の期間と Intensity が同じ条件の間は、GET /dashboard を 1 回だけ読む", async () => {
+test("上の期間と Intensity が同じ期間の間は、GET /dashboard を 1 回だけ読む", async () => {
   vi.mocked(getDashboard).mockResolvedValue(dashboard([point(1, 50)]));
   vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
   render(<DashboardPage {...props} />);
 
   await screen.findByText("Time in each zone");
   expect(getDashboard).toHaveBeenCalledTimes(1);
+  expect(vi.mocked(getDashboard).mock.calls[0][0]).toEqual({ weeks: 13 });
+});
 
-  // Intensity の種目を変えると、その条件で別に読む
+test("Intensity の種目を変えても読み直さず、その種目のぶんを出す", async () => {
+  const all = dashboard([point(1, 50)]);
+  const rides: SportView = {
+    ...all.by_sport.ride,
+    totals: { ...all.by_sport.ride.totals, workouts: 7 },
+  };
+  vi.mocked(getDashboard).mockResolvedValue({
+    ...all,
+    by_sport: { ...all.by_sport, ride: rides },
+  });
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
+  render(<DashboardPage {...props} />);
+  expect(
+    await screen.findByText("All · last 3 months · 1"),
+  ).toBeInTheDocument();
+
   const sport = screen.getByRole("group", { name: "Intensity sport" });
   fireEvent.click(within(sport).getByRole("button", { name: "Ride" }));
 
-  await vi.waitFor(() => expect(getDashboard).toHaveBeenCalledTimes(2));
-  expect(vi.mocked(getDashboard).mock.calls[1][0]).toMatchObject({
-    sport: "ride",
-  });
+  expect(screen.getByText("Ride · last 3 months · 7")).toBeInTheDocument();
+  expect(getDashboard).toHaveBeenCalledTimes(1);
 });
 
 test("期間を切り替えて読み込み直す間も、Recent workouts の負荷を出し続ける", async () => {
