@@ -1,6 +1,6 @@
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.domain.calendar import is_known_timezone
 
 
 class SettingsFields(BaseModel):
@@ -19,10 +19,8 @@ class SettingsFields(BaseModel):
     @field_validator("timezone")
     @classmethod
     def timezone_must_exist(cls, value: str) -> str:
-        try:
-            ZoneInfo(value)
-        except (ZoneInfoNotFoundError, ValueError) as e:
-            raise ValueError(f"unknown timezone: {value}") from e
+        if not is_known_timezone(value):
+            raise ValueError(f"unknown timezone: {value}")
         return value
 
     @model_validator(mode="after")

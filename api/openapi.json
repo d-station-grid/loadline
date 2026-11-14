@@ -11,8 +11,25 @@
           "auth"
         ],
         "summary": "Login",
-        "description": "ID トークンで本人を確かめ、初回なら利用者の行を作って返す。\n\nアカウントを消した人のトークンは 401（行を作り直さない）。ゲスト（Firebase の匿名\nログイン）は行を作らず、デモの利用者を返す。",
+        "description": "ID トークンで本人を確かめ、初回なら利用者の行を作って返す。\n\n初回は本文の timezone（ブラウザのタイムゾーン）を利用者の設定にする。空や知らない名前\nなら既定値。2 回目からは本文を見ない。アカウントを消した人のトークンは 401（行を作り\n直さない）。ゲスト（Firebase の匿名ログイン）は行を作らず、デモの利用者を返す。",
         "operationId": "login_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LoginIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -26,6 +43,16 @@
           },
           "503": {
             "description": "ゲスト（匿名ログイン）で入ったが、デモデータがまだ入っていない"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1300,6 +1327,24 @@
         ],
         "title": "IngestTokenOut",
         "description": "POST /settings/ingest-token の返事。平文のトークンはこのときだけ返す。"
+      },
+      "LoginIn": {
+        "properties": {
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "type": "object",
+        "title": "LoginIn",
+        "description": "POST /auth/login の本文。省いてもよい。"
       },
       "MetricIn": {
         "properties": {

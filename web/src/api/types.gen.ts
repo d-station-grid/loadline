@@ -269,6 +269,18 @@ export type IngestTokenOut = {
 };
 
 /**
+ * LoginIn
+ *
+ * POST /auth/login の本文。省いてもよい。
+ */
+export type LoginIn = {
+  /**
+   * Timezone
+   */
+  timezone?: string | null;
+};
+
+/**
  * MetricIn
  */
 export type MetricIn = {
@@ -884,7 +896,10 @@ export type ZoneWeek = {
 };
 
 export type LoginAuthLoginPostData = {
-  body?: never;
+  /**
+   * Body
+   */
+  body?: LoginIn | null;
   path?: never;
   query?: never;
   url: "/auth/login";
@@ -892,10 +907,17 @@ export type LoginAuthLoginPostData = {
 
 export type LoginAuthLoginPostErrors = {
   /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+  /**
    * ゲスト（匿名ログイン）で入ったが、デモデータがまだ入っていない
    */
   503: unknown;
 };
+
+export type LoginAuthLoginPostError =
+  LoginAuthLoginPostErrors[keyof LoginAuthLoginPostErrors];
 
 export type LoginAuthLoginPostResponses = {
   /**

@@ -57,3 +57,44 @@ async def test_login_without_token_is_401(client: AsyncClient) -> None:
     res = await client.post("/auth/login")
 
     assert res.status_code == 401
+
+
+async def _login_and_get_timezone(
+    client: AsyncClient, session: AsyncSession, body: dict[str, object] | None
+) -> str:
+    res = await client.post("/auth/login", headers=HEADERS, json=body)
+    assert res.status_code == 200
+    user = await session.scalar(select(User).where(User.firebase_uid == "uid-1"))
+    assert user is not None
+    await session.refresh(user)
+    return user.timezone
+
+
+async def test_first_login_uses_browser_timezone(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    timezone = await _login_and_get_timezone(client, session, {"timezone": "America/New_York"})
+
+    assert timezone == "America/New_York"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [None, {}, {"timezone": None}, {"timezone": ""}, {"timezone": "Mars/Olympus_Mons"}],
+)
+async def test_first_login_falls_back_to_default_timezone(
+    client: AsyncClient, session: AsyncSession, body: dict[str, object] | None
+) -> None:
+    timezone = await _login_and_get_timezone(client, session, body)
+
+    assert timezone == "Asia/Tokyo"
+
+
+async def test_later_login_keeps_existing_timezone(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    await client.post("/auth/login", headers=HEADERS, json={"timezone": "Europe/London"})
+
+    timezone = await _login_and_get_timezone(client, session, {"timezone": "America/New_York"})
+
+    assert timezone == "Europe/London"

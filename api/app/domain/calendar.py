@@ -5,7 +5,16 @@
 """
 
 from datetime import date, datetime, time, timedelta
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+
+def is_known_timezone(name: str) -> bool:
+    """IANA のタイムゾーン名（"Asia/Tokyo" など）として読めるか。空や知らない名前は False。"""
+    try:
+        ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        return False
+    return True
 
 
 def today_in(tz: ZoneInfo, now: datetime | None = None) -> date:
