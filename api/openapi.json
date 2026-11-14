@@ -1861,15 +1861,19 @@
           "email": {
             "type": "string",
             "title": "Email"
+          },
+          "language": {
+            "$ref": "#/components/schemas/Language"
           }
         },
         "type": "object",
         "required": [
           "id",
-          "email"
+          "email",
+          "language"
         ],
         "title": "UserOut",
-        "description": "ログインした本人に返す情報。"
+        "description": "ログインした本人に返す情報。language は画面の言語で、web はログインの直後から使う。"
       },
       "ValidationError": {
         "properties": {

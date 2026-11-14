@@ -1,5 +1,7 @@
 from pydantic import BaseModel, ConfigDict
 
+from app.domain.language import Language
+
 
 class LoginIn(BaseModel):
     """POST /auth/login の本文。省いてもよい。"""
@@ -13,9 +15,10 @@ class LoginIn(BaseModel):
 
 
 class UserOut(BaseModel):
-    """ログインした本人に返す情報。"""
+    """ログインした本人に返す情報。language は画面の言語で、web はログインの直後から使う。"""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     email: str
+    language: Language

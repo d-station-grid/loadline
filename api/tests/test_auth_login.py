@@ -158,3 +158,11 @@ async def test_later_login_keeps_existing_language(
     await client.post("/auth/login", headers=HEADERS, json={"language": "en-US"})
 
     assert await _login_and_get_language(client, session, {"language": "ja-JP"}) == "en"
+
+
+async def test_login_returns_the_language(client: AsyncClient) -> None:
+    """web はログインの直後から、応答の言語で画面を出す。"""
+    res = await client.post("/auth/login", headers=HEADERS, json={"language": "ja-JP"})
+
+    assert res.status_code == 200
+    assert res.json()["language"] == "ja"
