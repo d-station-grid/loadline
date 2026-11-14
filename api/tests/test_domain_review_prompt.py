@@ -51,7 +51,7 @@ def material(
     return m if effort is None else replace(m, effort=effort)
 
 
-HEAVY_HARD = Effort(volume=Volume.HEAVY, load_ratio=1.62, mostly_moderate=True, hard_spike=True)
+HEAVY_HARD = Effort(volume=Volume.HEAVY, load_ratio=1.62, mostly_moderate=True, hard_went_up=True)
 
 
 def prompt_data(
@@ -126,7 +126,7 @@ def test_prompt_passes_the_effort_decided_by_code_without_the_ratio() -> None:
     assert data["effort"] == {
         "volume_vs_usual": "heavy",
         "mostly_moderate_intensity": True,
-        "hard_efforts_jumped": True,
+        "hard_effort_time_went_up": True,
     }
     assert "1.62" not in text
 
@@ -135,33 +135,33 @@ def test_prompt_passes_null_when_the_volume_cannot_be_judged() -> None:
     assert prompt_data(material())["effort"] == {
         "volume_vs_usual": None,
         "mostly_moderate_intensity": False,
-        "hard_efforts_jumped": False,
+        "hard_effort_time_went_up": False,
     }
 
 
 @pytest.mark.parametrize("situation", [Situation.FRESH, Situation.STEADY])
 def test_heavy_week_keeps_options_from_adding_load(situation: Situation) -> None:
     """普段より多めに練習した週は、休めている週や順調な週でも量を増やす選択肢を出さない。"""
-    heavy = Effort(volume=Volume.HEAVY, load_ratio=1.6, mostly_moderate=False, hard_spike=False)
+    heavy = Effort(volume=Volume.HEAVY, load_ratio=1.6, mostly_moderate=False, hard_went_up=False)
 
     assert prompt_data(material(situation=situation, effort=heavy))["may_offer_more"] is False
 
 
 @pytest.mark.parametrize("volume", [Volume.LIGHT, Volume.USUAL, None])
 def test_other_volumes_leave_rested_weeks_free_to_add_load(volume: Volume | None) -> None:
-    effort = Effort(volume=volume, load_ratio=None, mostly_moderate=False, hard_spike=False)
+    effort = Effort(volume=volume, load_ratio=None, mostly_moderate=False, hard_went_up=False)
 
     assert prompt_data(material(situation=Situation.FRESH, effort=effort))["may_offer_more"] is True
 
 
 def test_system_instruction_explains_the_effort() -> None:
-    for key in ("volume_vs_usual", "mostly_moderate_intensity", "hard_efforts_jumped"):
+    for key in ("volume_vs_usual", "mostly_moderate_intensity", "hard_effort_time_went_up"):
         assert f"`{key}`" in SYSTEM_INSTRUCTION
     assert "not as a mistake" in SYSTEM_INSTRUCTION
 
 
 def test_system_instruction_does_not_say_hard_efforts_caused_the_jump() -> None:
-    """hard_efforts_jumped は高強度の時間も増えたことしか示さない。増えた分の原因を
+    """hard_effort_time_went_up は高強度の時間も増えたことしか示さない。増えた分の原因を
     高強度と言わせない。"""
     assert "came mostly from hard efforts" not in SYSTEM_INSTRUCTION
     assert "time at hard effort also went up" in SYSTEM_INSTRUCTION

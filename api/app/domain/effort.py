@@ -12,7 +12,10 @@
 悪いとは決めない。80:20 は週 10 時間以上練習するエリートの配分の記述で、市民ランナーでは
 中強度寄りの練習と差が出なかった研究もあるため。高強度の多さは、割合だけでは判定しない。
 練習時間の短い人は割合が高めでも量は少ないので、量が「多め」の週に、高強度の時間の増え方が
-負荷全体の増え方より大きいときだけ「高強度で急に増えた」とする。
+負荷全体の増え方より大きいときだけ「量が多めで、高強度の時間も増えた」とする。「急に」に
+当たるのは負荷全体（普段の 1.5 倍以上）で、高強度について確かめるのは増え方の比べだけ。
+過去の高強度が 0 分なら、比べる基準がないので判定しない（量の判定で過去の負荷が 0 のときと
+同じ）。0 分から 1 分になっただけで「高強度の時間も増えた」と言わないため。
 """
 
 from collections.abc import Sequence
@@ -54,16 +57,17 @@ class Effort:
     volume と load_ratio は、量を判定できなければ None（過去の週が足りない、その週に
     負荷の分からない日がある、過去の負荷が 0）。
     mostly_moderate は、中強度の時間が低強度より長い。強度ごとの時間が分からなければ False。
-    hard_spike は、量が多めで、その増え方が高強度の時間に偏っている。
+    hard_went_up は、量が多めで、高強度の時間の増え方が負荷全体の増え方より大きい。
+    過去の高強度が 0 分なら判定しない（False）。
     """
 
     volume: Volume | None
     load_ratio: float | None
     mostly_moderate: bool
-    hard_spike: bool
+    hard_went_up: bool
 
 
-NO_EFFORT = Effort(volume=None, load_ratio=None, mostly_moderate=False, hard_spike=False)
+NO_EFFORT = Effort(volume=None, load_ratio=None, mostly_moderate=False, hard_went_up=False)
 
 
 def judge_effort(
@@ -98,15 +102,15 @@ def judge_effort(
 
     mostly_moderate = zones is not None and zones.mid > zones.low
 
-    hard_spike = False
-    if volume is Volume.HEAVY and ratio is not None and zones is not None and zones.high > 0:
+    hard_went_up = False
+    if volume is Volume.HEAVY and ratio is not None and zones is not None:
         usual_high = sum(w.high_sec for w in recent) / len(recent)
-        # 過去に高強度がなかったのに、この週はあるなら、増え方は負荷全体より大きい
-        hard_spike = usual_high == 0 or zones.high / usual_high > ratio
+        # 過去に高強度がなければ、比べる基準がないので判定しない
+        hard_went_up = usual_high > 0 and zones.high / usual_high > ratio
 
     return Effort(
         volume=volume,
         load_ratio=ratio,
         mostly_moderate=mostly_moderate,
-        hard_spike=hard_spike,
+        hard_went_up=hard_went_up,
     )

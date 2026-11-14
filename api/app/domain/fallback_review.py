@@ -90,7 +90,7 @@ _SAME_AS_NOW = frozenset(
 # 高強度は「負荷が普段より多く、高強度の時間も増えた」までしか言わない。判定は増え方の比べ
 # だけで、負荷の増えた分の大半が高強度だったとは確かめていないため（過去に高強度が 0 分なら、
 # 1 分増えただけでも立つ）。
-_HARD_SPIKE = (
+_HARD_WENT_UP = (
     "Your load was well above usual, and hard-effort time went up too, so ease off hard sessions."
 )
 _HEAVY = "You did well above your usual load this week, so let that work sink in."
@@ -141,11 +141,11 @@ def _with_swap(options: tuple[ReviewOption, ...]) -> tuple[ReviewOption, ...]:
 def _effort_line(effort: Effort) -> tuple[str | None, str | None]:
     """量と配分の一言。(締めと入れ替える文, 締めの前に足す文) のどちらか 1 つだけを返す。
 
-    高強度で急に増えた > 多め > 中強度寄り > いつもどおり > 少なめ の順に 1 つ選ぶ。
+    量が多めで高強度の時間も増えた > 多め > 中強度寄り > いつもどおり > 少なめ の順に 1 つ選ぶ。
     何も判定できなければ (None, None)（締めの 1 文をそのまま使う）。
     """
-    if effort.hard_spike:
-        return _HARD_SPIKE, None
+    if effort.hard_went_up:
+        return _HARD_WENT_UP, None
     if effort.volume is Volume.HEAVY:
         return _HEAVY, None
     if effort.mostly_moderate:

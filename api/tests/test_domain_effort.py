@@ -82,7 +82,7 @@ def test_volume_is_not_judged_without_enough_to_compare(
 
     assert effort.volume is None
     assert effort.load_ratio is None
-    assert effort.hard_spike is False
+    assert effort.hard_went_up is False
 
 
 @pytest.mark.parametrize(
@@ -101,41 +101,46 @@ def test_mostly_moderate_when_moderate_is_longer_than_easy(
     assert judge(zones=zones, past=[]).mostly_moderate is mostly_moderate
 
 
-def test_hard_spike_when_hard_time_grew_more_than_the_load() -> None:
+def test_hard_went_up_when_hard_time_grew_more_than_the_load() -> None:
     # 負荷は 2 倍、高強度は 600 → 1800 秒で 3 倍
     effort = judge(200.0, zones=ZoneTimes(low=6000, mid=1200, high=1800))
 
     assert effort.volume is Volume.HEAVY
-    assert effort.hard_spike is True
+    assert effort.hard_went_up is True
 
 
-def test_no_hard_spike_when_hard_time_grew_less_than_the_load() -> None:
+def test_no_hard_went_up_when_hard_time_grew_less_than_the_load() -> None:
     # 負荷は 2 倍、高強度は 600 → 900 秒で 1.5 倍。増えたのは主に低・中強度
     effort = judge(200.0, zones=ZoneTimes(low=12000, mid=2400, high=900))
 
     assert effort.volume is Volume.HEAVY
-    assert effort.hard_spike is False
+    assert effort.hard_went_up is False
 
 
-def test_hard_spike_when_there_was_no_hard_time_before() -> None:
+def test_hard_time_is_not_judged_when_there_was_none_before() -> None:
+    """過去の高強度が 0 分なら、比べる基準がないので判定しない。0 分から 1 分になっただけで
+    「高強度の時間も増えた」と言わないため。"""
     past = history(week=PastWeek(load=100.0, high_sec=0))
 
-    assert judge(200.0, zones=ZoneTimes(low=6000, mid=0, high=60), past=past).hard_spike is True
+    effort = judge(200.0, zones=ZoneTimes(low=6000, mid=0, high=60), past=past)
+
+    assert effort.volume is Volume.HEAVY
+    assert effort.hard_went_up is False
 
 
-def test_no_hard_spike_unless_the_volume_is_heavy() -> None:
+def test_no_hard_went_up_unless_the_volume_is_heavy() -> None:
     """高強度の割合が高くても、量が普段どおりなら判定しない。"""
     effort = judge(100.0, zones=ZoneTimes(low=600, mid=0, high=3000))
 
     assert effort.volume is Volume.USUAL
-    assert effort.hard_spike is False
+    assert effort.hard_went_up is False
 
 
-def test_no_hard_spike_without_zones() -> None:
-    assert judge(200.0, zones=None).hard_spike is False
+def test_no_hard_went_up_without_zones() -> None:
+    assert judge(200.0, zones=None).hard_went_up is False
 
 
 def test_no_effort_judges_nothing() -> None:
     assert NO_EFFORT == Effort(
-        volume=None, load_ratio=None, mostly_moderate=False, hard_spike=False
+        volume=None, load_ratio=None, mostly_moderate=False, hard_went_up=False
     )

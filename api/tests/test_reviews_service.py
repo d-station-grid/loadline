@@ -412,8 +412,8 @@ async def test_material_judges_the_volume_against_the_past_weeks(session: AsyncS
     assert material.effort.load_ratio == pytest.approx(2.0)
     # 時間はすべて中強度
     assert material.effort.mostly_moderate is True
-    # 高強度はどの週も 0 なので、急に増えたとは言わない
-    assert material.effort.hard_spike is False
+    # 高強度はどの週も 0 なので、比べる基準がなく判定しない
+    assert material.effort.hard_went_up is False
 
 
 async def test_volume_is_not_judged_with_fewer_than_four_full_weeks(

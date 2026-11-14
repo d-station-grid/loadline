@@ -277,7 +277,7 @@ def test_without_the_health_flag_rested_weeks_may_add_load(situation: Situation)
     assert adds_load(" ".join(f"{o.label} {o.description}" for o in options)) != []
 
 
-HEAVY = Effort(volume=Volume.HEAVY, load_ratio=1.6, mostly_moderate=False, hard_spike=False)
+HEAVY = Effort(volume=Volume.HEAVY, load_ratio=1.6, mostly_moderate=False, hard_went_up=False)
 
 
 @pytest.mark.parametrize("situation", list(Situation))
@@ -293,7 +293,7 @@ def test_heavy_week_removes_options_that_add_load(situation: Situation) -> None:
 @pytest.mark.parametrize("volume", [Volume.LIGHT, Volume.USUAL, None])
 def test_other_volumes_still_let_the_fresh_week_add_load(volume: Volume | None) -> None:
     """量が多めでなければ、休めている週の選択肢は変えない（増やす選択肢を残す）。"""
-    effort = Effort(volume=volume, load_ratio=None, mostly_moderate=False, hard_spike=False)
+    effort = Effort(volume=volume, load_ratio=None, mostly_moderate=False, hard_went_up=False)
 
     assert (
         fallback_review(week(Situation.FRESH), effort=effort).options
@@ -302,10 +302,10 @@ def test_other_volumes_still_let_the_fresh_week_add_load(volume: Volume | None) 
 
 
 def effort(
-    volume: Volume | None = None, mostly_moderate: bool = False, hard_spike: bool = False
+    volume: Volume | None = None, mostly_moderate: bool = False, hard_went_up: bool = False
 ) -> Effort:
     return Effort(
-        volume=volume, load_ratio=None, mostly_moderate=mostly_moderate, hard_spike=hard_spike
+        volume=volume, load_ratio=None, mostly_moderate=mostly_moderate, hard_went_up=hard_went_up
     )
 
 
@@ -315,7 +315,7 @@ EFFORTS = [
     pytest.param(effort(Volume.LIGHT), id="light"),
     pytest.param(effort(Volume.USUAL), id="usual"),
     pytest.param(effort(Volume.HEAVY), id="heavy"),
-    pytest.param(effort(Volume.HEAVY, hard_spike=True), id="hard_spike"),
+    pytest.param(effort(Volume.HEAVY, hard_went_up=True), id="hard_went_up"),
     pytest.param(effort(Volume.USUAL, mostly_moderate=True), id="mostly_moderate"),
     pytest.param(effort(Volume.HEAVY, True, True), id="all"),
 ]
@@ -354,7 +354,7 @@ def test_effort_keeps_the_script_and_options_short(
         (effort(Volume.LIGHT), "Your load was lighter than usual."),
         (effort(Volume.USUAL), "Your load matched your usual weeks."),
         (effort(Volume.HEAVY), "well above your usual load"),
-        (effort(Volume.HEAVY, hard_spike=True), "hard-effort time went up too"),
+        (effort(Volume.HEAVY, hard_went_up=True), "hard-effort time went up too"),
         (effort(Volume.USUAL, mostly_moderate=True), "moderate effort"),
     ],
 )
@@ -365,7 +365,7 @@ def test_tired_rested_and_steady_weeks_say_the_effort(
 
 
 def test_the_effort_line_says_one_thing_by_priority() -> None:
-    """高強度で急に増えた > 多め > 中強度寄り > いつもどおり の順に 1 つだけ言う。"""
+    """量が多めで高強度の時間も増えた > 多め > 中強度寄り > いつもどおり の順に 1 つだけ言う。"""
     script = fallback_review(week(Situation.STEADY), effort=effort(Volume.HEAVY, True, True)).script
 
     assert "hard-effort time went up too" in script
@@ -441,16 +441,29 @@ def test_usual_and_light_weeks_keep_the_closing_of_the_situation(
         assert praise not in script
 
 
-def test_hard_spike_line_says_only_what_the_judgment_checked() -> None:
-    """hard_spike は高強度の時間の増え方を比べただけで、負荷の増えた分の大半が高強度だったかは
-    確かめていない。過去は毎週、低強度 120 分・高強度 0 分、今週は低強度 240 分・高強度 1 分でも
+def test_hard_went_up_line_says_only_what_the_judgment_checked() -> None:
+    """hard_went_up は高強度の時間の増え方を比べただけで、負荷の増えた分の大半が高強度だったかは
+    確かめていない。過去は毎週、低強度 120 分・高強度 1 分、今週は低強度 240 分・高強度 3 分でも
     立つ。セリフは「負荷が多く、高強度の時間も増えた」までにし、原因を断定しない。"""
-    past = [PastWeek(load=100.0, high_sec=0)] * 9
-    e = judge_effort(205.0, 0, ZoneTimes(low=240 * 60, mid=0, high=60), past)
-    assert e.hard_spike is True
+    past = [PastWeek(load=100.0, high_sec=60)] * 9
+    e = judge_effort(205.0, 0, ZoneTimes(low=240 * 60, mid=0, high=180), past)
+    assert e.hard_went_up is True
 
     script = fallback_review(week(Situation.STEADY), effort=e).script
 
     assert "hard-effort time went up too" in script
-    for overstated in ("mostly", "mainly", "came from", "because of"):
+    for overstated in ("mostly", "mainly", "came from", "because of", "jump", "sudden"):
         assert overstated not in script
+
+
+def test_one_minute_of_hard_effort_from_none_is_only_heavy() -> None:
+    """過去は毎週、低強度 120 分・高強度 0 分、今週は低強度 240 分・高強度 1 分。高強度は
+    比べる基準がないので判定せず、「多め」の一言だけを言う。"""
+    past = [PastWeek(load=100.0, high_sec=0)] * 9
+    e = judge_effort(205.0, 0, ZoneTimes(low=240 * 60, mid=0, high=60), past)
+
+    script = fallback_review(week(Situation.STEADY), effort=e).script
+
+    assert e.hard_went_up is False
+    assert "well above your usual load" in script
+    assert "hard" not in script
