@@ -8,6 +8,7 @@ import type { Dashboard, SportView, WorkoutSummary } from "../api";
 import { getDashboard, getNotes, getWorkouts } from "../lib/api";
 import { formatDay } from "../lib/format";
 import { SWR_OPTIONS } from "../lib/queries";
+import { I18nProvider } from "../i18n";
 import DashboardPage from "./DashboardPage";
 
 vi.mock("../lib/api", () => ({
@@ -386,10 +387,33 @@ test("カードの下に、api の差と Form の一言を出す。VO2max は比
   // 測定が空くと 4 週より前と比べるので、「in 4 weeks」ではなく比べた日を書く
   expect(
     within(stats).getByText(
-      `+0.1 since ${formatDay("2026-08-20")} · ${formatDay("2026-10-26")}`,
+      `+0.1 since ${formatDay("2026-08-20", "en-US")} · ${formatDay("2026-10-26", "en-US")}`,
     ),
   ).toBeInTheDocument();
   expect(within(stats).queryByText(/in 4 weeks/)).toBeNull();
+});
+
+test("画面の言語が日本語なら、見出しとカードを日本語で出す", async () => {
+  vi.mocked(getDashboard).mockResolvedValue(
+    dashboard([], { form: "fatigued" }),
+  );
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
+  render(<DashboardPage {...props} />, {
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <I18nProvider language="ja" setLanguage={() => {}}>
+        <SWRConfig value={{ ...SWR_OPTIONS, provider: () => new Map() }}>
+          {children}
+        </SWRConfig>
+      </I18nProvider>
+    ),
+  });
+
+  expect(
+    await screen.findByRole("heading", { name: "ダッシュボード" }),
+  ).toBeInTheDocument();
+  const stats = await screen.findByLabelText("最新");
+  expect(within(stats).getByText("体力")).toBeInTheDocument();
+  expect(within(stats).getByText("疲れ気味 — 控えめに")).toBeInTheDocument();
 });
 
 test("比べる値がなければ、差の行を出さない。VO2max は測った日だけ", async () => {

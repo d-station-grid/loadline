@@ -7,6 +7,13 @@ import {
 } from "firebase/auth";
 import { useEffect, useRef, useState } from "react";
 
+import type { Language } from "./api";
+import {
+  browserLanguage,
+  I18nProvider,
+  messagesFor,
+  type Messages,
+} from "./i18n";
 import { ApiError, login } from "./lib/api";
 import { auth, googleProvider } from "./lib/firebase";
 import Landing from "./components/Landing";
@@ -15,17 +22,17 @@ import SettingsPage from "./pages/SettingsPage";
 import WorkoutPage from "./pages/WorkoutPage";
 import WorkoutsPage from "./pages/WorkoutsPage";
 
-function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : "Sign-in failed";
+function errorMessage(e: unknown, m: Messages): string {
+  return e instanceof Error ? e.message : m.app.signInFailed;
 }
 
 /** ログインで api に断られたときの文言。ゲストはデモデータを見るので、
  * まだ入れていない環境では 503 になる。Google のログインの 503 はほかの失敗と同じに扱う */
-function loginErrorMessage(e: unknown, guest: boolean): string {
+function loginErrorMessage(e: unknown, guest: boolean, m: Messages): string {
   if (guest && e instanceof ApiError && e.status === 503) {
-    return "Guest mode isn't available right now.";
+    return m.app.guestUnavailable;
   }
-  return errorMessage(e);
+  return errorMessage(e, m);
 }
 
 // ログイン済みの画面。ルーティングのライブラリは入れず、state で切り替える
@@ -40,6 +47,9 @@ function App() {
   const [view, setView] = useState<View>({ name: "dashboard" });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // 画面の言語。ログイン前はブラウザの言語、ログイン後は利用者の設定（ログインの応答）
+  const [language, setLanguage] = useState<Language>(browserLanguage);
+  const m = messagesFor(language);
   // アカウントを消したあとのログアウト。終わるまでどのページも描かず、api を呼ばせない
   const [signingOut, setSigningOut] = useState<"pending" | "failed" | null>(
     null,
@@ -55,19 +65,27 @@ function App() {
 
       if (next === null) {
         setUser(null);
+        setLanguage(browserLanguage());
         setSigningOut(null);
         setLoading(false);
         return;
       }
       try {
         // api に行があることを確かめてから、ログイン済みにする
-        await login(await next.getIdToken());
+        const me = await login(await next.getIdToken());
         if (isLatest()) {
+          setLanguage(me.language);
           setUser(next);
         }
       } catch (e) {
         if (isLatest()) {
-          setError(loginErrorMessage(e, next.isAnonymous));
+          setError(
+            loginErrorMessage(
+              e,
+              next.isAnonymous,
+              messagesFor(browserLanguage()),
+            ),
+          );
           await signOut(auth); // null の通知が来て、未ログインの画面に戻る
         }
       } finally {
@@ -87,7 +105,7 @@ function App() {
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (e) {
-      setError(errorMessage(e));
+      setError(errorMessage(e, m));
     }
   }
 
@@ -97,7 +115,7 @@ function App() {
     try {
       await signInAnonymously(auth);
     } catch (e) {
-      setError(errorMessage(e));
+      setError(errorMessage(e, m));
     }
   }
 
@@ -122,7 +140,7 @@ function App() {
   }
 
   if (loading) {
-    return <p className="app-loading">Loading…</p>;
+    return <p className="app-loading">{m.common.loading}</p>;
   }
 
   if (signingOut) {
@@ -132,12 +150,12 @@ function App() {
           load<span>line</span>
         </h1>
         {signingOut === "pending" ? (
-          <p>Logging out…</p>
+          <p>{m.app.loggingOut}</p>
         ) : (
           <>
-            <p role="alert">Couldn't log out. Please try again.</p>
+            <p role="alert">{m.app.logoutFailed}</p>
             <button type="button" onClick={signOutAfterDelete}>
-              Log out
+              {m.app.logOut}
             </button>
           </>
         )}
@@ -147,26 +165,28 @@ function App() {
 
   if (!user) {
     return (
-      <Landing onSignIn={handleSignIn} onGuest={handleGuest} error={error} />
+      <I18nProvider language={language} setLanguage={setLanguage}>
+        <Landing onSignIn={handleSignIn} onGuest={handleGuest} error={error} />
+      </I18nProvider>
     );
   }
 
   // ヘッダーで下線を引く項目。詳細は一覧の中の画面なので Workouts に引く
   const current = view.name === "workout" ? "workouts" : view.name;
   const navItems: { view: View; label: string }[] = [
-    { view: { name: "dashboard" }, label: "Dashboard" },
-    { view: { name: "workouts" }, label: "Workouts" },
-    { view: { name: "settings" }, label: "Settings" },
+    { view: { name: "dashboard" }, label: m.app.nav.dashboard },
+    { view: { name: "workouts" }, label: m.app.nav.workouts },
+    { view: { name: "settings" }, label: m.app.nav.settings },
   ];
 
   return (
-    <>
+    <I18nProvider language={language} setLanguage={setLanguage}>
       <header className="app-header">
         <div className="app-header-inner">
           <h1 className="logo">
             load<span>line</span>
           </h1>
-          <nav aria-label="Main" className="app-nav">
+          <nav aria-label={m.app.navLabel} className="app-nav">
             {navItems.map((item) => (
               <button
                 key={item.view.name}
@@ -182,14 +202,12 @@ function App() {
               className="button-outline"
               onClick={() => signOut(auth)}
             >
-              Log out
+              {m.app.logOut}
             </button>
           </nav>
         </div>
       </header>
-      {user.isAnonymous && (
-        <p className="guest-banner">Viewing demo data as a guest (read-only)</p>
-      )}
+      {user.isAnonymous && <p className="guest-banner">{m.app.guestBanner}</p>}
       <main className="app-main">
         {/* ダッシュボードは隠さずに外す。隠した要素の中では ECharts が幅 0 で描いてしまうため */}
         {view.name === "dashboard" && (
@@ -218,7 +236,7 @@ function App() {
           <SettingsPage user={user} onDeleted={handleDeleted} />
         )}
       </main>
-    </>
+    </I18nProvider>
   );
 }
 

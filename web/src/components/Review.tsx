@@ -19,10 +19,12 @@ import {
   getCurrentReview,
   selectReviewOption,
 } from "../lib/api";
+import { useI18n } from "../i18n";
 import { useDockDrag } from "./useDockDrag";
 
-function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : "Something went wrong";
+/** 失敗の文言。Error でなければ、その時点の言語の「問題が発生しました」 */
+function errorMessage(e: unknown, fallback: string): string {
+  return e instanceof Error ? e.message : fallback;
 }
 
 /** 作れなかった理由。設定がないときは設定画面へ案内する */
@@ -52,7 +54,6 @@ type Audio = {
 };
 
 /** 作るあいだに出す目安。本番の実測（Gemini、Jev、声を作るまで）で約 26 秒 */
-const CREATE_HINT = "This usually takes 20–30 seconds.";
 
 // three.js は重いので、ダッシュボードの最初の表示には含めず、あとから読む
 const AvatarStage = lazy(() => import("../features/avatar/AvatarStage"));
@@ -69,11 +70,16 @@ const AvatarStage = lazy(() => import("../features/avatar/AvatarStage"));
  * 週次レビューの状態もアバターのモデルも残る。アバターをつかめば、吹き出しごと動かせる。
  */
 export default function Review({ user, onOpenSettings }: Props) {
+  const { m } = useI18n();
+  const r = m.review;
+  // 失敗の文言は、失敗した時点の言語で作る（あとで言語を変えても、その文言はそのまま）
+  const failed = m.common.somethingWentWrong;
   // undefined は読み込み中、null はまだない週
   const [review, setReview] = useState<WeeklyReviewOut | null | undefined>(
     undefined,
   );
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // 読み込みの失敗。文言にするのは描くとき（言語を切り替えても今の言語で出す）
+  const [loadError, setLoadError] = useState<unknown>(null);
   // Retry で進める。同じ条件でも effect を走らせ直すため
   const [attempt, setAttempt] = useState(0);
   const [creating, setCreating] = useState(false);
@@ -180,7 +186,7 @@ export default function Review({ user, onOpenSettings }: Props) {
         setReview(current);
         setLoadError(null);
       } catch (e) {
-        if (!cancelled) setLoadError(errorMessage(e));
+        if (!cancelled) setLoadError(e);
       }
     })();
     return () => {
@@ -213,7 +219,7 @@ export default function Review({ user, onOpenSettings }: Props) {
       } else if (e instanceof ApiError && e.status === 403) {
         setCreateError({ kind: "guest" });
       } else {
-        setCreateError({ kind: "other", message: errorMessage(e) });
+        setCreateError({ kind: "other", message: errorMessage(e, failed) });
       }
     } finally {
       busy.current = false;
@@ -271,7 +277,7 @@ export default function Review({ user, onOpenSettings }: Props) {
       setSelectError(
         e instanceof ApiError && e.status === 409
           ? { kind: "closed" }
-          : { kind: "other", message: errorMessage(e) },
+          : { kind: "other", message: errorMessage(e, failed) },
       );
     } finally {
       busy.current = false;
@@ -338,7 +344,7 @@ export default function Review({ user, onOpenSettings }: Props) {
         // 畳んだあとも、つかんで動かせる。動かしたあとに離しても開かない
         {...dragHandlers}
       >
-        💬 This week's review
+        {r.toggle}
       </button>
       {/* 畳んでも外さずに隠す。外すと、出し直すたびにアバターのモデルを読み直す */}
       <div className="review-dock-body" hidden={!open}>
@@ -347,7 +353,7 @@ export default function Review({ user, onOpenSettings }: Props) {
           aria-labelledby="review-heading"
         >
           <h3 id="review-heading" className="visually-hidden">
-            This week's review
+            {r.heading}
           </h3>
 
           {/* 再生ボタンと Hide は一番上に置き、吹き出しをスクロールしても上端に残す。
@@ -366,7 +372,7 @@ export default function Review({ user, onOpenSettings }: Props) {
                   crossOrigin={audio.cors ? "anonymous" : undefined}
                   preload="none"
                   src={audioUrl}
-                  aria-label="Review voice"
+                  aria-label={r.voice}
                   onError={() => {
                     setSpeaking(false);
                     void onAudioError(audio);
@@ -389,56 +395,55 @@ export default function Review({ user, onOpenSettings }: Props) {
                     speaking ? audioRef.current?.pause() : play()
                   }
                 >
-                  {speaking ? "❚❚ Pause" : "▶ Play"}
+                  {speaking ? r.pause : r.play}
                 </button>
                 <button type="button" onClick={replay}>
-                  ↻ Replay
+                  {r.replay}
                 </button>
               </>
             )}
             <button ref={hideRef} type="button" onClick={hide}>
-              – Hide
+              {r.hide}
             </button>
           </div>
 
           {/* Hide text で隠すのは文字だけ。上の段の再生ボタンと Hide は残す */}
           <div className="review-text" hidden={!textShown}>
-            {loadError && (
+            {loadError !== null && (
               <p role="alert">
-                {loadError}{" "}
+                {errorMessage(loadError, failed)}{" "}
                 <button type="button" onClick={retry}>
-                  Retry
+                  {m.common.retry}
                 </button>
               </p>
             )}
-            {review === undefined && !loadError && <p>Loading…</p>}
+            {review === undefined && loadError === null && (
+              <p>{m.common.loading}</p>
+            )}
 
             {review === null && (
               <>
-                <p>No review for this week yet.</p>
+                <p>{r.noReviewYet}</p>
                 {!guest && (
                   <button type="button" onClick={create} disabled={creating}>
-                    {creating
-                      ? "Writing your review…"
-                      : "Create this week's review"}
+                    {creating ? r.writing : r.create}
                   </button>
                 )}
                 {creating && (
                   <p className="muted small">
-                    {CREATE_HINT} {elapsed}s
+                    {r.createHint} {elapsed}s
                   </p>
                 )}
                 {createError?.kind === "settings" && (
                   <p role="alert">
-                    Set your max and resting heart rate before creating a
-                    review.{" "}
+                    {r.needsSettings}{" "}
                     <button type="button" onClick={onOpenSettings}>
-                      Open settings
+                      {m.common.openSettings}
                     </button>
                   </p>
                 )}
                 {createError?.kind === "guest" && (
-                  <p role="alert">Guests can't create reviews.</p>
+                  <p role="alert">{r.guestCannotCreate}</p>
                 )}
                 {createError?.kind === "other" && (
                   <p role="alert">{createError.message}</p>
@@ -450,7 +455,7 @@ export default function Review({ user, onOpenSettings }: Props) {
               <>
                 {/* 期間は振り返った週。下の質問はこれから過ごす週なので、取り違えないようラベルを付ける */}
                 <p className="muted small">
-                  Week reviewed: {review.period_start} – {review.period_end}
+                  {r.weekReviewed(review.period_start, review.period_end)}
                 </p>
                 {/* 字幕。前後の引用符は CSS で付ける。声を流すあいだは、今読んでいる文を
                     目立たせる。文ごとの時刻はないので、声の長さを文字数で配って推し量る */}
@@ -464,9 +469,7 @@ export default function Review({ user, onOpenSettings }: Props) {
                     </span>
                   ))}
                 </p>
-                <h4 id="review-plan-heading">
-                  How will you spend the week ahead?
-                </h4>
+                <h4 id="review-plan-heading">{r.question}</h4>
                 <div
                   className="review-options"
                   role="group"
@@ -494,16 +497,12 @@ export default function Review({ user, onOpenSettings }: Props) {
                     );
                   })}
                 </div>
-                {guest && (
-                  <p>
-                    Guests can't choose an option. Sign in to plan your week.
-                  </p>
-                )}
+                {guest && <p>{r.guestCannotChoose}</p>}
                 {selectError?.kind === "closed" && (
                   <p role="alert">
-                    This review is from a past week.{" "}
+                    {r.pastWeek}{" "}
                     <button type="button" onClick={retry}>
-                      Load this week's review
+                      {r.loadThisWeek}
                     </button>
                   </p>
                 )}
@@ -539,7 +538,7 @@ export default function Review({ user, onOpenSettings }: Props) {
             className="review-text-toggle"
             onClick={() => setTextShown((shown) => !shown)}
           >
-            {textShown ? "💬 Hide text" : "💬 Show text"}
+            {textShown ? r.hideText : r.showText}
           </button>
         </div>
       </div>

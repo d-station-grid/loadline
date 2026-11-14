@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type { User } from "firebase/auth";
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { UserOut } from "./api";
 import App from "./App";
@@ -75,6 +75,11 @@ const taro = {
   getIdToken: async () => "token",
 } as unknown as User;
 
+afterEach(() => {
+  // navigator.language を差し替えたテストのあとに戻す
+  vi.restoreAllMocks();
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   // Google のポップアップが通ると、Firebase はログイン済みの通知を出す
@@ -98,7 +103,11 @@ test("未ログインならログインのボタンが出る", () => {
 
 test("復元した利用者を api に登録してから、ログイン後のヘッダーが出る", async () => {
   restoredUser(taro);
-  vi.mocked(login).mockResolvedValue({ id: 1, email: "taro@example.com" });
+  vi.mocked(login).mockResolvedValue({
+    id: 1,
+    email: "taro@example.com",
+    language: "en",
+  });
   render(<App />);
 
   expect(
@@ -113,7 +122,11 @@ test("復元した利用者を api に登録してから、ログイン後のヘ
 
 test("ヘッダーは今の画面に印を付け、詳細を開いている間は Workouts に付ける", async () => {
   restoredUser(taro);
-  vi.mocked(login).mockResolvedValue({ id: 1, email: "taro@example.com" });
+  vi.mocked(login).mockResolvedValue({
+    id: 1,
+    email: "taro@example.com",
+    language: "en",
+  });
   render(<App />);
   const nav = await screen.findByRole("navigation", { name: "Main" });
   const item = (name: string) => within(nav).getByRole("button", { name });
@@ -134,7 +147,11 @@ test("ヘッダーは今の画面に印を付け、詳細を開いている間�
 
 test("Log out を押すとログアウトして、ログイン前の画面に戻る", async () => {
   restoredUser(taro);
-  vi.mocked(login).mockResolvedValue({ id: 1, email: "taro@example.com" });
+  vi.mocked(login).mockResolvedValue({
+    id: 1,
+    email: "taro@example.com",
+    language: "en",
+  });
   render(<App />);
 
   const logOut = await screen.findByRole("button", { name: "Log out" });
@@ -150,7 +167,11 @@ test("Log out を押すとログアウトして、ログイン前の画面に戻
 
 test("ボタンを押すと Google でログインし、api に登録してから名前が出る", async () => {
   restoredUser(null);
-  vi.mocked(login).mockResolvedValue({ id: 1, email: "taro@example.com" });
+  vi.mocked(login).mockResolvedValue({
+    id: 1,
+    email: "taro@example.com",
+    language: "en",
+  });
   render(<App />);
 
   fireEvent.click(screen.getByRole("button", { name: "Sign in with Google" }));
@@ -196,7 +217,7 @@ test("api の応答待ちの間にログアウトされたら、古い処理は�
 
   // そのあとで api が成功しても、ログイン済みには戻らない
   await act(async () => {
-    finishLogin({ id: 1, email: "taro@example.com" });
+    finishLogin({ id: 1, email: "taro@example.com", language: "en" });
   });
   expect(
     screen.queryByRole("navigation", { name: "Main" }),
@@ -208,7 +229,11 @@ test("api の応答待ちの間にログアウトされたら、古い処理は�
 
 test("ログイン後の最初の画面はダッシュボードで、ヘッダーから移れる", async () => {
   restoredUser(taro);
-  vi.mocked(login).mockResolvedValue({ id: 1, email: "taro@example.com" });
+  vi.mocked(login).mockResolvedValue({
+    id: 1,
+    email: "taro@example.com",
+    language: "en",
+  });
   render(<App />);
 
   expect(
@@ -226,7 +251,11 @@ test("ログイン後の最初の画面はダッシュボードで、ヘッダ�
 
 test("ダッシュボードから設定の画面を開ける", async () => {
   restoredUser(taro);
-  vi.mocked(login).mockResolvedValue({ id: 1, email: "taro@example.com" });
+  vi.mocked(login).mockResolvedValue({
+    id: 1,
+    email: "taro@example.com",
+    language: "en",
+  });
   render(<App />);
 
   fireEvent.click(await screen.findByRole("button", { name: "dashboard" }));
@@ -239,7 +268,11 @@ test("ダッシュボードから設定の画面を開ける", async () => {
 
 test("アカウントを消せたら、ほかの画面を描かずにログアウトし、ログイン前の画面に戻る", async () => {
   restoredUser(taro);
-  vi.mocked(login).mockResolvedValue({ id: 1, email: "taro@example.com" });
+  vi.mocked(login).mockResolvedValue({
+    id: 1,
+    email: "taro@example.com",
+    language: "en",
+  });
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
   workoutsPage.mockClear();
@@ -265,7 +298,11 @@ test("アカウントを消せたら、ほかの画面を描かずにログア�
 
 test("消したあとにもう一度ログインすると、ダッシュボードから始まる", async () => {
   restoredUser(taro);
-  vi.mocked(login).mockResolvedValue({ id: 1, email: "taro@example.com" });
+  vi.mocked(login).mockResolvedValue({
+    id: 1,
+    email: "taro@example.com",
+    language: "en",
+  });
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
   await act(async () => {
@@ -281,7 +318,11 @@ test("消したあとにもう一度ログインすると、ダッシュボー�
 
 test("ログアウトが終わるまでは、ログイン画面もページも出さない", async () => {
   restoredUser(taro);
-  vi.mocked(login).mockResolvedValue({ id: 1, email: "taro@example.com" });
+  vi.mocked(login).mockResolvedValue({
+    id: 1,
+    email: "taro@example.com",
+    language: "en",
+  });
   let finishSignOut: () => void = () => {};
   firebaseAuth.signOut.mockImplementation(
     () =>
@@ -321,7 +362,11 @@ test("ログアウトが終わるまでは、ログイン画面もページも�
 
 test("消したあとのログアウトに失敗したら、やり直せる", async () => {
   restoredUser(taro);
-  vi.mocked(login).mockResolvedValue({ id: 1, email: "taro@example.com" });
+  vi.mocked(login).mockResolvedValue({
+    id: 1,
+    email: "taro@example.com",
+    language: "en",
+  });
   firebaseAuth.signOut.mockRejectedValueOnce(new Error("network"));
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
@@ -362,7 +407,11 @@ test("ゲストで試すと匿名でログインし、見るだけの案内が�
     notify(guest);
     return { user: guest };
   });
-  vi.mocked(login).mockResolvedValue({ id: 9, email: "demo@loadline.invalid" });
+  vi.mocked(login).mockResolvedValue({
+    id: 9,
+    email: "demo@loadline.invalid",
+    language: "en",
+  });
   render(<App />);
 
   fireEvent.click(screen.getByRole("button", { name: "Try as a guest" }));
@@ -401,4 +450,31 @@ test("Google のログインで api が 503 でも、ゲストの文言にはし
   const alert = await screen.findByRole("alert");
   expect(alert).toHaveTextContent("API returned 503");
   expect(alert).not.toHaveTextContent("Guest mode");
+});
+
+test("ログインの応答の言語が日本語なら、ヘッダーを日本語で出す", async () => {
+  restoredUser(taro);
+  vi.mocked(login).mockResolvedValue({
+    id: 1,
+    email: "taro@example.com",
+    language: "ja",
+  });
+  render(<App />);
+
+  expect(
+    await screen.findByRole("button", { name: "ログアウト" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "ダッシュボード" }),
+  ).toBeInTheDocument();
+});
+
+test("ログイン前は、ブラウザの言語が日本語なら日本語で出す", async () => {
+  vi.spyOn(navigator, "language", "get").mockReturnValue("ja-JP");
+  restoredUser(null);
+  render(<App />);
+
+  expect(
+    await screen.findByRole("button", { name: "Google でログイン" }),
+  ).toBeInTheDocument();
 });
