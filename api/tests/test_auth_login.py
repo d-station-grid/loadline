@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from importlib.resources import files
 
 import pytest
 from httpx import AsyncClient
@@ -76,6 +77,26 @@ async def test_first_login_uses_browser_timezone(
     timezone = await _login_and_get_timezone(client, session, {"timezone": "America/New_York"})
 
     assert timezone == "America/New_York"
+
+
+# ブラウザ（ICU）が返す旧名。Debian 13 の slim イメージの OS のデータにはない
+LEGACY_NAMES = ["Asia/Calcutta", "America/Indianapolis", "Europe/Kiev"]
+
+
+@pytest.mark.parametrize("name", LEGACY_NAMES)
+async def test_first_login_keeps_legacy_timezone_name(
+    client: AsyncClient, session: AsyncSession, name: str
+) -> None:
+    timezone = await _login_and_get_timezone(client, session, {"timezone": name})
+
+    assert timezone == name
+
+
+@pytest.mark.parametrize("name", LEGACY_NAMES)
+def test_tzdata_package_has_legacy_name(name: str) -> None:
+    # OS のデータに旧名がなくても、ZoneInfo は tzdata パッケージから読む。手元の OS のデータで
+    # 上のテストが通ってしまうので、パッケージそのものに入っていることを確かめる
+    assert files("tzdata.zoneinfo").joinpath(name).is_file()
 
 
 @pytest.mark.parametrize(
