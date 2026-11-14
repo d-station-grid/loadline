@@ -75,6 +75,9 @@ function dashboard(
     form: "steady",
     by_sport: { all: view, ride: view, run: view },
     last_received_at: null,
+    // 前の web のために api が残している項目。今の画面は読まない
+    sport: "all",
+    ...view,
     ...rest,
   };
 }

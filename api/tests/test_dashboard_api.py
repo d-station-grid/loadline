@@ -141,14 +141,33 @@ async def test_by_sport_narrows_points_and_zones_but_not_days(
     assert body["days"][0]["load"] > 0
 
 
-async def test_sport_is_no_longer_a_query(client: AsyncClient, session: AsyncSession) -> None:
-    """sport を渡しても無視し、3 種目ぶんを返す（前の web が送っても壊れない）。"""
+LEGACY = ("zones", "workouts", "zone_weeks", "totals", "previous_totals")
+
+
+@pytest.mark.parametrize(("params", "sport"), [({}, "all"), ({"sport": "run"}, "run")])
+async def test_top_level_fields_stay_for_the_previous_web(
+    client: AsyncClient, session: AsyncSession, params: dict[str, str], sport: str
+) -> None:
+    """配信の前に開いたタブの web は、sport を送ってトップレベルの zones などを読む。
+    by_sport のその種目と同じ値を返し続けるので、前の web が新しい応答で落ちない。"""
+    user = await _user(session, zone_boundary_1=130, zone_boundary_2=155)
+    await _run(user, f"{SAMPLE_DAY} 06:00:00")
+
+    body = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY, **params)
+
+    assert body["sport"] == sport
+    for field in LEGACY:
+        assert body[field] == body["by_sport"][sport][field]
+    # 3 種目ぶんは sport によらず入る
+    assert len(body["by_sport"]["all"]["workouts"]) == 2
+
+
+async def test_unknown_sport_is_rejected(client: AsyncClient, session: AsyncSession) -> None:
     await _user(session)
 
-    body = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY, sport="run")
+    res = await client.get("/dashboard", params={"sport": "rides"}, headers=HEADERS)
 
-    assert "sport" not in body
-    assert len(body["by_sport"]["all"]["workouts"]) == 1
+    assert res.status_code == 422
 
 
 async def test_zones_are_none_without_boundaries(
@@ -474,6 +493,21 @@ async def test_zone_weeks_count_back_from_until(client: AsyncClient, session: As
     assert weeks[0]["zones"] == {"low": 0, "mid": 0, "high": 0}
     assert weeks[1]["zones"] == body["by_sport"]["all"]["zones"]
     assert weeks[1]["workouts_without_zones"] == 0
+
+
+async def test_zone_weeks_follow_the_sport(client: AsyncClient, session: AsyncSession) -> None:
+    """週の棒も種目で絞る。ランの週に、サンプルのサイクリングの時間が入らない。"""
+    await _user(session, zone_boundary_1=130, zone_boundary_2=155)
+
+    body = await _get(client, weeks="2", until="2026-09-19")
+
+    by_sport = body["by_sport"]
+    assert [w["zones"] for w in by_sport["run"]["zone_weeks"]] == [
+        {"low": 0, "mid": 0, "high": 0},
+        {"low": 0, "mid": 0, "high": 0},
+    ]
+    assert sum(by_sport["all"]["zone_weeks"][1]["zones"].values()) == 4028
+    assert by_sport["ride"]["zone_weeks"] == by_sport["all"]["zone_weeks"]
 
 
 async def test_zone_weeks_are_none_without_boundaries(

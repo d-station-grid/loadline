@@ -68,7 +68,7 @@
           "dashboard"
         ],
         "summary": "Read Dashboard",
-        "description": "本人の負荷と推移。since と until は利用者のタイムゾーンでの日付で、両端を含む。\n種目で変わる部分は全種目・サイクリング・ランの 3 つをまとめて返すので、種目では絞らない。\n\nweeks は「直近 N 週」。until（省けば今日）までのちょうど N × 7 日で、since は N 週前の\n翌日になる。since とは\n一緒に渡せない。期間の誤りは、入力の検査と同じ 422 の形（detail が loc と msg の配列）で返す。",
+        "description": "本人の負荷と推移。since と until は利用者のタイムゾーンでの日付で、両端を含む。\n種目で変わる部分は全種目・サイクリング・ランの 3 つを by_sport にまとめて返す。\nsport は前の web のためだけに受け取り、トップレベルの zones などをその種目で埋める。\n\nweeks は「直近 N 週」。until（省けば今日）までのちょうど N × 7 日で、since は N 週前の\n翌日になる。since とは\n一緒に渡せない。期間の誤りは、入力の検査と同じ 422 の形（detail が loc と msg の配列）で返す。",
         "operationId": "read_dashboard_dashboard_get",
         "security": [
           {
@@ -127,6 +127,23 @@
               ],
               "title": "Weeks"
             }
+          },
+          {
+            "name": "sport",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "all",
+                "ride",
+                "run"
+              ],
+              "type": "string",
+              "deprecated": true,
+              "default": "all",
+              "title": "Sport"
+            },
+            "deprecated": true
           }
         ],
         "responses": {
@@ -1025,6 +1042,58 @@
               }
             ],
             "title": "Last Received At"
+          },
+          "sport": {
+            "type": "string",
+            "enum": [
+              "all",
+              "ride",
+              "run"
+            ],
+            "title": "Sport",
+            "deprecated": true
+          },
+          "zones": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ZoneSeconds"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "deprecated": true
+          },
+          "workouts": {
+            "items": {
+              "$ref": "#/components/schemas/WorkoutPoint"
+            },
+            "type": "array",
+            "title": "Workouts",
+            "deprecated": true
+          },
+          "zone_weeks": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ZoneWeek"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone Weeks",
+            "deprecated": true
+          },
+          "totals": {
+            "$ref": "#/components/schemas/Totals",
+            "deprecated": true
+          },
+          "previous_totals": {
+            "$ref": "#/components/schemas/Totals",
+            "deprecated": true
           }
         },
         "type": "object",
@@ -1037,10 +1106,16 @@
           "changes",
           "form",
           "by_sport",
-          "last_received_at"
+          "last_received_at",
+          "sport",
+          "zones",
+          "workouts",
+          "zone_weeks",
+          "totals",
+          "previous_totals"
         ],
         "title": "Dashboard",
-        "description": "ダッシュボードの 1 画面ぶん。日付は利用者のタイムゾーンで区切る。\n\ndays は全種目で計算する（種目で絞ると疲労を低く見積もるため）。種目で変わるのは\n強度の時間、1 回ごとの点、期間の合計だけで、by_sport に 3 種目ぶんまとめて入れる。\n最大心拍か安静時心拍が未設定なら、負荷が出ないので days は空で、\nneeds_heart_rate_settings が true。\n\nchanges と form も全種目。form は until の余力の区分（週次レビューの判定と同じ境目）で、\ndays が空なら None。last_received_at は Health Auto Export からの取り込みが最後に\n成功した日時で、成功したことがなければ None（デモの利用者は常に None）。新しい記録が\n保存されたとは限らない（同じ記録が届き直しただけでも進む）。"
+        "description": "ダッシュボードの 1 画面ぶん。日付は利用者のタイムゾーンで区切る。\n\ndays は全種目で計算する（種目で絞ると疲労を低く見積もるため）。種目で変わるのは\n強度の時間、1 回ごとの点、期間の合計だけで、by_sport に 3 種目ぶんまとめて入れる。\n最大心拍か安静時心拍が未設定なら、負荷が出ないので days は空で、\nneeds_heart_rate_settings が true。\n\nchanges と form も全種目。form は until の余力の区分（週次レビューの判定と同じ境目）で、\ndays が空なら None。last_received_at は Health Auto Export からの取り込みが最後に\n成功した日時で、成功したことがなければ None（デモの利用者は常に None）。新しい記録が\n保存されたとは限らない（同じ記録が届き直しただけでも進む）。\n\nsport から previous_totals までは、by_sport を読まない前の web のために残している項目で、\nsport クエリ（省けば all）の by_sport と同じ値。配信の前に開いたタブが、新しい応答で\n落ちないようにするため。今の web は読まない。web が SWR に替わる PR で消す。"
       },
       "DayPoint": {
         "properties": {
