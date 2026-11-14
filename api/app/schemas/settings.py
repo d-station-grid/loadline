@@ -1,6 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.domain.calendar import is_known_timezone
+from app.domain.language import DEFAULT_LANGUAGE, Language
 
 
 class SettingsFields(BaseModel):
@@ -15,6 +16,7 @@ class SettingsFields(BaseModel):
     timezone: str = "Asia/Tokyo"
     review_weekday: int = Field(default=0, ge=0, le=6)  # 0 が月曜、6 が日曜
     send_notes_to_ai: bool = True
+    language: Language = DEFAULT_LANGUAGE
 
     @field_validator("timezone")
     @classmethod

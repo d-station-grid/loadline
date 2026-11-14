@@ -22,15 +22,18 @@ from app.services.users import AccountDeletedError, DemoUnavailableError, get_or
 
 
 async def resolve_user(
-    session: AsyncSession, identity: Identity, timezone: str | None = None
+    session: AsyncSession,
+    identity: Identity,
+    timezone: str | None = None,
+    language: str | None = None,
 ) -> User:
-    """本人の行。なければ作る。timezone は行を作るときだけ使う。
+    """本人の行。なければ作る。timezone と language は行を作るときだけ使う。
 
     アカウントを消した人のトークンは、期限の前でも 401 にする。ゲスト（匿名ログイン）は
     デモの利用者になる。デモの利用者がまだいなければ 503。
     """
     try:
-        return await get_or_create_user(session, identity, timezone)
+        return await get_or_create_user(session, identity, timezone, language)
     except AccountDeletedError:
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED, headers={"WWW-Authenticate": "Bearer"}

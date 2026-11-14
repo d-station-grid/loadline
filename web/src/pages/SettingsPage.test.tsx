@@ -32,6 +32,7 @@ const defaults: SettingsOut = {
   timezone: "Asia/Tokyo",
   review_weekday: 0,
   send_notes_to_ai: true,
+  language: "en",
   ingest_token_last_four: null,
 };
 
@@ -230,6 +231,29 @@ test("出した境目を直したら、そのあと最大心拍を変えても�
 
   expect(low).toHaveValue(138);
   expect(screen.getByLabelText("Mid / High boundary")).toHaveValue(158);
+});
+
+test("言語を選んで保存すると、その言語を送る", async () => {
+  vi.mocked(getSettings).mockResolvedValue(complete);
+  vi.mocked(putSettings).mockImplementation(async (body) => ({
+    ...body,
+    ingest_token_last_four: null,
+  }));
+  render(<SettingsPage user={user} onDeleted={onDeleted} />);
+  const language = await screen.findByLabelText("Language");
+
+  expect(language).toHaveValue("en");
+  expect(
+    screen.getByRole("option", { name: "日本語" }) as HTMLOptionElement,
+  ).toBeInTheDocument();
+  fireEvent.change(language, { target: { value: "ja" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+  expect(await screen.findByRole("status")).toHaveTextContent("Saved");
+  expect(putSettings).toHaveBeenCalledWith(
+    expect.objectContaining({ language: "ja" }),
+    "token",
+  );
 });
 
 test("トークンを発行すると平文が 1 回出る", async () => {

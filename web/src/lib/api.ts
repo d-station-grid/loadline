@@ -66,12 +66,24 @@ function browserTimeZone(): string | undefined {
   }
 }
 
+/** ブラウザの言語（"ja-JP" など）。取れなければ undefined。どの言語にするかは api が決める */
+function browserLanguage(): string | undefined {
+  try {
+    return navigator.language || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * ID トークンで本人を確かめ、初回なら利用者の行を作る。
- * 初回はブラウザのタイムゾーンを利用者の設定にする。2 回目からは api が見ない。
+ * 初回はブラウザのタイムゾーンと言語を利用者の設定にする。2 回目からは api が見ない。
  */
 export function login(idToken: string): Promise<UserOut> {
-  const body: LoginIn = { timezone: browserTimeZone() };
+  const body: LoginIn = {
+    timezone: browserTimeZone(),
+    language: browserLanguage(),
+  };
   return request<UserOut>("/auth/login", sendJson("POST", body), idToken);
 }
 

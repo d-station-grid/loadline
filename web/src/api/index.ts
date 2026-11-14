@@ -35,6 +35,7 @@ export type {
   IngestPayload,
   IngestResult,
   IngestTokenOut,
+  Language,
   LoginAuthLoginPostData,
   LoginAuthLoginPostError,
   LoginAuthLoginPostErrors,
