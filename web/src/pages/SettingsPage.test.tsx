@@ -10,6 +10,7 @@ import {
   issueIngestToken,
   putSettings,
 } from "../lib/api";
+import { I18nProvider } from "../i18n";
 import SettingsPage from "./SettingsPage";
 
 vi.mock("../lib/api", async (importOriginal) => ({
@@ -254,6 +255,27 @@ test("言語を選んで保存すると、その言語を送る", async () => {
     expect.objectContaining({ language: "ja" }),
     "token",
   );
+});
+
+test("言語を保存すると、画面全体の言語をその場で切り替える", async () => {
+  vi.mocked(getSettings).mockResolvedValue(complete);
+  vi.mocked(putSettings).mockImplementation(async (body) => ({
+    ...body,
+    ingest_token_last_four: null,
+  }));
+  const setLanguage = vi.fn();
+  render(
+    <I18nProvider language="en" setLanguage={setLanguage}>
+      <SettingsPage user={user} onDeleted={onDeleted} />
+    </I18nProvider>,
+  );
+  fireEvent.change(await screen.findByLabelText("Language"), {
+    target: { value: "ja" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+  expect(await screen.findByRole("status")).toHaveTextContent("Saved");
+  expect(setLanguage).toHaveBeenCalledWith("ja");
 });
 
 test("トークンを発行すると平文が 1 回出る", async () => {

@@ -9,6 +9,7 @@ import {
   issueIngestToken,
   putSettings,
 } from "../lib/api";
+import { useI18n } from "../i18n";
 import { boundariesForMax, isSuggested } from "../lib/zones";
 
 /** 選べる言語。名前は、その言語を読む人に分かるよう、その言語で書く */
@@ -211,6 +212,8 @@ type Props = {
 };
 
 export default function SettingsPage({ user, onDeleted }: Props) {
+  // 保存した言語で、画面全体をその場で切り替える
+  const { setLanguage } = useI18n();
   const [form, setForm] = useState<SettingsForm | null>(null);
   // 強度の境目が、最大心拍から出した値のままか。そのままなら最大心拍に合わせて出し直す
   const [boundariesFilled, setBoundariesFilled] = useState(false);
@@ -331,7 +334,9 @@ export default function SettingsPage({ user, onDeleted }: Props) {
       return;
     }
     try {
-      applySettings(await putSettings(body, await user.getIdToken()));
+      const saved = await putSettings(body, await user.getIdToken());
+      applySettings(saved);
+      if (saved.language) setLanguage(saved.language);
       setStatus("Saved");
     } catch (e) {
       setError(errorMessage(e));

@@ -20,16 +20,11 @@ import {
   zoneRows,
   zoneWeeksOption,
 } from "../lib/charts";
-import {
-  formatDateTime,
-  formatDay,
-  formatDuration,
-  SPORT_LABEL,
-} from "../lib/format";
+import { formatDateTime, formatDay, formatDuration } from "../lib/format";
+import { type Messages, useI18n } from "../i18n";
 import { EMPTY_NOTE_DRAFT, type NoteDraft } from "../lib/noteDraft";
 import { useDashboard, useNotes } from "../lib/queries";
 import {
-  FORM_LABEL,
   formatChange,
   formatHours,
   formatLoad,
@@ -44,11 +39,17 @@ type Sport = keyof SportViews;
 /** 最初に選ばれている期間。Figma と同じ 3M */
 const DEFAULT_RANGE: Range = "3m";
 
-const SPORTS: { key: Sport; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "ride", label: "Ride" },
-  { key: "run", label: "Run" },
-];
+const SPORT_KEYS: readonly Sport[] = ["all", "ride", "run"];
+
+/** 種目の切り替えの選択肢。名前は画面の言語で */
+function sportOptions(m: Messages): { key: Sport; label: string }[] {
+  return SPORT_KEYS.map((key) => ({ key, label: m.sports[key] }));
+}
+
+/** 期間の切り替えの選択肢。名前は画面の言語で（1W、1か月など） */
+function rangeOptions(m: Messages): { key: Range; label: string }[] {
+  return RANGES.map((r) => ({ key: r.key, label: m.ranges[r.key].label }));
+}
 
 /** メモがまだ届いていないときの空の一覧。描くたびに新しい配列を作ると、チャートを描き直すため */
 const NO_NOTES: NoteOut[] = [];
@@ -56,8 +57,8 @@ const NO_NOTES: NoteOut[] = [];
 /** Recent workouts に出す件数 */
 const RECENT_COUNT = 3;
 
-function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : "Something went wrong";
+function errorMessage(e: unknown, m: Messages): string {
+  return e instanceof Error ? e.message : m.common.somethingWentWrong;
 }
 
 type SegmentedProps<K extends string> = {
@@ -98,11 +99,12 @@ function Segmented<K extends string>({
 }
 
 function ErrorLine({ error, retry }: { error: string; retry: () => void }) {
+  const { m } = useI18n();
   return (
     <p role="alert" className="error">
       {error}{" "}
       <button type="button" onClick={retry}>
-        Retry
+        {m.common.retry}
       </button>
     </p>
   );
@@ -121,6 +123,8 @@ export default function DashboardPage({
   onOpenWorkouts,
   onOpenWorkout,
 }: Props) {
+  const { m, locale } = useI18n();
+  const d = m.dashboard;
   const [range, setRange] = useState<Range>(DEFAULT_RANGE);
   // Intensity の欄だけの条件。上の期間とは別に選べる
   const [intensityRange, setIntensityRange] = useState<Range>(DEFAULT_RANGE);
@@ -177,18 +181,18 @@ export default function DashboardPage({
     <section className="dashboard" aria-labelledby="dashboard-heading">
       <div className="page-head">
         <div className="page-title">
-          <h2 id="dashboard-heading">Dashboard</h2>
+          <h2 id="dashboard-heading">{d.heading}</h2>
           {/* 取り込みが最後に成功した日時。まだない人（デモも）には出さない */}
           {last?.last_received_at && (
             <span className="muted small">
-              Last received · {formatDateTime(last.last_received_at)}
+              {d.lastReceived(formatDateTime(last.last_received_at, locale))}
             </span>
           )}
         </div>
         <div className="card-tools">
           <Segmented
-            label="Period"
-            options={RANGES}
+            label={d.period}
+            options={rangeOptions(m)}
             value={range}
             onChange={setRange}
           />
@@ -197,7 +201,7 @@ export default function DashboardPage({
             disabled={!last}
             onClick={() => last && openNote(last.until)}
           >
-            + Note
+            {d.addNote}
           </button>
         </div>
       </div>
@@ -208,59 +212,58 @@ export default function DashboardPage({
 
       {main.error && (
         <ErrorLine
-          error={errorMessage(main.error)}
+          error={errorMessage(main.error, m)}
           retry={() => void main.mutate()}
         />
       )}
-      {data === null && !main.error && <p className="muted">Loading…</p>}
+      {data === null && !main.error && (
+        <p className="muted">{m.common.loading}</p>
+      )}
 
       {data && (
         <>
           {/* 差は api の changes をそのまま出す。days の最初の日と比べ直さない（期間の初日との差ではない） */}
-          <dl className="stats" aria-label="Latest">
+          <dl className="stats" aria-label={d.latest}>
             <Stat
               kind="fitness"
-              label="Fitness"
+              label={d.fitness}
               value={today?.fitness}
-              note={vsLastWeek(data.changes.fitness)}
+              note={vsLastWeek(data.changes.fitness, m)}
             />
             <Stat
               kind="fatigue"
-              label="Fatigue"
+              label={d.fatigue}
               value={today?.fatigue}
-              note={vsLastWeek(data.changes.fatigue)}
+              note={vsLastWeek(data.changes.fatigue, m)}
             />
             {/* api の headroom を、画面では Form と呼ぶ */}
             <Stat
               kind="form"
-              label="Form"
+              label={d.form}
               value={today?.headroom}
-              note={data.form ? FORM_LABEL[data.form] : undefined}
+              note={data.form ? m.form[data.form] : undefined}
             />
             <Stat
               kind="vo2max"
-              label="VO2max"
+              label={d.vo2max}
               value={latestVo2max?.value}
-              note={vo2maxNote(data)}
+              note={vo2maxNote(data, m, locale)}
             />
           </dl>
 
           <section className="card" aria-labelledby="trend-heading">
             <div className="card-head">
-              <h3 id="trend-heading">Fitness, fatigue and VO2max</h3>
+              <h3 id="trend-heading">{d.trendHeading}</h3>
             </div>
             {data.needs_heart_rate_settings ? (
               <p className="notice">
-                Set your max and resting heart rate to see training load.{" "}
+                {d.needsHeartRate}{" "}
                 <button type="button" onClick={onOpenSettings}>
-                  Open settings
+                  {m.common.openSettings}
                 </button>
               </p>
             ) : (
-              <p className="muted small">
-                Click a day to add a note. Notes with a label show on the chart.
-                Fitness and fatigue include every sport.
-              </p>
+              <p className="muted small">{d.trendHelp}</p>
             )}
             {trend && (
               <Chart
@@ -270,13 +273,11 @@ export default function DashboardPage({
               />
             )}
             {data.vo2max.length === 0 && (
-              <p className="muted small">No VO2max in this period.</p>
+              <p className="muted small">{d.noVo2max}</p>
             )}
             {daysWithoutHeartRate > 0 && (
               <p className="muted small">
-                ▲ marks {daysWithoutHeartRate} day(s) with a workout that has no
-                heart rate. Their load counts as 0, so fitness and fatigue read
-                low.
+                {d.daysWithoutHeartRate(daysWithoutHeartRate)}
               </p>
             )}
           </section>
@@ -290,7 +291,7 @@ export default function DashboardPage({
             ? null
             : (intensity.data?.by_sport[intensitySport] ?? null)
         }
-        error={intensity.error ? errorMessage(intensity.error) : null}
+        error={intensity.error ? errorMessage(intensity.error, m) : null}
         retry={() => void intensity.mutate()}
         range={intensityRange}
         sport={intensitySport}
@@ -338,6 +339,7 @@ const FOCUSABLE =
  * 開いている間は Tab をモーダルの中で回し、閉じたら開く前の場所（「+ Note」など）にフォーカスを戻す。
  */
 function NoteDialog({ onClose, children }: NoteDialogProps) {
+  const closeLabel = useI18n().m.common.close;
   const box = useRef<HTMLDivElement>(null);
   // 閉じる関数が変わっても、開いている間の仕掛けは張り直さない
   const close = useRef(onClose);
@@ -408,7 +410,7 @@ function NoteDialog({ onClose, children }: NoteDialogProps) {
         {children}
         <div className="modal-actions">
           <button type="button" onClick={onClose}>
-            Close
+            {closeLabel}
           </button>
         </div>
       </div>
@@ -426,8 +428,10 @@ type StatProps = {
 };
 
 /** Fitness と Fatigue の下の行。比べる値がなければ出さない */
-function vsLastWeek(change: number | null): string | undefined {
-  return change === null ? undefined : `${formatChange(change)} vs last week`;
+function vsLastWeek(change: number | null, m: Messages): string | undefined {
+  return change === null
+    ? undefined
+    : m.dashboard.vsLastWeek(formatChange(change));
 }
 
 /**
@@ -435,14 +439,22 @@ function vsLastWeek(change: number | null): string | undefined {
  * 差は、api が比べた測定の日を「since」で書く。測定が空くと 4 週より前の測定と比べるので、
  * 「in 4 weeks」とは書かない。比べる測定がなければ、日付だけ。
  */
-function vo2maxNote(data: Dashboard): string | undefined {
+function vo2maxNote(
+  data: Dashboard,
+  m: Messages,
+  locale: string,
+): string | undefined {
   const latest = data.vo2max.at(-1);
   if (!latest) return undefined;
-  const day = formatDay(latest.day);
+  const day = formatDay(latest.day, locale);
   const { vo2max: change, vo2max_since: since } = data.changes;
   return change === null || since === null
     ? day
-    : `${formatChange(change)} since ${formatDay(since)} · ${day}`;
+    : m.dashboard.vo2maxSince(
+        formatChange(change),
+        formatDay(since, locale),
+        day,
+      );
 }
 
 /** 小さなラベルの下に大きな数字。値がなければ – */
@@ -479,6 +491,8 @@ function IntensityCard({
   onRange,
   onSport,
 }: IntensityProps) {
+  const { m } = useI18n();
+  const d = m.dashboard;
   const zones = data ? zoneRows(data.zones) : null;
   const scatter = useMemo(
     () => (data ? workoutsOption(data.workouts) : null),
@@ -497,96 +511,87 @@ function IntensityCard({
   // 期間の心拍のない回。境目があるのに期間の合計が出ない理由
   const workoutsWithoutZones =
     data?.zone_weeks?.reduce((n, w) => n + w.workouts_without_zones, 0) ?? 0;
-  const span = rangeOf(range).span;
-  const sportLabel = SPORTS.find((s) => s.key === sport)?.label ?? sport;
+  const words = m.ranges[range];
+  const sportLabel = m.sports[sport] ?? sport;
 
   return (
     <section className="card" aria-labelledby="intensity-heading">
       <div className="card-head">
-        <h3 id="intensity-heading">Intensity</h3>
+        <h3 id="intensity-heading">{d.intensity}</h3>
         <div className="card-tools">
           <Segmented
             compact
-            label="Intensity sport"
-            options={SPORTS}
+            label={d.intensitySport}
+            options={sportOptions(m)}
             value={sport}
             onChange={onSport}
           />
           <Segmented
             compact
-            label="Intensity period"
-            options={RANGES}
+            label={d.intensityPeriod}
+            options={rangeOptions(m)}
             value={range}
             onChange={onRange}
           />
         </div>
         {data && (
           <span className="card-summary muted small">
-            {sportLabel} · last {span} · {data.totals.workouts}
+            {d.intensitySummary(sportLabel, words.last, data.totals.workouts)}
           </span>
         )}
       </div>
 
       {error && <ErrorLine error={error} retry={retry} />}
-      {data === null && !error && <p className="muted">Loading…</p>}
+      {data === null && !error && <p className="muted">{m.common.loading}</p>}
 
       {data &&
         (data.workouts.length === 0 ? (
           <>
-            <p className="muted">No workouts in this period.</p>
-            <Totals data={data} span={span} />
+            <p className="muted">{d.noWorkoutsInPeriod}</p>
+            <Totals data={data} prevLabel={words.prev} />
           </>
         ) : (
           <>
             <div className="split">
               <div>
-                <h4>Minutes in each zone · by week</h4>
+                <h4>{d.zoneMinutesByWeek}</h4>
                 {weekly ? (
                   <>
                     <Chart option={weekly} height={240} />
                     {weeksWithoutZones > 0 && (
                       <p className="muted small">
-                        ▲ marks {weeksWithoutZones} week(s) with a workout that
-                        has no heart rate. Its minutes are left out.
+                        {d.weeksWithoutZones(weeksWithoutZones)}
                       </p>
                     )}
                   </>
                 ) : (
-                  <p className="muted small">
-                    Needs zone boundaries in settings.
-                  </p>
+                  <p className="muted small">{d.needsBoundaries}</p>
                 )}
               </div>
               <div>
-                <h4>Load and time in High</h4>
+                <h4>{d.loadAndHigh}</h4>
                 {plottable && scatter ? (
                   <Chart option={scatter} height={240} />
                 ) : (
-                  <p className="muted small">
-                    Needs zone boundaries in settings and heart rate on the
-                    workouts.
-                  </p>
+                  <p className="muted small">{d.needsBoundariesAndHeartRate}</p>
                 )}
               </div>
             </div>
             <div className="split divided">
               <div>
-                <h4>Time in each zone</h4>
+                <h4>{d.timeInZone}</h4>
                 {zones ? (
                   <ZoneBreakdown rows={zones} />
                 ) : data.zone_weeks ? (
                   // 境目はある。心拍のない回を外して足すと少なく見えるので、合計は出さない
                   <p className="muted small">
-                    Not shown: {workoutsWithoutZones} workout(s) in this period
-                    have no heart rate.
+                    {d.workoutsWithoutZones(workoutsWithoutZones)}
                   </p>
                 ) : (
-                  <p className="muted small">
-                    Needs zone boundaries in settings.
-                  </p>
+                  <p className="muted small">{d.needsBoundaries}</p>
                 )}
               </div>
-              <Totals data={data} span={span} />
+              <Totals data={data} prevLabel={words.prev} />
             </div>
           </>
         ))}
@@ -599,41 +604,44 @@ function IntensityCard({
  * 負荷は、回がなければ 0、回はあるのに負荷が 1 回も分からなければ –（null）。
  * 1 回あたりは api が負荷の分かる回の数で割った値で、ここで割り直さない。
  */
-function Totals({ data, span }: { data: SportView; span: string }) {
+function Totals({ data, prevLabel }: { data: SportView; prevLabel: string }) {
+  const { m } = useI18n();
+  const d = m.dashboard;
+  const hours = m.duration.hoursUnit;
   const now = data.totals;
   const prev = data.previous_totals;
-  const prevLabel = `prev ${span}`;
   return (
     <div>
-      <h4>Totals</h4>
-      <dl className="totals" aria-label="Totals">
+      <h4>{d.totals}</h4>
+      <dl className="totals" aria-label={d.totals}>
         <TotalTile
-          label="Time"
+          label={d.time}
           value={formatHours(now.total_sec)}
-          unit="h"
-          prev={`${prevLabel} · ${formatHours(prev.total_sec)} h`}
+          unit={hours}
+          prev={`${prevLabel} · ${formatHours(prev.total_sec)} ${hours}`}
         />
         <TotalTile
-          label="Workouts"
+          label={d.workouts}
           value={String(now.workouts)}
           prev={`${prevLabel} · ${prev.workouts}`}
         />
         <TotalTile
-          label="Load"
+          label={d.load}
           value={formatLoad(now.load)}
           prev={`${prevLabel} · ${formatLoad(prev.load)}`}
         />
         <TotalTile
-          label="Load per workout"
+          label={d.loadPerWorkout}
           value={formatLoad(now.load_per_workout)}
           prev={`${prevLabel} · ${formatLoad(prev.load_per_workout)}`}
         />
       </dl>
       {(now.workouts_without_load > 0 || prev.workouts_without_load > 0) && (
         <p className="muted small">
-          Load leaves out workouts without heart rate:{" "}
-          {now.workouts_without_load} in this period,{" "}
-          {prev.workouts_without_load} in the previous one.
+          {d.loadLeavesOut(
+            now.workouts_without_load,
+            prev.workouts_without_load,
+          )}
         </p>
       )}
     </div>
@@ -675,8 +683,11 @@ function RecentWorkouts({
   onOpenWorkouts,
   onOpenWorkout,
 }: RecentProps) {
+  const { m, locale } = useI18n();
+  const d = m.dashboard;
   const [items, setItems] = useState<WorkoutSummary[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // 文言にするのは描くとき。言語を切り替えたときも、今の言語で出すため
+  const [error, setError] = useState<unknown>(null);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -691,7 +702,7 @@ function RecentWorkouts({
         setError(null);
         setItems(list.items);
       } catch (e) {
-        if (!cancelled) setError(errorMessage(e));
+        if (!cancelled) setError(e);
       }
     })();
     return () => {
@@ -704,31 +715,33 @@ function RecentWorkouts({
   return (
     <section className="card" aria-labelledby="recent-heading">
       <div className="card-head">
-        <h3 id="recent-heading">Recent workouts</h3>
+        <h3 id="recent-heading">{d.recentHeading}</h3>
         <button type="button" className="link" onClick={onOpenWorkouts}>
-          See all workouts ›
+          {d.seeAll}
         </button>
       </div>
-      {error && (
+      {error !== null && (
         <ErrorLine
-          error={error}
+          error={errorMessage(error, m)}
           retry={() => {
             setError(null);
             setAttempt((n) => n + 1);
           }}
         />
       )}
-      {items === null && !error && <p className="muted">Loading…</p>}
-      {items?.length === 0 && <p className="muted">No workouts yet.</p>}
+      {items === null && error === null && (
+        <p className="muted">{m.common.loading}</p>
+      )}
+      {items?.length === 0 && <p className="muted">{d.noWorkoutsYet}</p>}
       {items && items.length > 0 && (
         <table className="table">
           <thead>
             <tr>
-              <th>Date</th>
-              <th>Sport</th>
-              <th>Time</th>
-              <th className="num">Avg HR</th>
-              <th className="num">Load</th>
+              <th>{d.date}</th>
+              <th>{d.sport}</th>
+              <th>{d.time}</th>
+              <th className="num">{d.avgHr}</th>
+              <th className="num">{d.load}</th>
             </tr>
           </thead>
           <tbody>
@@ -743,11 +756,11 @@ function RecentWorkouts({
                 >
                   <td>
                     <button type="button" className="row-link">
-                      {formatDateTime(w.started_at)}
+                      {formatDateTime(w.started_at, locale)}
                     </button>
                   </td>
-                  <td>{SPORT_LABEL[w.sport] ?? w.sport}</td>
-                  <td>{formatDuration(w.duration_sec)}</td>
+                  <td>{m.sports[w.sport] ?? w.sport}</td>
+                  <td>{formatDuration(w.duration_sec, m.duration)}</td>
                   <td className="num">{w.avg_heart_rate ?? "–"}</td>
                   <td className="num">
                     <LoadCell load={load} />
@@ -764,13 +777,15 @@ function RecentWorkouts({
 
 /** 負荷の欄。期間の外で分からない回と、心拍がなくて計算できない回を分けて出す */
 function LoadCell({ load }: { load: number | null | undefined }) {
+  const { m } = useI18n();
+  const d = m.dashboard;
   if (load === undefined) {
-    return <span title="Outside the dashboard period">–</span>;
+    return <span title={d.outsidePeriod}>–</span>;
   }
   if (load === null) {
     return (
-      <span className="muted" title="No heart rate, so load can't be computed">
-        No HR
+      <span className="muted" title={d.noHeartRateTitle}>
+        {d.noHr}
       </span>
     );
   }

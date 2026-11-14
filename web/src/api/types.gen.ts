@@ -613,7 +613,7 @@ export type Totals = {
 /**
  * UserOut
  *
- * ログインした本人に返す情報。
+ * ログインした本人に返す情報。language は画面の言語で、web はログインの直後から使う。
  */
 export type UserOut = {
   /**
@@ -624,6 +624,7 @@ export type UserOut = {
    * Email
    */
   email: string;
+  language: Language;
 };
 
 /**
