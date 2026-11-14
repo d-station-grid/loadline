@@ -8,14 +8,18 @@ import type {
   ZoneSeconds,
   ZoneWeek,
 } from "../api";
-import { formatDay, SPORT_LABEL } from "./format";
+import { en, type Messages } from "../i18n/messages";
+import { formatDay } from "./format";
 
 // API の応答を ECharts の option に組み替える。描画はしないので、ここだけを単体で検査する。
 // 日付の軸は time にして、[日付, 値] の組で渡す。値のない日は線が途切れる。
 
-const NO_HEART_RATE = "No heart rate";
+// 名前（凡例、軸、強度、種目）は画面の言語の辞書から取る。省けば英語
+
 // 凡例の ▲ の項目。印は series と同じ三角にする（既定の丸だと、どの印の説明か分からない）
-const NO_HEART_RATE_LEGEND = { name: NO_HEART_RATE, icon: "triangle" };
+function noHeartRateLegend(m: Messages) {
+  return { name: m.charts.noHeartRate, icon: "triangle" };
+}
 /** 凡例の項目。名前だけか、印の形を決めたもの */
 type LegendItem = string | { name: string; icon: string };
 
@@ -39,7 +43,6 @@ export const CHART_COLORS = {
 // ▲ の series の共通の形。▲ の高さは置き場所にすぎない（その日の負荷 0、その週の分かった分数）ので、
 // ツールチップには出さない。出すと「No heart rate: 30」と心拍のない時間に読めるため
 const NO_HEART_RATE_SERIES = {
-  name: NO_HEART_RATE,
   type: "scatter",
   symbol: "triangle",
   symbolSize: 10,
@@ -95,12 +98,14 @@ function noteLines(days: DayPoint[], notes: NoteOut[]) {
 export function loadOption(
   days: DayPoint[],
   notes: NoteOut[] = [],
+  m: Messages = en,
 ): EChartsOption {
+  const c = m.charts;
   const missing = days.filter((d) => d.load === null);
   const lines = noteLines(days, notes);
   // 印のない期間は凡例にも出さない。点のない series の凡例は薄く出て、壊れて見えるため
-  const legend: LegendItem[] = ["Fitness", "Fatigue", "Load"];
-  if (missing.length > 0) legend.push(NO_HEART_RATE_LEGEND);
+  const legend: LegendItem[] = [c.fitness, c.fatigue, c.load];
+  if (missing.length > 0) legend.push(noHeartRateLegend(m));
   return {
     textStyle: TEXT_STYLE,
     tooltip: { trigger: "axis" },
@@ -108,12 +113,12 @@ export function loadOption(
     grid: TREND_GRIDS[0],
     xAxis: TIME_AXIS,
     yAxis: [
-      { ...VALUE_AXIS, name: "Fitness / Fatigue" },
-      { ...VALUE_AXIS, name: "Load", splitLine: { show: false } },
+      { ...VALUE_AXIS, name: c.fitnessFatigue },
+      { ...VALUE_AXIS, name: c.load, splitLine: { show: false } },
     ],
     series: [
       {
-        name: "Fitness",
+        name: c.fitness,
         type: "line",
         showSymbol: false,
         color: CHART_COLORS.fitness,
@@ -137,7 +142,7 @@ export function loadOption(
         }),
       },
       {
-        name: "Fatigue",
+        name: c.fatigue,
         type: "line",
         showSymbol: false,
         color: CHART_COLORS.fatigue,
@@ -145,7 +150,7 @@ export function loadOption(
         data: days.map((d) => [d.day, round1(d.fatigue)]),
       },
       {
-        name: "Load",
+        name: c.load,
         type: "bar",
         yAxisIndex: 1,
         color: CHART_COLORS.load,
@@ -153,6 +158,7 @@ export function loadOption(
       },
       {
         ...NO_HEART_RATE_SERIES,
+        name: c.noHeartRate,
         yAxisIndex: 1,
         data: missing.map((d) => [d.day, 0]),
       },
@@ -161,24 +167,28 @@ export function loadOption(
 }
 
 /** 測定ごとの点と、30 日平均の線。 */
-export function vo2maxOption(points: Vo2MaxPoint[]): EChartsOption {
+export function vo2maxOption(
+  points: Vo2MaxPoint[],
+  m: Messages = en,
+): EChartsOption {
+  const c = m.charts;
   return {
     textStyle: TEXT_STYLE,
     tooltip: { trigger: "axis" },
-    legend: { ...LEGEND, data: ["VO2max", "30-day average"] },
+    legend: { ...LEGEND, data: [c.vo2max, c.average30] },
     grid: TREND_GRIDS[1],
     xAxis: TIME_AXIS,
-    yAxis: { ...VALUE_AXIS, name: "VO2max", scale: true },
+    yAxis: { ...VALUE_AXIS, name: c.vo2max, scale: true },
     series: [
       {
-        name: "VO2max",
+        name: c.vo2max,
         type: "scatter",
         symbolSize: 6,
         color: CHART_COLORS.vo2max,
         data: points.map((p) => [p.day, round1(p.value)]),
       },
       {
-        name: "30-day average",
+        name: c.average30,
         type: "line",
         showSymbol: false,
         color: CHART_COLORS.vo2maxAverage,
@@ -201,9 +211,10 @@ export function trendOption(
   vo2max: Vo2MaxPoint[],
   notes: NoteOut[],
   period: Period,
+  m: Messages = en,
 ): EChartsOption {
   const range = { min: period.since, max: period.until };
-  const bottom = vo2maxOption(vo2max);
+  const bottom = vo2maxOption(vo2max, m);
   const bottomLegend = (bottom.legend as { data: LegendItem[] }).data;
   const bottomSeries = bottom.series as SeriesOption[];
   if (days.length === 0) {
@@ -213,7 +224,7 @@ export function trendOption(
       xAxis: { ...TIME_AXIS, ...range },
     };
   }
-  const top = loadOption(days, notes);
+  const top = loadOption(days, notes, m);
   const topLegend = (top.legend as { data: LegendItem[] }).data;
   const lines = noteLines(days, notes);
   return {
@@ -315,13 +326,16 @@ export type ZoneRow = {
 };
 
 /** 強度ごとの時間を、低・中・高の順に、割合と色を添えて並べる。境目が未設定で zones が null なら null。 */
-export function zoneRows(zones: ZoneSeconds | null): ZoneRow[] | null {
+export function zoneRows(
+  zones: ZoneSeconds | null,
+  m: Messages = en,
+): ZoneRow[] | null {
   if (zones === null) return null;
   const total = zones.low + zones.mid + zones.high;
   const rows = [
-    { key: "low", label: "Low", sec: zones.low },
-    { key: "mid", label: "Mid", sec: zones.mid },
-    { key: "high", label: "High", sec: zones.high },
+    { key: "low", label: m.zones.low, sec: zones.low },
+    { key: "mid", label: m.zones.mid, sec: zones.mid },
+    { key: "high", label: m.zones.high, sec: zones.high },
   ] as const;
   return rows.map((r, i) => ({
     ...r,
@@ -336,8 +350,12 @@ export function zoneRows(zones: ZoneSeconds | null): ZoneRow[] | null {
  * 心拍のない回は api が足していないので、その回を含む週は棒の上に ▲ を置く。
  * 0 分の棒を、休んだ週と読み違えないようにするため。
  */
-export function zoneWeeksOption(weeks: ZoneWeek[]): EChartsOption {
-  const labels = weeks.map((w) => formatDay(w.start));
+export function zoneWeeksOption(
+  weeks: ZoneWeek[],
+  m: Messages = en,
+  locale?: string,
+): EChartsOption {
+  const labels = weeks.map((w) => formatDay(w.start, locale));
   // ▲ は棒の上の端に置く。棒は強度ごとに分へ丸めて積むので、高さも丸めた分を足して決める。
   // 秒を足してから丸めると 1 分ずれ、▲ が棒に沈むことがある
   const missing = weeks.flatMap((w, i) =>
@@ -352,12 +370,12 @@ export function zoneWeeksOption(weeks: ZoneWeek[]): EChartsOption {
         ]
       : [],
   );
-  const legend: LegendItem[] = ["Low", "Mid", "High"];
-  if (missing.length > 0) legend.push(NO_HEART_RATE_LEGEND);
+  const legend: LegendItem[] = [m.zones.low, m.zones.mid, m.zones.high];
+  if (missing.length > 0) legend.push(noHeartRateLegend(m));
   const zones = [
-    { name: "Low", key: "low" },
-    { name: "Mid", key: "mid" },
-    { name: "High", key: "high" },
+    { name: m.zones.low, key: "low" },
+    { name: m.zones.mid, key: "mid" },
+    { name: m.zones.high, key: "high" },
   ] as const;
   return {
     textStyle: TEXT_STYLE,
@@ -372,7 +390,7 @@ export function zoneWeeksOption(weeks: ZoneWeek[]): EChartsOption {
       axisLine: { lineStyle: { color: CHART_COLORS.grid } },
       axisTick: { show: false },
     },
-    yAxis: { ...VALUE_AXIS, name: "min" },
+    yAxis: { ...VALUE_AXIS, name: m.charts.minutes },
     series: [
       ...zones.map((z, i): SeriesOption => ({
         name: z.name,
@@ -383,6 +401,7 @@ export function zoneWeeksOption(weeks: ZoneWeek[]): EChartsOption {
       })),
       {
         ...NO_HEART_RATE_SERIES,
+        name: m.charts.noHeartRate,
         // 棒の上の端に重ならないよう、印を少し上にずらす
         symbolOffset: [0, -10],
         data: missing,
@@ -392,8 +411,12 @@ export function zoneWeeksOption(weeks: ZoneWeek[]): EChartsOption {
 }
 
 /** 1 回ごとの負荷（横）と高強度の時間（縦、分）。種目ごとに色を分け、どちらかが null の回は除く。 */
-export function workoutsOption(workouts: WorkoutPoint[]): EChartsOption {
+export function workoutsOption(
+  workouts: WorkoutPoint[],
+  m: Messages = en,
+): EChartsOption {
   const sports = [...new Set(workouts.map((w) => w.sport))];
+  const sportLabel = (sport: string) => m.sports[sport] ?? sport;
   return {
     textStyle: TEXT_STYLE,
     tooltip: { trigger: "item" },
@@ -404,8 +427,8 @@ export function workoutsOption(workouts: WorkoutPoint[]): EChartsOption {
       right: "center",
     },
     grid: { top: 28, bottom: 56, left: 40, right: 24 },
-    xAxis: { ...VALUE_AXIS, name: "Load" },
-    yAxis: { ...VALUE_AXIS, name: "High (min)" },
+    xAxis: { ...VALUE_AXIS, name: m.charts.load },
+    yAxis: { ...VALUE_AXIS, name: m.charts.highMinutes },
     series: sports.map((sport) => ({
       name: sportLabel(sport),
       type: "scatter",
@@ -428,10 +451,6 @@ function sportColor(sport: string): string | undefined {
   if (sport === "ride") return CHART_COLORS.ride;
   if (sport === "run") return CHART_COLORS.run;
   return undefined;
-}
-
-function sportLabel(sport: string): string {
-  return SPORT_LABEL[sport] ?? sport;
 }
 
 function round1(n: number): number {

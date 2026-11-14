@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import type { NoteOut } from "../api";
+import { type Messages, useI18n } from "../i18n";
 import { addNote, ApiError, deleteNote, editNote } from "../lib/api";
 import { displayWidth, MAX_LABEL_WIDTH, normalizeLabel } from "../lib/label";
 import type { EditDraft, EditDrafts, NoteDraft } from "../lib/noteDraft";
@@ -15,17 +16,17 @@ import { useNotes, useUpdateNotes } from "../lib/queries";
 
 const MAX_BODY = 2000;
 
-function errorMessage(e: unknown): string {
+function errorMessage(e: unknown, m: Messages): string {
   if (e instanceof ApiError && e.status === 409) {
-    return "You already wrote a note for this day.";
+    return m.notes.duplicate;
   }
   if (e instanceof ApiError && e.status === 404) {
-    return "This note no longer exists.";
+    return m.notes.missing;
   }
   if (e instanceof ApiError && e.status === 400) {
-    return "You can't write a note for a future day.";
+    return m.notes.future;
   }
-  return e instanceof Error ? e.message : "Something went wrong";
+  return e instanceof Error ? e.message : m.common.somethingWentWrong;
 }
 
 /** 日付の新しい順。api と同じ並び。YYYY-MM-DD は文字列のまま比べられる。 */
@@ -59,15 +60,16 @@ function LabelField({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const { m } = useI18n();
   const width = displayWidth(value.trim());
   return (
     <>
       <label>
-        Label (optional)
+        {m.notes.label}
         <input
           type="text"
           value={value}
-          placeholder="Shown on the chart"
+          placeholder={m.notes.labelPlaceholder}
           aria-describedby="note-label-width"
           aria-invalid={width > MAX_LABEL_WIDTH}
           onChange={(e) => onChange(e.target.value)}
@@ -75,7 +77,7 @@ function LabelField({
       </label>{" "}
       <small id="note-label-width">
         {width} / {MAX_LABEL_WIDTH}
-        {width > MAX_LABEL_WIDTH && " (too long; full-width counts as 2)"}
+        {width > MAX_LABEL_WIDTH && m.notes.labelTooLong}
       </small>
     </>
   );
@@ -108,6 +110,8 @@ export default function Notes({
   onDraftChange,
   pick,
 }: Props) {
+  const { m } = useI18n();
+  const t = m.notes;
   const list = useNotes(user, since);
   const updateNotes = useUpdateNotes(user);
   const [date, setDate] = useState(pick?.date ?? today);
@@ -128,9 +132,10 @@ export default function Notes({
   const setEditDrafts = (change: (edits: EditDrafts) => EditDrafts) =>
     onDraftChange((d) => ({ ...d, edits: change(d.edits) }));
   const [saving, setSaving] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
+  // 保存と削除の結果。文言は描くときに出す
+  const [status, setStatus] = useState<"saved" | "deleted" | null>(null);
   // 一覧の失敗と保存の失敗は分ける。一覧は読み直しに成功したら消え、Retry で読み直せる
-  const listError = list.error ? errorMessage(list.error) : null;
+  const listError = list.error ? errorMessage(list.error, m) : null;
   const [saveError, setSaveError] = useState<string | null>(null);
   // 保存の連打よけ。disabled は描画のあとにしか効かないので、送った直後にここで止める
   const savingNow = useRef(false);
@@ -180,7 +185,7 @@ export default function Notes({
   }
 
   /** 保存・削除の共通の手順。連打を止める */
-  async function run(action: () => Promise<string>) {
+  async function run(action: () => Promise<"saved" | "deleted">) {
     if (savingNow.current) return;
     savingNow.current = true;
     setSaving(true);
@@ -189,7 +194,7 @@ export default function Notes({
     try {
       setStatus(await action());
     } catch (e) {
-      setSaveError(errorMessage(e));
+      setSaveError(errorMessage(e, m));
       // 別の画面で消されていたときは、一覧を読み直して書く欄に戻す
       if (e instanceof ApiError && e.status === 404) void updateNotes(since);
     } finally {
@@ -230,7 +235,7 @@ export default function Notes({
         setEditDrafts((d) =>
           sameDraft(d[target.id], sent) ? withoutDraft(d, target.id) : d,
         );
-        return "Saved";
+        return "saved";
       });
       return;
     }
@@ -250,7 +255,7 @@ export default function Notes({
       onDraftChange((d) =>
         sameDraft(d, sent) ? { ...d, body: "", label: "" } : d,
       );
-      return "Saved";
+      return "saved";
     });
   }
 
@@ -258,26 +263,26 @@ export default function Notes({
     if (!existing || saving) return;
     const target = existing;
     const listSince = since;
-    if (!window.confirm(`Delete the note for ${target.date}?`)) return;
+    if (!window.confirm(m.notes.confirmDelete(target.date))) return;
     await run(async () => {
       await deleteNote(target.id, await user.getIdToken());
       // 消した日は空くので、書く欄に戻る
       await replaceInList(listSince, target.id, null);
       // 消したメモの下書きだけ消す。ほかのメモの書きかけは残す
       setEditDrafts((d) => withoutDraft(d, target.id));
-      return "Deleted";
+      return "deleted";
     });
   }
 
   return (
     <section aria-labelledby="notes-heading">
-      <h3 id="notes-heading">Notes</h3>
+      <h3 id="notes-heading">{t.heading}</h3>
       <form onSubmit={handleSave}>
         {/* 保存中は日付も本文も触らせない。保存が終わったときに次の本文を消さないため */}
         <fieldset disabled={saving}>
-          {guest && <p>Guests can read the notes but can't write them.</p>}
+          {guest && <p>{t.guest}</p>}
           <label>
-            Date
+            {t.date}
             <input
               type="date"
               value={date}
@@ -291,7 +296,7 @@ export default function Notes({
             {existing ? (
               <>
                 <label>
-                  Note
+                  {t.note}
                   <textarea
                     value={editBody}
                     maxLength={MAX_BODY}
@@ -304,54 +309,50 @@ export default function Notes({
                   onChange={(value) => changeDraft({ label: value })}
                 />
                 <button type="submit" disabled={!canSaveEdit}>
-                  Save changes
+                  {t.saveChanges}
                 </button>{" "}
                 <button type="button" onClick={handleDelete}>
-                  Delete
+                  {t.delete}
                 </button>
               </>
             ) : (
               <>
                 <label>
-                  Note
+                  {t.note}
                   <textarea
                     value={body}
                     maxLength={MAX_BODY}
                     rows={3}
-                    placeholder="How did you feel? Anything that happened?"
+                    placeholder={t.bodyPlaceholder}
                     onChange={(e) => setBody(e.target.value)}
                   />
                 </label>
                 <LabelField value={label} onChange={setLabel} />
                 {/* 期間を切り替えて、選んでいた日が外に出たとき。書きかけの本文は残す */}
-                {!inPeriod && (
-                  <p>
-                    Pick a day from {since} to {today}.
-                  </p>
-                )}
+                {!inPeriod && <p>{t.pickDay(since, today)}</p>}
                 <button type="submit" disabled={!canSave}>
-                  Save note
+                  {t.saveNote}
                 </button>
               </>
             )}
           </fieldset>
         </fieldset>
       </form>
-      {status && <p role="status">{status}</p>}
+      {status && <p role="status">{t[status]}</p>}
       {saveError && <p role="alert">{saveError}</p>}
 
       {listError && (
         <p role="alert">
           {listError}{" "}
           <button type="button" onClick={() => void list.mutate()}>
-            Retry
+            {m.common.retry}
           </button>
         </p>
       )}
-      {notes === null && !listError && <p>Loading notes…</p>}
-      {notes?.length === 0 && <p>No notes in this period.</p>}
+      {notes === null && !listError && <p>{t.loading}</p>}
+      {notes?.length === 0 && <p>{t.empty}</p>}
       {notes && notes.length > 0 && (
-        <ul aria-label="Notes in this period">
+        <ul aria-label={t.listLabel}>
           {notes.map((n) => (
             <li key={n.id} aria-current={n.date === date ? "date" : undefined}>
               {/* 一覧は保存中に止める fieldset の外にあるので、ここでも止める */}

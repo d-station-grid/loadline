@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
 
 import type { Form } from "../api";
+import { en } from "../i18n/messages";
 import {
-  FORM_LABEL,
   formatChange,
   formatHours,
   formatLoad,
@@ -12,13 +12,13 @@ import {
 } from "./summary";
 
 test("期間は 1W・1M・3M・6M で、1、4、13、26 週", () => {
-  expect(RANGES.map((r) => [r.label, r.weeks])).toEqual([
+  expect(RANGES.map((r) => [en.ranges[r.key].label, r.weeks])).toEqual([
     ["1W", 1],
     ["1M", 4],
     ["3M", 13],
     ["6M", 26],
   ]);
-  expect(rangeOf("3m").span).toBe("3 months");
+  expect(en.ranges[rangeOf("3m").key].last).toBe("last 3 months");
 });
 
 test("小数 1 桁で、0 に近い負の値を -0.0 と出さない", () => {
@@ -37,7 +37,7 @@ test("差は増えたら + を付け、丸めて 0 なら符号を付けない",
 test("Form の一言は 4 つの区分すべてにある", () => {
   const forms: Form[] = ["fatigued", "fresh", "steady", "not_enough_data"];
 
-  expect(forms.map((f) => FORM_LABEL[f])).toEqual([
+  expect(forms.map((f) => en.form[f])).toEqual([
     "Tired — ease off",
     "Fresh — fatigue has cleared",
     "Balanced",

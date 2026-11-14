@@ -9,7 +9,7 @@ import {
   issueIngestToken,
   putSettings,
 } from "../lib/api";
-import { useI18n } from "../i18n";
+import { type Messages, useI18n } from "../i18n";
 import { boundariesForMax, isSuggested } from "../lib/zones";
 
 /** 選べる言語。名前は、その言語を読む人に分かるよう、その言語で書く */
@@ -18,15 +18,16 @@ const LANGUAGES: { value: Language; label: string }[] = [
   { value: "ja", label: "日本語" },
 ];
 
-const WEEKDAYS = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-];
+/** 曜日の名前。0 が月曜。画面の言語のロケールで書く（2024-01-01 は月曜） */
+function weekdays(locale: string): string[] {
+  const format = new Intl.DateTimeFormat(locale, {
+    weekday: "long",
+    timeZone: "UTC",
+  });
+  return Array.from({ length: 7 }, (_, i) =>
+    format.format(new Date(Date.UTC(2024, 0, 1 + i))),
+  );
+}
 
 /**
  * 選べるタイムゾーン。今の値は一覧になくても先頭に足す。ブラウザの一覧には UTC がなく、
@@ -52,22 +53,16 @@ type HeartRateField =
   | "zone_boundary_1"
   | "zone_boundary_2";
 
-/** 心拍の項目の名前と受け付ける範囲。範囲は api の schemas/settings.py と同じにする。 */
+/** 心拍の項目と受け付ける範囲。範囲は api の schemas/settings.py と同じにする。名前は辞書 */
 const HEART_RATE_FIELDS: {
   field: HeartRateField;
-  label: string;
   min: number;
   max: number;
 }[] = [
-  { field: "max_heart_rate", label: "Max heart rate", min: 100, max: 250 },
-  {
-    field: "resting_heart_rate",
-    label: "Resting heart rate",
-    min: 30,
-    max: 120,
-  },
-  { field: "zone_boundary_1", label: "Low / Mid boundary", min: 60, max: 250 },
-  { field: "zone_boundary_2", label: "Mid / High boundary", min: 60, max: 250 },
+  { field: "max_heart_rate", min: 100, max: 250 },
+  { field: "resting_heart_rate", min: 30, max: 120 },
+  { field: "zone_boundary_1", min: 60, max: 250 },
+  { field: "zone_boundary_2", min: 60, max: 250 },
 ];
 
 /** 入力中のフォーム。心拍の 4 つは空のこともある（必須にする前の利用者、入力の途中） */
@@ -75,21 +70,25 @@ type SettingsForm = Omit<SettingsOut, "ingest_token_last_four">;
 
 /** 送る前に確かめる、心拍の 4 つがそろっているか、各項目の範囲、項目どうしの大小。api の
  * 検査と同じ決まりで、破っていれば画面に出す文言を返す。送ると 422 としか出ないため。 */
-function settingsProblem(form: SettingsForm): string | null {
-  for (const { field, label, min, max } of HEART_RATE_FIELDS) {
+function settingsProblem(
+  form: SettingsForm,
+  t: Messages["settings"],
+): string | null {
+  for (const { field, min, max } of HEART_RATE_FIELDS) {
+    const label = t.fields[field];
     const value = form[field];
-    if (value == null) return `${label} is required.`;
+    if (value == null) return t.required(label);
     if (!Number.isInteger(value) || value < min || value > max) {
-      return `${label} must be a whole number from ${min} to ${max}.`;
+      return t.outOfRange(label, min, max);
     }
   }
   const { zone_boundary_1: low, zone_boundary_2: high } = form;
   if (low != null && high != null && !(low < high)) {
-    return "Low / Mid boundary must be lower than Mid / High boundary.";
+    return t.boundariesOrder;
   }
   const { resting_heart_rate: resting, max_heart_rate: max } = form;
   if (resting != null && max != null && !(resting < max)) {
-    return "Resting heart rate must be lower than max heart rate.";
+    return t.restingBelowMax;
   }
   return null;
 }
@@ -119,13 +118,14 @@ function settingsBody(form: SettingsForm): SettingsIn | null {
   };
 }
 
-function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : "Something went wrong";
+function errorMessage(e: unknown, m: Messages): string {
+  return e instanceof Error ? e.message : m.common.somethingWentWrong;
 }
 
 /** 心拍の幅の上に、強度の 3 つの帯を並べた見本。4 つの値がそろって順に並んでいるときだけ出す。
  * 帯の幅は心拍の幅に比べた長さ。数字は入力欄の値をそのまま使う */
 function ZonePreview({ form }: { form: SettingsForm }) {
+  const { m } = useI18n();
   const {
     resting_heart_rate: resting,
     zone_boundary_1: low,
@@ -138,9 +138,9 @@ function ZonePreview({ form }: { form: SettingsForm }) {
   if (!(resting < low && low < high && high < max)) return null;
   const span = max - resting;
   const parts = [
-    { name: "Low", from: resting, to: low, className: "low" },
-    { name: "Mid", from: low, to: high, className: "mid" },
-    { name: "High", from: high, to: max, className: "high" },
+    { name: m.zones.low, from: resting, to: low, className: "low" },
+    { name: m.zones.mid, from: low, to: high, className: "mid" },
+    { name: m.zones.high, from: high, to: max, className: "high" },
   ];
   return (
     <div className="zone-preview" aria-hidden="true">
@@ -166,13 +166,12 @@ function ZonePreview({ form }: { form: SettingsForm }) {
   );
 }
 
-const NOT_DELETED =
-  "Could not delete your account. Nothing was deleted. Please try again.";
-const UNCONFIRMED =
-  "Couldn't confirm whether your account was deleted. Please try again.";
+/** 消せなかった理由。文言は描くときに今の言語で出す */
+type DeleteFailure = "notDeleted" | "unconfirmed" | "guestCannotDelete";
 
-/** 消したか、消せなかったときの文言。 */
-type DeleteOutcome = { deleted: true } | { deleted: false; message: string };
+/** 消したか、消せなかった理由。 */
+type DeleteOutcome =
+  { deleted: true } | { deleted: false; reason: DeleteFailure };
 
 /** 消してみて、結果を分ける。消えたと分かれば deleted。 */
 async function tryDelete(user: User): Promise<DeleteOutcome> {
@@ -185,7 +184,7 @@ async function tryDelete(user: User): Promise<DeleteOutcome> {
     const code = (e as { code?: unknown } | null)?.code;
     return code === "auth/user-token-expired"
       ? { deleted: true }
-      : { deleted: false, message: UNCONFIRMED };
+      : { deleted: false, reason: "unconfirmed" };
   }
   try {
     await deleteAccount(idToken);
@@ -195,13 +194,13 @@ async function tryDelete(user: User): Promise<DeleteOutcome> {
       // 消したあとのやり直しは 401 になる
       if (e.status === 401) return { deleted: true };
       if (e.status === 403) {
-        return { deleted: false, message: "Guests can't delete the account." };
+        return { deleted: false, reason: "guestCannotDelete" };
       }
       // api は Firebase で失敗したら何も消さずに 502 を返す
-      if (e.status === 502) return { deleted: false, message: NOT_DELETED };
+      if (e.status === 502) return { deleted: false, reason: "notDeleted" };
     }
     // 通信が切れたなど。api の側で消し終わっているかもしれない
-    return { deleted: false, message: UNCONFIRMED };
+    return { deleted: false, reason: "unconfirmed" };
   }
 }
 
@@ -213,7 +212,8 @@ type Props = {
 
 export default function SettingsPage({ user, onDeleted }: Props) {
   // 保存した言語で、画面全体をその場で切り替える
-  const { setLanguage } = useI18n();
+  const { m, locale, setLanguage } = useI18n();
+  const t = m.settings;
   const [form, setForm] = useState<SettingsForm | null>(null);
   // 強度の境目が、最大心拍から出した値のままか。そのままなら最大心拍に合わせて出し直す
   const [boundariesFilled, setBoundariesFilled] = useState(false);
@@ -225,13 +225,16 @@ export default function SettingsPage({ user, onDeleted }: Props) {
   // 発行の連打よけ。disabled は描画のあとにしか効かないので、クリック直後にここで止める。
   // 同時に 2 本走らなければ、先に無効になったトークンの応答が後から届くこともない
   const issuingNow = useRef(false);
-  const [status, setStatus] = useState<string | null>(null);
+  // 保存できたか。文言は描くときに出す（保存で言語を変えたとき、新しい言語で出すため）
+  const [saved, setSaved] = useState(false);
+  // 設定の読み込みの失敗。文言にするのは描くとき（今の言語で出すため）
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   // 削除の連打よけ。発行と同じく、描画を待たずにここで止める
   const deletingNow = useRef(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<DeleteFailure | null>(null);
   // 削除の節で切り替えたあと、描画が済んでからフォーカスを移す先
   const focusNext = useRef<"open" | "cancel" | "confirm" | null>(null);
   const openRef = useRef<HTMLButtonElement>(null);
@@ -258,7 +261,7 @@ export default function SettingsPage({ user, onDeleted }: Props) {
         }
       } catch (e) {
         if (!cancelled) {
-          setError(errorMessage(e));
+          setLoadError(e);
         }
       }
     })();
@@ -326,20 +329,20 @@ export default function SettingsPage({ user, onDeleted }: Props) {
     e.preventDefault();
     if (!form || guest) return;
     setError(null);
-    setStatus(null);
-    const problem = settingsProblem(form);
+    setSaved(false);
+    const problem = settingsProblem(form, t);
     const body = settingsBody(form);
     if (problem || !body) {
-      setError(problem ?? "Fill in all heart rate settings.");
+      setError(problem ?? t.fillAll);
       return;
     }
     try {
       const saved = await putSettings(body, await user.getIdToken());
       applySettings(saved);
       if (saved.language) setLanguage(saved.language);
-      setStatus("Saved");
+      setSaved(true);
     } catch (e) {
-      setError(errorMessage(e));
+      setError(errorMessage(e, m));
     }
   }
 
@@ -353,7 +356,7 @@ export default function SettingsPage({ user, onDeleted }: Props) {
       setFreshToken(t.token);
       setLastFour(t.last_four);
     } catch (e) {
-      setError(errorMessage(e));
+      setError(errorMessage(e, m));
     } finally {
       issuingNow.current = false;
       setIssuing(false);
@@ -371,7 +374,7 @@ export default function SettingsPage({ user, onDeleted }: Props) {
       onDeleted();
       return;
     }
-    setDeleteError(outcome.message);
+    setDeleteError(outcome.reason);
     deletingNow.current = false;
     setDeleting(false);
     // 消している間はボタンが止まり、フォーカスが外れることがある
@@ -394,12 +397,8 @@ export default function SettingsPage({ user, onDeleted }: Props) {
 
   return (
     <section className="page narrow" aria-labelledby="settings-heading">
-      <h2 id="settings-heading">Settings</h2>
-      {guest && (
-        <p className="muted">
-          Guests can view the demo settings but can't change them.
-        </p>
-      )}
+      <h2 id="settings-heading">{t.heading}</h2>
+      {guest && <p className="muted">{t.guestNote}</p>}
       {/* 設定を読めなくても、削除の節は出す */}
       {form ? (
         <>
@@ -408,19 +407,15 @@ export default function SettingsPage({ user, onDeleted }: Props) {
           <form onSubmit={handleSave} noValidate className="stack">
             <fieldset disabled={guest} className="plain stack">
               <fieldset className="card">
-                <legend className="card-title">Heart rate</legend>
-                <p className="muted small">
-                  Your zones and daily load are calculated from these. Changing
-                  them recalculates your history. All four are required.
-                </p>
-                <p className="muted small">
-                  Empty boundaries are filled in from your max heart rate (80%
-                  and 90%). Change them if you know your own thresholds.
-                </p>
+                <legend className="card-title">{t.heartRate}</legend>
+                <p className="muted small">{t.heartRateHelp}</p>
+                <p className="muted small">{t.boundariesHelp}</p>
                 <div className="field-grid">
-                  {HEART_RATE_FIELDS.map(({ field, label, min, max }) => (
+                  {HEART_RATE_FIELDS.map(({ field, min, max }) => (
                     <div className="field" key={field}>
-                      <label htmlFor={`settings-${field}`}>{label}</label>
+                      <label htmlFor={`settings-${field}`}>
+                        {t.fields[field]}
+                      </label>
                       <div className="with-unit">
                         <input
                           id={`settings-${field}`}
@@ -433,25 +428,20 @@ export default function SettingsPage({ user, onDeleted }: Props) {
                             updateHeartRate(field, toInt(e.target.value))
                           }
                         />
-                        <span className="muted small">bpm</span>
+                        <span className="muted small">{t.bpm}</span>
                       </div>
                     </div>
                   ))}
                 </div>
-                {unsavedFill && (
-                  <p className="small">
-                    Boundaries were filled in from your max heart rate. Save to
-                    use them.
-                  </p>
-                )}
+                {unsavedFill && <p className="small">{t.boundariesFilled}</p>}
                 <ZonePreview form={form} />
               </fieldset>
 
               <fieldset className="card">
-                <legend className="card-title">Weekly review</legend>
+                <legend className="card-title">{t.weeklyReview}</legend>
                 <div className="field-grid">
                   <div className="field">
-                    <label htmlFor="settings-timezone">Time zone</label>
+                    <label htmlFor="settings-timezone">{t.timezone}</label>
                     <select
                       id="settings-timezone"
                       value={form.timezone}
@@ -465,7 +455,7 @@ export default function SettingsPage({ user, onDeleted }: Props) {
                     </select>
                   </div>
                   <div className="field">
-                    <label htmlFor="settings-review-day">Review day</label>
+                    <label htmlFor="settings-review-day">{t.reviewDay}</label>
                     <select
                       id="settings-review-day"
                       value={form.review_weekday}
@@ -473,7 +463,7 @@ export default function SettingsPage({ user, onDeleted }: Props) {
                         update("review_weekday", Number(e.target.value))
                       }
                     >
-                      {WEEKDAYS.map((name, i) => (
+                      {weekdays(locale).map((name, i) => (
                         <option key={name} value={i}>
                           {name}
                         </option>
@@ -481,7 +471,7 @@ export default function SettingsPage({ user, onDeleted }: Props) {
                     </select>
                   </div>
                   <div className="field">
-                    <label htmlFor="settings-language">Language</label>
+                    <label htmlFor="settings-language">{t.language}</label>
                     <select
                       id="settings-language"
                       value={form.language ?? "en"}
@@ -499,11 +489,8 @@ export default function SettingsPage({ user, onDeleted }: Props) {
                 </div>
                 <label className="switch-row">
                   <span>
-                    Let the AI read my notes
-                    <span className="muted small">
-                      Turn this off and your weekly review uses your numbers
-                      only, not what you wrote in notes.
-                    </span>
+                    {t.notesToAi}
+                    <span className="muted small">{t.notesToAiHelp}</span>
                   </span>
                   <input
                     type="checkbox"
@@ -519,36 +506,36 @@ export default function SettingsPage({ user, onDeleted }: Props) {
 
               <div>
                 <button type="submit" className="primary">
-                  Save
+                  {t.save}
                 </button>
               </div>
             </fieldset>
-            {status && <p role="status">{status}</p>}
+            {saved && <p role="status">{t.saved}</p>}
           </form>
 
           <section className="card" aria-labelledby="connection-heading">
-            <h3 id="connection-heading">iPhone connection</h3>
+            <h3 id="connection-heading">{t.connection}</h3>
             <dl className="rows">
-              <dt>App</dt>
+              <dt>{t.app}</dt>
               <dd>Health Auto Export</dd>
-              <dt>URL</dt>
+              <dt>{t.url}</dt>
               <dd>
                 <code>{ingestUrl}</code>
               </dd>
-              <dt>Header</dt>
+              <dt>{t.header}</dt>
               <dd>
                 <code>Authorization: Bearer &lt;token&gt;</code>
               </dd>
-              <dt>Token</dt>
+              <dt>{t.token}</dt>
               <dd>
                 {freshToken ? (
                   <>
-                    Your new token (shown only once): <code>{freshToken}</code>
+                    {t.newToken} <code>{freshToken}</code>
                   </>
                 ) : lastFour ? (
-                  `Current token ends with …${lastFour}`
+                  t.tokenEndsWith(lastFour)
                 ) : (
-                  "No token yet."
+                  t.noToken
                 )}
               </dd>
             </dl>
@@ -557,36 +544,35 @@ export default function SettingsPage({ user, onDeleted }: Props) {
               onClick={handleIssueToken}
               disabled={issuing || guest}
             >
-              {lastFour ? "Reissue token" : "Issue token"}
+              {lastFour ? t.reissueToken : t.issueToken}
             </button>
           </section>
         </>
       ) : (
-        !error && <p className="muted">Loading…</p>
+        !error &&
+        loadError === null && <p className="muted">{m.common.loading}</p>
       )}
 
       {error && <p role="alert">{error}</p>}
+      {loadError !== null && <p role="alert">{errorMessage(loadError, m)}</p>}
 
       <section className="card" aria-labelledby="account-heading">
-        <h3 id="account-heading">Account</h3>
+        <h3 id="account-heading">{t.account}</h3>
         <dl className="rows">
-          <dt>Signed in with</dt>
+          <dt>{t.signedInWith}</dt>
           <dd>
             {guest
-              ? "Guest (demo data)"
+              ? t.guestAccount
               : `Google${user.email ? ` · ${user.email}` : ""}`}
           </dd>
         </dl>
       </section>
 
       <section className="card danger" aria-labelledby="delete-heading">
-        <h3 id="delete-heading">Delete account</h3>
+        <h3 id="delete-heading">{t.deleteAccount}</h3>
         {confirmingDelete ? (
           <>
-            <p>
-              This deletes your workouts, notes, weekly reviews, ingest token,
-              and your sign-in account. It can't be undone.
-            </p>
+            <p>{t.deleteWarning}</p>
             <button
               ref={confirmRef}
               type="button"
@@ -594,7 +580,7 @@ export default function SettingsPage({ user, onDeleted }: Props) {
               onClick={handleDelete}
               disabled={deleting}
             >
-              {deleting ? "Deleting…" : "Delete my account"}
+              {deleting ? t.deleting : t.deleteMine}
             </button>{" "}
             <button
               ref={cancelRef}
@@ -602,16 +588,13 @@ export default function SettingsPage({ user, onDeleted }: Props) {
               onClick={cancelDelete}
               disabled={deleting}
             >
-              Cancel
+              {t.cancel}
             </button>
-            {deleteError && <p role="alert">{deleteError}</p>}
+            {deleteError && <p role="alert">{t[deleteError]}</p>}
           </>
         ) : (
           <>
-            <p className="muted small">
-              Deletes your account and all your data: workouts, notes, weekly
-              reviews and your token.
-            </p>
+            <p className="muted small">{t.deleteSummary}</p>
             <button
               ref={openRef}
               type="button"
@@ -619,7 +602,7 @@ export default function SettingsPage({ user, onDeleted }: Props) {
               onClick={openDelete}
               disabled={guest}
             >
-              Delete account…
+              {t.deleteOpen}
             </button>
           </>
         )}

@@ -36,8 +36,6 @@ export function formatDateTime(iso: string, locale?: string): string {
   });
 }
 
-export const SPORT_LABEL: Record<string, string> = { ride: "Ride", run: "Run" };
-
 /** その時刻が、そのタイムゾーンで何日か（YYYY-MM-DD）。 */
 export function dayInZone(iso: string, timeZone: string): string {
   // en-CA は YYYY-MM-DD の形で出す

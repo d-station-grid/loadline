@@ -17,6 +17,7 @@ import {
   zoneRows,
   zoneWeeksOption,
 } from "./charts";
+import { ja } from "../i18n/messages";
 import { formatDay } from "./format";
 
 function seriesOf(option: EChartsOption | null): SeriesOption[] {
@@ -412,4 +413,29 @@ test("▲ の高さは、強度ごとに分へ丸めた棒の高さの合計に�
   const top = [low, mid, high].reduce((n, s) => n + (s.data as number[])[0], 0);
   expect(top).toBe(4);
   expect(missing.data).toEqual([[formatDay("2026-10-19"), 4]]);
+});
+
+test("画面の言語の辞書を渡すと、凡例・軸・強度・種目の名前をその言語で出す", () => {
+  const days: DayPoint[] = [
+    { day: "2026-10-01", load: null, fitness: 30, fatigue: 50, headroom: -20 },
+  ];
+  const trend = loadOption(days, [], ja);
+  expect((trend.legend as { data: unknown[] }).data).toEqual([
+    "体力",
+    "疲労",
+    "負荷",
+    { name: "心拍なし", icon: "triangle" },
+  ]);
+  expect(seriesOf(trend).map((s) => s.name)).toEqual([
+    "体力",
+    "疲労",
+    "負荷",
+    "心拍なし",
+  ]);
+
+  expect(
+    zoneRows({ low: 60, mid: 60, high: 60 }, ja)?.map((r) => r.label),
+  ).toEqual(["低", "中", "高"]);
+  const scatter = workoutsOption([point({ id: 1, sport: "run" })], ja);
+  expect(seriesOf(scatter).map((s) => s.name)).toEqual(["ラン"]);
 });

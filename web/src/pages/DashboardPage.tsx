@@ -162,12 +162,15 @@ export default function DashboardPage({
   const trend = useMemo(
     () =>
       data
-        ? trendOption(data.days, data.vo2max, notes, {
-            since: data.since,
-            until: data.until,
-          })
+        ? trendOption(
+            data.days,
+            data.vo2max,
+            notes,
+            { since: data.since, until: data.until },
+            m,
+          )
         : null,
-    [data, notes],
+    [data, notes, m],
   );
 
   const today = data?.days.at(-1);
@@ -491,16 +494,17 @@ function IntensityCard({
   onRange,
   onSport,
 }: IntensityProps) {
-  const { m } = useI18n();
+  const { m, locale } = useI18n();
   const d = m.dashboard;
-  const zones = data ? zoneRows(data.zones) : null;
+  const zones = data ? zoneRows(data.zones, m) : null;
   const scatter = useMemo(
-    () => (data ? workoutsOption(data.workouts) : null),
-    [data],
+    () => (data ? workoutsOption(data.workouts, m) : null),
+    [data, m],
   );
   const weekly = useMemo(
-    () => (data?.zone_weeks ? zoneWeeksOption(data.zone_weeks) : null),
-    [data],
+    () =>
+      data?.zone_weeks ? zoneWeeksOption(data.zone_weeks, m, locale) : null,
+    [data, m, locale],
   );
   // 散布図に置ける回。負荷は心拍、高強度の時間は境目がないと出ない
   const plottable =

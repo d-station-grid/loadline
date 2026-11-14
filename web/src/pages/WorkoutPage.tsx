@@ -10,11 +10,11 @@ import {
   formatDateTime,
   formatDuration,
   nextDay,
-  SPORT_LABEL,
 } from "../lib/format";
+import { useI18n } from "../i18n";
 
-function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : "Something went wrong";
+function errorMessage(e: unknown, fallback: string): string {
+  return e instanceof Error ? e.message : fallback;
 }
 
 /** 強度の境目。設定が読めなければ線を引かない */
@@ -32,8 +32,9 @@ function HeartRateChart({
   samples: HeartRateSample[];
   boundaries: Boundaries;
 }) {
+  const { m } = useI18n();
   if (samples.length < 2) {
-    return <p className="muted">No heart rate data.</p>;
+    return <p className="muted">{m.workout.chartNoHeartRate}</p>;
   }
   const width = 800;
   const height = 220;
@@ -66,12 +67,12 @@ function HeartRateChart({
   // 長い回は目盛りを間引く
   const step = span > 180 ? 30 : span > 90 ? 20 : 10;
   for (let m = 0; m <= span; m += step) xTicks.push(m);
-  const names = ["Low | Mid", "Mid | High"];
+  const names = m.workout.boundaryNames;
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
       role="img"
-      aria-label="Heart rate over time"
+      aria-label={m.workout.chartLabel}
       className="hr-chart"
     >
       {yTicks.map((v) => (
@@ -145,7 +146,11 @@ type Props = { user: User; workoutId: number; onBack: () => void };
 
 export default function WorkoutPage({ user, workoutId, onBack }: Props) {
   const [workout, setWorkout] = useState<WorkoutDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { m, locale } = useI18n();
+  const t = m.workout;
+  const d = m.dashboard;
+  // 失敗そのものを持ち、文言は描くときに今の言語で出す
+  const [error, setError] = useState<unknown>(null);
   const [boundaries, setBoundaries] = useState<Boundaries>({
     low: null,
     high: null,
@@ -180,7 +185,7 @@ export default function WorkoutPage({ user, workoutId, onBack }: Props) {
           // 線とメモがないだけで、詳細は読めている
         }
       } catch (e) {
-        if (!cancelled) setError(errorMessage(e));
+        if (!cancelled) setError(e);
       }
     })();
     return () => {
@@ -190,64 +195,59 @@ export default function WorkoutPage({ user, workoutId, onBack }: Props) {
 
   const back = (
     <button type="button" className="link" onClick={onBack}>
-      ‹ Workouts
+      {t.back}
     </button>
   );
 
-  if (error) {
+  if (error !== null) {
     return (
       <section className="page">
         {back}
-        <p role="alert">{error}</p>
+        <p role="alert">{errorMessage(error, m.common.somethingWentWrong)}</p>
       </section>
     );
   }
   if (!workout) {
-    return <p className="muted">Loading…</p>;
+    return <p className="muted">{m.common.loading}</p>;
   }
 
-  const rows = zoneRows(workout.zones);
+  const rows = zoneRows(workout.zones, m);
 
   return (
     <section className="page" aria-labelledby="workout-heading">
       {back}
       <div>
-        <h2 id="workout-heading">
-          {SPORT_LABEL[workout.sport] ?? workout.sport}
-        </h2>
-        <p className="muted">{formatDateTime(workout.started_at)}</p>
+        <h2 id="workout-heading">{m.sports[workout.sport] ?? workout.sport}</h2>
+        <p className="muted">{formatDateTime(workout.started_at, locale)}</p>
       </div>
 
       <section className="card" aria-labelledby="intensity-heading">
-        <h3 id="intensity-heading">Intensity</h3>
-        <p className="muted small">
-          Heart rate every minute. Lines mark your zone boundaries.
-        </p>
+        <h3 id="intensity-heading">{t.intensity}</h3>
+        <p className="muted small">{t.intensityHelp}</p>
         <HeartRateChart samples={workout.heart_rates} boundaries={boundaries} />
         <div className="split divided">
           <div>
-            <h4>Time in each zone</h4>
+            <h4>{t.timeInZone}</h4>
             {rows ? (
               <ZoneBreakdown rows={rows} />
             ) : workout.heart_rates.length === 0 ? (
-              <p className="muted small">
-                No heart rate data for this workout.
-              </p>
+              <p className="muted small">{t.noHeartRate}</p>
             ) : (
-              <p className="muted small">
-                Set your heart rate boundaries in Settings to see intensity.
-              </p>
+              <p className="muted small">{t.needsBoundaries}</p>
             )}
           </div>
           <dl className="tiles">
-            <Tile label="Time" value={formatDuration(workout.duration_sec)} />
             <Tile
-              label="Avg HR"
+              label={d.time}
+              value={formatDuration(workout.duration_sec, m.duration)}
+            />
+            <Tile
+              label={d.avgHr}
               value={String(workout.avg_heart_rate ?? "–")}
               unit="bpm"
             />
             <Tile
-              label="Max HR"
+              label={m.workouts.maxHr}
               value={String(workout.max_heart_rate ?? "–")}
               unit="bpm"
             />
@@ -257,14 +257,14 @@ export default function WorkoutPage({ user, workoutId, onBack }: Props) {
 
       {note !== undefined && (
         <section className="card" aria-labelledby="note-heading">
-          <h3 id="note-heading">Note for this day</h3>
+          <h3 id="note-heading">{t.noteHeading}</h3>
           {note ? (
             <p className="note-body">
               {note.label && <strong>{note.label} </strong>}
               {note.body}
             </p>
           ) : (
-            <p className="muted">No note for this day.</p>
+            <p className="muted">{t.noNote}</p>
           )}
         </section>
       )}

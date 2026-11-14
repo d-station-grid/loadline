@@ -3,21 +3,23 @@ import { useEffect, useRef, useState } from "react";
 
 import type { WorkoutSummary } from "../api";
 import { getWorkouts } from "../lib/api";
-import { formatDateTime, formatDuration, SPORT_LABEL } from "../lib/format";
+import { useI18n } from "../i18n";
+import { formatDateTime, formatDuration } from "../lib/format";
 
 type Range = "4w" | "12w" | "all";
 
 /** 1 回に取る件数。これだけ返ってきたら、まだ古い記録があるとみなして Load more を出す。 */
 const PAGE_SIZE = 100;
 
-const RANGES: { key: Range; label: string; weeks: number | null }[] = [
-  { key: "4w", label: "Last 4 weeks", weeks: 4 },
-  { key: "12w", label: "Last 12 weeks", weeks: 12 },
-  { key: "all", label: "All", weeks: null },
+/** 期間の選択肢。名前は辞書（workouts.ranges） */
+const RANGES: { key: Range; weeks: number | null }[] = [
+  { key: "4w", weeks: 4 },
+  { key: "12w", weeks: 12 },
+  { key: "all", weeks: null },
 ];
 
-function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : "Something went wrong";
+function errorMessage(e: unknown, fallback: string): string {
+  return e instanceof Error ? e.message : fallback;
 }
 
 type Props = { user: User; onSelect: (id: number) => void };
@@ -35,9 +37,13 @@ type Page = {
 };
 
 export default function WorkoutsPage({ user, onSelect }: Props) {
+  const { m, locale } = useI18n();
+  const w = m.workouts;
+  const d = m.dashboard;
   const [range, setRange] = useState<Range>("4w");
   const [page, setPage] = useState<Page | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // 失敗そのものを持ち、文言は描くときに今の言語で出す
+  const [error, setError] = useState<unknown>(null);
   // Retry で進める。期間が同じでも effect を走らせ直すため
   const [attempt, setAttempt] = useState(0);
   // 1 ページ目を取り直すたびに進める。Load more の応答は、始めたときと世代が違えば捨てる。
@@ -76,7 +82,7 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
           loadingMore: false,
         });
       } catch (e) {
-        if (!cancelled) setError(errorMessage(e));
+        if (!cancelled) setError(e);
       }
     })();
     return () => {
@@ -121,7 +127,7 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
       );
     } catch (e) {
       if (started !== generation.current) return;
-      setError(errorMessage(e));
+      setError(e);
       setPage((prev) => (prev ? { ...prev, loadingMore: false } : prev));
     } finally {
       loadingMoreNow.current = false;
@@ -130,10 +136,10 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
 
   return (
     <section className="page" aria-labelledby="workouts-heading">
-      <h2 id="workouts-heading">Workouts</h2>
+      <h2 id="workouts-heading">{w.heading}</h2>
       <section className="card">
         <div className="card-head">
-          <div role="group" aria-label="Period" className="segmented compact">
+          <div role="group" aria-label={w.period} className="segmented compact">
             {RANGES.map((r) => (
               <button
                 key={r.key}
@@ -141,52 +147,48 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
                 aria-pressed={range === r.key}
                 onClick={() => setRange(r.key)}
               >
-                {r.label}
+                {w.ranges[r.key] ?? r.key}
               </button>
             ))}
           </div>
           {items && items.length > 0 && (
-            <p className="muted small">
-              {items.length}
-              {hasMore ? "+" : ""}{" "}
-              {items.length === 1 && !hasMore ? "workout" : "workouts"}
-            </p>
+            <p className="muted small">{w.count(items.length, hasMore)}</p>
           )}
         </div>
 
-        {error && (
+        {error !== null && (
           <p role="alert">
-            {error}{" "}
+            {errorMessage(error, m.common.somethingWentWrong)}{" "}
             <button type="button" onClick={retry}>
-              Retry
+              {m.common.retry}
             </button>
           </p>
         )}
-        {items === null && !error && <p className="muted">Loading…</p>}
-        {items && items.length === 0 && (
-          <p className="muted">No workouts in this period.</p>
+        {items === null && error === null && (
+          <p className="muted">{m.common.loading}</p>
         )}
+        {items && items.length === 0 && <p className="muted">{w.noWorkouts}</p>}
         {items && items.length > 0 && (
           <div className="table-scroll">
             <table className="table">
               <thead>
                 <tr>
-                  <th>Date</th>
-                  <th>Sport</th>
-                  <th className="num">Time</th>
-                  <th className="num">Avg HR</th>
-                  <th className="num">Max HR</th>
+                  <th>{d.date}</th>
+                  <th>{d.sport}</th>
+                  <th className="num">{d.time}</th>
+                  <th className="num">{d.avgHr}</th>
+                  <th className="num">{w.maxHr}</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((w) => (
+                {items.map((row) => (
                   // 行のどこを押しても詳細へ。キーボードでは種目のボタンで開く
                   <tr
-                    key={w.id}
+                    key={row.id}
                     className="clickable"
-                    onClick={() => onSelect(w.id)}
+                    onClick={() => onSelect(row.id)}
                   >
-                    <td>{formatDateTime(w.started_at)}</td>
+                    <td>{formatDateTime(row.started_at, locale)}</td>
                     <td>
                       <button
                         type="button"
@@ -194,15 +196,17 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
                         onClick={(e) => {
                           // 行の onClick と 2 回呼ばない
                           e.stopPropagation();
-                          onSelect(w.id);
+                          onSelect(row.id);
                         }}
                       >
-                        {SPORT_LABEL[w.sport] ?? w.sport}
+                        {m.sports[row.sport] ?? row.sport}
                       </button>
                     </td>
-                    <td className="num">{formatDuration(w.duration_sec)}</td>
-                    <td className="num">{w.avg_heart_rate ?? "–"}</td>
-                    <td className="num">{w.max_heart_rate ?? "–"}</td>
+                    <td className="num">
+                      {formatDuration(row.duration_sec, m.duration)}
+                    </td>
+                    <td className="num">{row.avg_heart_rate ?? "–"}</td>
+                    <td className="num">{row.max_heart_rate ?? "–"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -212,7 +216,7 @@ export default function WorkoutsPage({ user, onSelect }: Props) {
         {hasMore && (
           <div className="card-foot">
             <button type="button" onClick={loadMore} disabled={loadingMore}>
-              {loadingMore ? "Loading…" : "Load more"}
+              {loadingMore ? m.common.loading : w.loadMore}
             </button>
           </div>
         )}
