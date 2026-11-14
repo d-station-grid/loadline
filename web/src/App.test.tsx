@@ -478,3 +478,27 @@ test("ログイン前は、ブラウザの言語が日本語なら日本語で�
     await screen.findByRole("button", { name: "Google でログイン" }),
   ).toBeInTheDocument();
 });
+
+test("日本語のブラウザでゲストに入ると、デモの言語（英語）ではなく日本語のまま出す", async () => {
+  vi.spyOn(navigator, "language", "get").mockReturnValue("ja-JP");
+  restoredUser(null);
+  firebaseAuth.signInAnonymously.mockImplementation(async () => {
+    notify(guest);
+    return { user: guest };
+  });
+  vi.mocked(login).mockResolvedValue({
+    id: 9,
+    email: "demo@loadline.invalid",
+    language: "en",
+  });
+  render(<App />);
+
+  fireEvent.click(screen.getByRole("button", { name: "ゲストで試す" }));
+
+  expect(
+    await screen.findByText(/ゲストとしてデモデータを表示しています/),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "ログアウト" }),
+  ).toBeInTheDocument();
+});

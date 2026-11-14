@@ -74,7 +74,9 @@ function App() {
         // api に行があることを確かめてから、ログイン済みにする
         const me = await login(await next.getIdToken());
         if (isLatest()) {
-          setLanguage(me.language);
+          // ゲストはデモの利用者の言語（英語）が返るが、設定を変えられないので、
+          // ブラウザの言語を使い続ける
+          setLanguage(next.isAnonymous ? browserLanguage() : me.language);
           setUser(next);
         }
       } catch (e) {

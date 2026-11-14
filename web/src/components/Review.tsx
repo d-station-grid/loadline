@@ -431,7 +431,7 @@ export default function Review({ user, onOpenSettings }: Props) {
                 )}
                 {creating && (
                   <p className="muted small">
-                    {r.createHint} {elapsed}s
+                    {r.createHint} {r.elapsed(elapsed)}
                   </p>
                 )}
                 {createError?.kind === "settings" && (

@@ -170,6 +170,7 @@ export const en = {
     writing: "Writing your review…",
     create: "Create this week's review",
     createHint: "This usually takes 20–30 seconds.",
+    elapsed: (sec: number) => `${sec}s`,
     needsSettings:
       "Set your max and resting heart rate before creating a review.",
     guestCannotCreate: "Guests can't create reviews.",
@@ -353,6 +354,7 @@ export const ja: Messages = {
     writing: "週次レビューを作成しています…",
     create: "今週の週次レビューを作成",
     createHint: "ふだんは 20〜30 秒かかります。",
+    elapsed: (sec) => `${sec}秒`,
     needsSettings:
       "週次レビューを作成するには、最大心拍数と安静時心拍数を設定してください。",
     guestCannotCreate: "ゲストは週次レビューを作成できません。",
