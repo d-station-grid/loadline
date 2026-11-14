@@ -196,7 +196,7 @@ async def test_delete_needs_login(
 async def test_task_for_the_deleted_user_is_skipped(
     client: AsyncClient, session: AsyncSession, deleter: FakeDeleter
 ) -> None:
-    # 消す前に積まれた振り返りのタスクが、消した後に届く
+    # 消す前に積まれた週次レビューのタスクが、消した後に届く
     me = await _user_with_everything("uid-1")
     me.max_heart_rate, me.resting_heart_rate = 177, 75
     await session.commit()
@@ -303,7 +303,7 @@ async def test_delete_removes_the_audio_of_the_user(
     other = await _user_with_everything("someone-else")
     await session.commit()
     mine = [f"users/{me.id}/reviews/1.wav", f"users/{me.id}/reviews/2.wav"]
-    # 振り返りの行がないファイル（置いたあとに commit できなかった分）も消す
+    # 週次レビューの行がないファイル（置いたあとに commit できなかった分）も消す
     mine.append(f"users/{me.id}/reviews/999.wav")
     theirs = f"users/{other.id}/reviews/3.wav"
     for path in [*mine, theirs]:
@@ -349,7 +349,7 @@ async def test_firebase_failure_after_the_audio_keeps_every_row(
     res = await client.delete("/me", headers=HEADERS)
 
     # 行と Firebase の利用者は残るので、本人はログインしてやり直せる。音声はもう消えている
-    # （その振り返りは文字だけになる）。やり直したときは、消すものがないだけで通る
+    # （その週次レビューは文字だけになる）。やり直したときは、消すものがないだけで通る
     assert res.status_code == 502
     assert await _rows_of(session, me_id) == before
     assert audio.files == {}

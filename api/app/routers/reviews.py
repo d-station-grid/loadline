@@ -27,7 +27,10 @@ router = APIRouter(prefix="/reviews", tags=["reviews"])
     response_model=WeeklyReviewOut,
     status_code=status.HTTP_201_CREATED,
     responses={
-        status.HTTP_200_OK: {"model": WeeklyReviewOut, "description": "その週の振り返りはもうある"},
+        status.HTTP_200_OK: {
+            "model": WeeklyReviewOut,
+            "description": "その週の週次レビューはもうある",
+        },
         status.HTTP_403_FORBIDDEN: {"description": "ゲスト（デモの利用者）は作れない"},
         status.HTTP_409_CONFLICT: {"description": "最大心拍か安静時心拍が未設定"},
     },
@@ -41,10 +44,10 @@ async def add_review(
     audio: AudioStoreDep,
     response: Response,
 ) -> WeeklyReviewOut:
-    """今の振り返りの週の振り返りを作る。週は、今日以前でいちばん近い振り返りの曜日の
+    """今の週の週次レビューを作る。週は、今日以前でいちばん近い週次レビューの曜日の
     前日までの 7 日間（利用者のタイムゾーン）。
 
-    その週の振り返りがもうあれば、作り直さずにそれを 200 で返す。後から届いた記録も
+    その週の週次レビューがもうあれば、作り直さずにそれを 200 で返す。後から届いた記録も
     入れない。GEMINI_PROJECT と TYPESAFE_API_KEY が設定されていればセリフと選択肢を
     Gemini が書き、Jev で話してよいと確かめられたときだけその文にする。書けない、
     引っかかった、確かめられなかった（時間切れも）ときは定型にする。設定がなければ
@@ -69,17 +72,19 @@ async def add_review(
     response_model=WeeklyReviewOut,
     responses={
         status.HTTP_404_NOT_FOUND: {
-            "description": "今の週の振り返りはまだない（ゲストは、デモの振り返りがひとつもない）"
+            "description": (
+                "今の週の週次レビューはまだない（ゲストは、デモの週次レビューがひとつもない）"
+            )
         }
     },
 )
 async def read_current_review(
     user: CurrentUser, session: DbSession, audio: AudioStoreDep
 ) -> WeeklyReviewOut:
-    """今の振り返りの週の振り返り。週の決め方は POST /reviews と同じ。
+    """今の週の週次レビュー。週の決め方は POST /reviews と同じ。
 
-    ゲスト（デモの利用者）には、今の週ではなく、いちばん新しい期間の振り返りを返す。
-    デモデータは日付が動かず、今の週の振り返りはないため。
+    ゲスト（デモの利用者）には、今の週ではなく、いちばん新しい期間の週次レビューを返す。
+    デモデータは日付が動かず、今の週の週次レビューはないため。
     """
     review = await current_review(session, user, audio=audio)
     if review is None:
@@ -92,8 +97,10 @@ async def read_current_review(
     response_model=WeeklyReviewOut,
     responses={
         status.HTTP_403_FORBIDDEN: {"description": "ゲスト（デモの利用者）は選べない"},
-        status.HTTP_404_NOT_FOUND: {"description": "振り返りか、その振り返りの選択肢がない"},
-        status.HTTP_409_CONFLICT: {"description": "今の週の振り返りではない"},
+        status.HTTP_404_NOT_FOUND: {
+            "description": "週次レビューか、その週次レビューの選択肢がない",
+        },
+        status.HTTP_409_CONFLICT: {"description": "今の週の週次レビューではない"},
     },
 )
 async def put_selection(
@@ -103,9 +110,9 @@ async def put_selection(
     session: DbSession,
     audio: AudioStoreDep,
 ) -> WeeklyReviewOut:
-    """振り返りの選択肢を 1 つ選ぶ。選び直すと、前に選んだものは外れる。
+    """週次レビューの選択肢を 1 つ選ぶ。選び直すと、前に選んだものは外れる。
 
-    選び直せるのは今の週の振り返りだけ。過ぎた週の選択は、次の週の振り返りの材料に
+    選び直せるのは今の週の週次レビューだけ。過ぎた週の選択は、次の週の週次レビューの材料に
     使うので変えない。
     """
     try:

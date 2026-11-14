@@ -1,7 +1,7 @@
 """主な流れを、API だけを順に呼んで通す。
 
 ログイン → 設定 → トークン発行 → 記録の受け取り → 一覧 → 1 件の詳細 → ダッシュボード
-→ 振り返り → 選択肢の保存。前の段で入れたものが、次の段の応答に出ることを確かめる。
+→ 週次レビュー → 選択肢の保存。前の段で入れたものが、次の段の応答に出ることを確かめる。
 DB は本物の Postgres（テスト用の DB）を通る。
 """
 
@@ -74,7 +74,7 @@ def _workout(external_id: str, name: str, start: datetime, bpms: list[int]) -> d
 
 
 async def test_main_flow_from_token_to_selection(client: AsyncClient) -> None:
-    # 振り返る週は、今日から決まる「今の振り返りの週」。記録はその週の中に置く
+    # 週次レビューの対象は、今日から決まる「今の週」。記録はその週の中に置く
     start, end = review_period(datetime.now(TOKYO).date(), REVIEW_WEEKDAY)
     ride_day, run_day = start + timedelta(days=1), start + timedelta(days=3)
 
@@ -147,7 +147,7 @@ async def test_main_flow_from_token_to_selection(client: AsyncClient) -> None:
     assert board["zones"] == {"low": 600, "mid": 600 + 1800, "high": 600}
     assert [(p["day"], p["value"]) for p in board["vo2max"]] == [(run_day.isoformat(), 48.3)]
 
-    # 振り返りを作る。記録を始めたばかりなので「記録が足りない」で、回数は送った 2 回
+    # 週次レビューを作る。記録を始めたばかりなので「記録が足りない」で、回数は送った 2 回
     created = await client.post("/reviews", headers=LOGIN)
     assert created.status_code == 201
     review = created.json()
@@ -155,7 +155,7 @@ async def test_main_flow_from_token_to_selection(client: AsyncClient) -> None:
     assert review["situation"] == "not_enough_data"
     assert "This week you did 2 sessions." in review["script"]
 
-    # 選択肢を選ぶと、今の週の振り返りにも選んだ印が残る
+    # 選択肢を選ぶと、今の週の週次レビューにも選んだ印が残る
     option = review["options"][0]
     selected = await client.put(
         f"/reviews/{review['id']}/selection", json={"option_id": option["id"]}, headers=LOGIN

@@ -15,7 +15,7 @@ const STRENGTH = 0.8;
  *
  * 話しているあいだは relaxed にする。happy と surprised は口を開けた形まで含む顔全体の
  * モーフで、口パクと重ねると口が閉じなくなる（試作で確認）。sad も口の形を持つので、
- * 合わせて relaxed にそろえる。振り返りの表情は、話す前と話し終えたあとに出す。
+ * 合わせて relaxed にそろえる。週次レビューの表情は、話す前と話し終えたあとに出す。
  */
 export function faceTarget(
   expression: Expression,

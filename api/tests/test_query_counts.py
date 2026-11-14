@@ -88,7 +88,7 @@ async def test_list_and_dashboard(
 async def test_create_review(
     client: AsyncClient, session: AsyncSession, queries: QueryCounter
 ) -> None:
-    """振り返りを作るときも、判定の材料をワークアウトの件数によらず決まった回数で読む。"""
+    """週次レビューを作るときも、判定の材料をワークアウトの件数によらず決まった回数で読む。"""
     me = await _me()
     await _add_workouts(me, range(1))
     queries.reset()

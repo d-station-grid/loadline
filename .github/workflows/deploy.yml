@@ -28,11 +28,11 @@ env:
   REGION: asia-northeast1
   IMAGE: asia-northeast1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/loadline/api
   RUNTIME_SA: loadline-api@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com
-  # 振り返りを自動で作る。Scheduler と Tasks はこの URL を呼び、invoker の OIDC トークンを付ける
+  # 週次レビューを自動で作る。Scheduler と Tasks はこの URL を呼び、invoker の OIDC トークンを付ける
   API_URL: https://api-qbvpsx77dq-an.a.run.app
   INVOKER_SA: loadline-invoker@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com
   TASKS_QUEUE: projects/${{ vars.GCP_PROJECT_ID }}/locations/asia-northeast1/queues/weekly-reviews
-  # 振り返りのセリフを声にする。tts は deploy-tts.yml が出す。音声は非公開のバケットに置き、署名付き URL で渡す
+  # 週次レビューのセリフを声にする。tts は deploy-tts.yml が出す。音声は非公開のバケットに置き、署名付き URL で渡す
   TTS_URL: https://tts-qbvpsx77dq-an.a.run.app
   AUDIO_BUCKET: loadline-app-audio
 
@@ -90,7 +90,7 @@ jobs:
           gcloud run jobs execute api-migrate \
             --project "${{ vars.GCP_PROJECT_ID }}" --region "$REGION" --wait --quiet
 
-      # 振り返りのセリフは Gemini（Vertex AI）で書き、Jev で確かめる。Vertex AI は実行用の
+      # 週次レビューのセリフは Gemini（Vertex AI）で書き、Jev で確かめる。Vertex AI は実行用の
       # サービスアカウントの権限（roles/aiplatform.user）で呼ぶ。Jev のキーは Secret Manager から。
       # Jev のキーがないと、Gemini が書いても話さずに定型にする
       - name: deploy api

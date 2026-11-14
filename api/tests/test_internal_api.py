@@ -61,7 +61,7 @@ def fake_caller() -> Iterator[None]:
 
 
 async def _runner(**fields: Any) -> User:
-    """心拍の設定がある、振り返りの曜日が月曜の人。"""
+    """心拍の設定がある、週次レビューの曜日が月曜の人。"""
     defaults: dict[str, Any] = {
         "max_heart_rate": 177,
         "resting_heart_rate": 75,
@@ -108,7 +108,7 @@ async def test_internal_endpoints_are_not_in_the_openapi(client: AsyncClient) ->
 
 
 def _week_of(day: date) -> date:
-    """振り返りの曜日が月曜の人の、day の時点での今の週の初日。"""
+    """週次レビューの曜日が月曜の人の、day の時点での今の週の初日。"""
     return review_period(day, 0)[0]
 
 
@@ -333,7 +333,7 @@ async def test_task_for_a_past_week_is_skipped(client: AsyncClient, session: Asy
 async def test_task_after_the_review_weekday_changed_is_skipped(
     client: AsyncClient, session: AsyncSession
 ) -> None:
-    # 月曜の週で積んだ後、本人が振り返りの曜日を木曜に変えた
+    # 月曜の週で積んだ後、本人が週次レビューの曜日を木曜に変えた
     user = await _runner(review_weekday=3)
 
     res = await client.post(_task_path(user, _current_week()), headers=HEADERS)
@@ -365,7 +365,7 @@ async def test_task_with_a_broken_date_is_422(client: AsyncClient) -> None:
     "now",
     [
         datetime(2026, 11, 3, 1, 0, tzinfo=TOKYO),  # 翌日（火曜）
-        datetime(2026, 11, 8, 23, 59, tzinfo=TOKYO),  # 次の振り返りの曜日の前の晩（日曜）
+        datetime(2026, 11, 8, 23, 59, tzinfo=TOKYO),  # 次の週次レビューの曜日の前の晩（日曜）
     ],
     ids=["tuesday", "sunday-night"],
 )

@@ -4,7 +4,7 @@ loadline が GCP（プロジェクト `loadline-app`）に持っている設定�
 
 - リージョンは `asia-northeast1`（東京）にそろえています。例外は Gemini（Vertex AI）で、api は `global` のエンドポイントを呼びます（api の設定 `gemini_location` の既定。`deploy.yml` は `GEMINI_LOCATION` を渡していない）
 - Cloud Run へのデプロイ（`.github/workflows/deploy.yml`、`deploy-tts.yml`）が入れる設定以外は、コンソールやコマンドで手で入れたもので、コードには残りません。変えたら、この文書も直します
-- 振り返りの音声は、api が tts で声にして音声のバケットに置き、署名付き URL を返します。web はその URL を、ブラウザから直接読んで再生します。CORS つきで読み、声の大きさでアバターの口を動かします
+- 週次レビューの音声は、api が tts で声にして音声のバケットに置き、署名付き URL を返します。web はその URL を、ブラウザから直接読んで再生します。CORS つきで読み、声の大きさでアバターの口を動かします
 - データベースは GCP ではなく Neon（AWS シンガポール）です。接続の URL だけを Secret Manager に置いています
 - 今の設定を確かめるコマンドは、最後の「確かめ方」にあります
 
@@ -67,7 +67,7 @@ gcloud iam service-accounts create loadline-deploy --project loadline-app
 | `allUsers` | Cloud Run の `api` | `roles/run.invoker` | 画面と取り込みの窓口。認証は api の中で Firebase のトークンと取り込みのトークンで行う |
 | `loadline-api` | Cloud Run の `tts` | `roles/run.invoker` | 認証が必須の tts を呼ぶ |
 | `loadline-api` | Secret Manager の `database-url`、`typesafe-api-key` | `roles/secretmanager.secretAccessor` | DB の URL と Jev のキーを読む |
-| `loadline-api` | Cloud Tasks の `weekly-reviews` | `roles/cloudtasks.enqueuer` | 振り返りを作る相手を 1 人ずつ積む |
+| `loadline-api` | Cloud Tasks の `weekly-reviews` | `roles/cloudtasks.enqueuer` | 週次レビューを作る相手を 1 人ずつ積む |
 | `loadline-api` | `loadline-invoker` | `roles/iam.serviceAccountUser` | 積むタスクに `loadline-invoker` の OIDC トークンを付ける（actAs） |
 | `loadline-api` | `loadline-api` 自身 | `roles/iam.serviceAccountTokenCreator` | 署名付き URL を作る。Cloud Run には鍵のファイルがないので、IAM の signBlob で署名する |
 | `loadline-api` | `gs://loadline-app-audio` | `roles/storage.objectUser` | 音声を置く、一覧を取る、消す。再生は署名付き URL なので、利用者は権限なしで読める |
@@ -146,9 +146,9 @@ gcloud iam service-accounts add-iam-policy-binding \
 | 1 回のリクエストの上限（`--timeout`） | 60 秒 | 0 台からの起動と、最初の `/speak` でのモデルの読み込みを含めても収まる長さ。既定の 300 秒では、止まったときに気づくのが遅い |
 | 起動中の CPU の追加（`--cpu-boost`） | あり | 0 台から起き上がる時間を縮める。試作では、0 台からの最初の応答に約 21 秒かかった |
 
-上限が 2 台なので、同時に 3 件来ると、3 件目は空きが出るのを待ちます。待つあいだに前の読み上げが終われば処理され、空きが出なければ 429 になります。自動の振り返りは Cloud Tasks が同時に 2 件までしか送らないので、重なるのは画面から作った分が加わったときです。
+上限が 2 台なので、同時に 3 件来ると、3 件目は空きが出るのを待ちます。待つあいだに前の読み上げが終われば処理され、空きが出なければ 429 になります。週次レビューの自動作成では、Cloud Tasks が同時に 2 件までしか送らないので、重なるのは画面から作った分が加わったときです。
 
-api は 429（と 5xx、通信の失敗）のとき、10 秒、20 秒と間を空けてやり直します。最後の試行は約 30 秒後で、0 台からの起動（約 21 秒）を待ち切ります。試すのは最初の 1 回を含めて 3 回まで、全体で 45 秒までです（`api/app/adapters/tts.py`、api の設定 `tts_timeout_sec`）。それでも読めなければ、音声なしで振り返りを作り、画面は文字だけで見せます。音声なしになった週は、あとから読み直しません。
+api は 429（と 5xx、通信の失敗）のとき、10 秒、20 秒と間を空けてやり直します。最後の試行は約 30 秒後で、0 台からの起動（約 21 秒）を待ち切ります。試すのは最初の 1 回を含めて 3 回まで、全体で 45 秒までです（`api/app/adapters/tts.py`、api の設定 `tts_timeout_sec`）。それでも読めなければ、音声なしで週次レビューを作り、画面は文字だけで見せます。音声なしになった週は、あとから読み直しません。
 
 ### デプロイが重ならないように
 
@@ -156,9 +156,9 @@ api は 429（と 5xx、通信の失敗）のとき、10 秒、20 秒と間を�
 
 そのうえで、デプロイの直前に、出そうとしている版と今の main の中身を比べます（tts なら `tts/` と `deploy-tts.yml`、api なら `api/`、`web/`、`Dockerfile`、`.dockerignore`、`deploy.yml`）。違えば、もっと新しい変更があるので出しません。古い実行を Re-run したときに、古い版を出し直さないためです。main の先頭のコミットそのものと比べないのは、ほかの場所だけを変えたコミットが後に入ったときに、出すべき版まで止めてしまうためです。api はマイグレーションより前で止めます。
 
-## 週 1 回の振り返り（Cloud Scheduler と Cloud Tasks）
+## 週次レビューの自動作成（Cloud Scheduler と Cloud Tasks）
 
-Scheduler が 1 時間おきに api を呼び、api が振り返りを作る相手と週を探して、1 人ずつ Tasks に積みます。Tasks が 1 人ずつ api を呼び、セリフを作って声にします。どちらも `loadline-invoker` の OIDC トークンを付け、宛先（audience）は api の URL です。
+Scheduler が 1 時間おきに api を呼び、api が週次レビューを作る相手と週を探して、1 人ずつ Tasks に積みます。Tasks が 1 人ずつ api を呼び、セリフを作って声にします。どちらも `loadline-invoker` の OIDC トークンを付け、宛先（audience）は api の URL です。
 
 | 設定 | 値 |
 |---|---|
@@ -229,16 +229,16 @@ gcloud artifacts repositories set-cleanup-policies loadline \
 
 | バケット | 置くもの | 古いものを消す設定 | 消したものを残す期間（soft delete） |
 |---|---|---|---|
-| `gs://loadline-app-audio` | 振り返りの音声 | なし | 0（残さない） |
+| `gs://loadline-app-audio` | 週次レビューの音声 | なし | 0（残さない） |
 | `gs://loadline-app-models` | Kokoro のモデル（`kokoro-v1.0/` の下に 2 つ、約 350MB） | なし | 7 日（新しいバケットの既定） |
 
-音声に古いものを消す設定を付けないのは、デモの振り返りの音声まで消えるためです。音声は 1 件で約 1.4MB（30 秒の WAV）で、週に 1 件なので、量は気にしなくてよい大きさです。
+音声に古いものを消す設定を付けないのは、デモの週次レビューの音声まで消えるためです。音声は 1 件で約 1.4MB（30 秒の WAV）で、週に 1 件なので、量は気にしなくてよい大きさです。
 
 音声は、消したらすぐに戻せなくします。アカウントを消したとき（`DELETE /me`）は、本人の音声（`users/{利用者の id}/` の下）も消します。そのとき 7 日のあいだ復元できると、消したという約束とずれるためです。
 
-音声は `users/{利用者の id}/reviews/{振り返りの id}.wav` に置きます。web には、期限 1 時間の署名付き URL を渡します（api の設定 `audio_url_ttl_sec`）。
+音声は `users/{利用者の id}/reviews/{週次レビューの id}.wav` に置きます。web には、期限 1 時間の署名付き URL を渡します（api の設定 `audio_url_ttl_sec`）。
 
-api から Cloud Storage と IAM への通信には、上限を付けています（`api/app/adapters/audio_storage.py`）。置く・一覧・消すは 1 回 10 秒、やり直しを含めて 20 秒、署名は 5 秒です。SDK の既定（1 回 60 秒、やり直しを含めて 120 秒）のままだと、振り返りを作る処理が Tasks の期限を超え、DB の行も長く持つためです。署名が間に合わなければ `audio_url` を null にして文字だけで返し、次に読むときにもう一度署名します。モデルは誤って消したときに戻せるよう、既定の 7 日のままにしています。
+api から Cloud Storage と IAM への通信には、上限を付けています（`api/app/adapters/audio_storage.py`）。置く・一覧・消すは 1 回 10 秒、やり直しを含めて 20 秒、署名は 5 秒です。SDK の既定（1 回 60 秒、やり直しを含めて 120 秒）のままだと、週次レビューを作る処理が Tasks の期限を超え、DB の行も長く持つためです。署名が間に合わなければ `audio_url` を null にして文字だけで返し、次に読むときにもう一度署名します。モデルは誤って消したときに戻せるよう、既定の 7 日のままにしています。
 
 音声のバケットには CORS を設定しています（2026-11-11）。web は声の大きさを読み取ってアバターの口を動かすので（Web Audio）、音声を CORS つきで読むためです。
 

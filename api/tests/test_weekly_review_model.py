@@ -10,7 +10,7 @@ from tests.factories import UserFactory, WeeklyReviewFactory, WeeklyReviewOption
 
 
 async def test_same_period_is_not_saved_twice(session: AsyncSession) -> None:
-    """同じ利用者の同じ期間の振り返りは 1 件だけ。二重に作ろうとしたら DB が止める。"""
+    """同じ利用者の同じ期間の週次レビューは 1 件だけ。二重に作ろうとしたら DB が止める。"""
     user = await UserFactory.create_async()
     first = await WeeklyReviewFactory.create_async(user_id=user.id)
 
@@ -39,7 +39,7 @@ async def test_same_position_in_one_review_is_not_saved_twice(session: AsyncSess
 
 
 async def test_only_one_option_per_review_can_be_selected(session: AsyncSession) -> None:
-    """1 つの振り返りで選べるのは 1 つ。2 つ目を選ぼうとしたら DB が止める。"""
+    """1 つの週次レビューで選べるのは 1 つ。2 つ目を選ぼうとしたら DB が止める。"""
     user = await UserFactory.create_async()
     review = await WeeklyReviewFactory.create_async(user_id=user.id)
     chosen_at = datetime(2026, 9, 21, 8, 0, tzinfo=UTC)
@@ -70,7 +70,7 @@ async def test_options_of_different_reviews_can_each_be_selected(session: AsyncS
 
 
 async def test_deleting_a_user_deletes_reviews_and_options(session: AsyncSession) -> None:
-    """アカウントの削除で、振り返りと選択肢も残らない。"""
+    """アカウントの削除で、週次レビューと選択肢も残らない。"""
     user = await UserFactory.create_async()
     review = await WeeklyReviewFactory.create_async(user_id=user.id)
     await WeeklyReviewOptionFactory.create_batch_async(3, weekly_review_id=review.id)

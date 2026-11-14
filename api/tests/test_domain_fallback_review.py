@@ -68,7 +68,7 @@ def test_every_situation_has_a_script_of_about_15_seconds(situation: Situation) 
 
 @pytest.mark.parametrize("situation", list(Situation))
 def test_every_situation_has_two_or_three_short_options(situation: Situation) -> None:
-    """ボタンは 2〜4 語、その下の説明は 14 語まで。同じ振り返りに同じ文字のボタンを並べない。"""
+    """ボタンは 2〜4 語、その下の説明は 14 語まで。同じ週次レビューに同じ文字のボタンを並べない。"""
     options = fallback_review(week(situation, rest_days_before=20)).options
 
     assert 2 <= len(options) <= 3

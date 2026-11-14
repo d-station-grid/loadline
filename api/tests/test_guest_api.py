@@ -202,7 +202,7 @@ async def test_every_write_is_403_and_the_demo_data_does_not_change(
 
 
 async def test_seed_demo_can_run_again(session: AsyncSession, demo: User) -> None:
-    """流し直すと作り直す。デモの利用者は 1 人のまま、振り返りも増えない。"""
+    """流し直すと作り直す。デモの利用者は 1 人のまま、週次レビューも増えない。"""
     again = await seed_demo(session)
 
     users = await session.scalar(select(func.count()).select_from(User).where(User.is_demo))
@@ -233,7 +233,7 @@ async def committed(engine: AsyncEngine) -> AsyncIterator[AsyncEngine]:
 
 
 async def _demo_state(engine: AsyncEngine) -> tuple[list[int], int, int]:
-    """確定したデモの利用者の id、振り返りの数、選んだ選択肢の数。"""
+    """確定したデモの利用者の id、週次レビューの数、選んだ選択肢の数。"""
     async with engine.connect() as conn:
         ids = list(await conn.scalars(select(User.id).where(User.is_demo.is_(True))))
         reviews = await conn.scalar(
@@ -251,7 +251,7 @@ async def _demo_state(engine: AsyncEngine) -> tuple[list[int], int, int]:
 async def test_a_failed_seed_keeps_the_previous_demo_data(
     committed: AsyncEngine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """振り返りの途中で落ちても、前のデモがそのまま残る。半端なデモは見せない。"""
+    """週次レビューを入れる途中で落ちても、前のデモがそのまま残る。半端なデモは見せない。"""
     first = await seed_demo_atomically(committed)
 
     calls = 0
@@ -280,7 +280,7 @@ async def test_seeding_twice_at_once_leaves_one_demo_user(committed: AsyncEngine
 
 
 async def test_seed_voices_the_demo_reviews(session: AsyncSession) -> None:
-    # ゲストは振り返りを作れないので、デモの声は seed で入れる
+    # ゲストは週次レビューを作れないので、デモの声は seed で入れる
     voice, audio = FakeVoice(), FakeAudioStore()
 
     demo = await seed_demo(session, voice=voice, audio=audio)

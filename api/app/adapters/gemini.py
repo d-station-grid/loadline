@@ -1,4 +1,4 @@
-"""Vertex AI の Gemini に、振り返りのセリフと選択肢を書いてもらう。
+"""Vertex AI の Gemini に、週次レビューのセリフと選択肢を書いてもらう。
 
 構造化出力で JSON を受け取り、domain の決まり（長さと数）で確かめる。モデルは先頭から
 順に試す。混雑や障害で呼べなければ次のモデルへ、壊れた JSON や決まりに合わない応答なら
@@ -78,7 +78,7 @@ class GeminiReviewWriter:
         self._timeout_sec = timeout_sec
 
     async def write(self, contents: str) -> ReviewContent | None:
-        """contents（domain の review_prompt）から振り返りを書く。書けなければ None。"""
+        """contents（domain の review_prompt）から週次レビューを書く。書けなければ None。"""
         try:
             async with asyncio.timeout(self._timeout_sec):
                 return await self._try_models(contents)

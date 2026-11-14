@@ -142,7 +142,7 @@ class NoteFactory(BaseFactory[Note]):
 
 
 class WeeklyReviewFactory(BaseFactory[WeeklyReview]):
-    """定型で作り、まだ声にしていない振り返り 1 件。"""
+    """定型で作り、まだ声にしていない週次レビュー 1 件。"""
 
     __model__ = WeeklyReview
 
@@ -167,7 +167,7 @@ class WeeklyReviewOptionFactory(BaseFactory[WeeklyReviewOption]):
 
     __model__ = WeeklyReviewOption
 
-    # 1 つの振り返りの中で位置を重ねないよう、呼ぶたびに 1 ずつ進める
+    # 1 つの週次レビューの中で位置を重ねないよう、呼ぶたびに 1 ずつ進める
     position = Use(lambda: next(_positions))
     label = "Go easy"
     description = "Only easy sessions this week."

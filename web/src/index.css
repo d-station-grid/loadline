@@ -532,7 +532,7 @@ fieldset.plain {
   font-size: var(--font-size-xs);
 }
 
-/* ---- 振り返り ---- */
+/* ---- 週次レビュー ---- */
 
 /* 画面の右下に、吹き出しとアバターを並べて浮かせる（Figma の S08）。
    メモのモーダル（z-index 10）より下に置く */
@@ -1306,7 +1306,7 @@ dl.rows dd {
     margin-bottom: var(--space-2);
   }
 
-  /* 振り返りは、アバターを小さくして、吹き出しを残りの幅いっぱいにする */
+  /* 週次レビューは、アバターを小さくして、吹き出しを残りの幅いっぱいにする */
   .review-dock {
     right: var(--space-2);
     bottom: var(--space-2);

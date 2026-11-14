@@ -23,7 +23,7 @@ async def delete_me(
     deleter: AccountDeleterDep,
     audio: AudioStoreDep,
 ) -> None:
-    """ログイン中の本人を消す。記録、メモ、振り返りとその音声、取り込み用トークン、
+    """ログイン中の本人を消す。記録、メモ、週次レビューとその音声、取り込み用トークン、
     Firebase の利用者。
 
     音声か Firebase の利用者を消せなければ、記録とログインを残して 502 を返す。もう一度
