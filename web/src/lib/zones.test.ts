@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { boundariesForMax, suggestBoundaries } from "./zones";
+import { boundariesForMax, isSuggested, suggestBoundaries } from "./zones";
 
 test("最大心拍の 80% と 90% を、整数に丸めて出す", () => {
   expect(suggestBoundaries(176)).toEqual({ low: 141, high: 158 });
@@ -54,4 +54,24 @@ test("片方だけ空なら、空いている方だけを埋める", () => {
     boundaries: { low: 141, high: 160 },
     filled: false,
   });
+});
+
+test("片方だけ空でも、埋めると逆順になるなら埋めない", () => {
+  // 最大心拍 176 の高い方は 158。低い方が 170 なら逆順になる
+  expect(boundariesForMax(176, { low: 170, high: null }, false)).toEqual({
+    boundaries: { low: 170, high: null },
+    filled: false,
+  });
+  // 最大心拍 176 の低い方は 141。高い方が 140 なら逆順になる
+  expect(boundariesForMax(176, { low: null, high: 140 }, false)).toEqual({
+    boundaries: { low: null, high: 140 },
+    filled: false,
+  });
+});
+
+test("境目が最大心拍の初期値とちょうど同じかを判定する", () => {
+  expect(isSuggested(176, { low: 141, high: 158 })).toBe(true);
+  expect(isSuggested(176, { low: 141, high: 160 })).toBe(false);
+  expect(isSuggested(null, { low: 141, high: 158 })).toBe(false);
+  expect(isSuggested(176, { low: null, high: null })).toBe(false);
 });

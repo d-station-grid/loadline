@@ -9,7 +9,7 @@ import {
   issueIngestToken,
   putSettings,
 } from "../lib/api";
-import { boundariesForMax } from "../lib/zones";
+import { boundariesForMax, isSuggested } from "../lib/zones";
 
 const WEEKDAYS = [
   "Monday",
@@ -208,6 +208,8 @@ export default function SettingsPage({ user, onDeleted }: Props) {
   const [form, setForm] = useState<SettingsForm | null>(null);
   // 強度の境目が、最大心拍から出した値のままか。そのままなら最大心拍に合わせて出し直す
   const [boundariesFilled, setBoundariesFilled] = useState(false);
+  // 開いた時点で境目を埋めたか。埋めた値はまだ保存していないので、保存するよう案内する
+  const [unsavedFill, setUnsavedFill] = useState(false);
   const [lastFour, setLastFour] = useState<string | null>(null);
   const [freshToken, setFreshToken] = useState<string | null>(null);
   const [issuing, setIssuing] = useState(false);
@@ -258,21 +260,24 @@ export default function SettingsPage({ user, onDeleted }: Props) {
 
   function applySettings(s: SettingsOut) {
     const { ingest_token_last_four, ...fields } = s;
-    // 心拍の 4 つは保存に必須。最大心拍があって境目が空なら、読んだ時点で埋めておく
-    const filled = boundariesForMax(
-      fields.max_heart_rate ?? null,
-      {
-        low: fields.zone_boundary_1 ?? null,
-        high: fields.zone_boundary_2 ?? null,
-      },
-      false,
-    );
+    const max = fields.max_heart_rate ?? null;
+    const saved = {
+      low: fields.zone_boundary_1 ?? null,
+      high: fields.zone_boundary_2 ?? null,
+    };
+    // 心拍の 4 つは保存に必須。最大心拍があって境目が空なら、読んだ時点で埋めておく。
+    // 保存した境目が初期値と同じなら、保存の後も最大心拍に追従させる
+    const filled = boundariesForMax(max, saved, isSuggested(max, saved));
     setForm({
       ...fields,
       zone_boundary_1: filled.boundaries.low,
       zone_boundary_2: filled.boundaries.high,
     });
     setBoundariesFilled(filled.filled);
+    setUnsavedFill(
+      filled.boundaries.low !== saved.low ||
+        filled.boundaries.high !== saved.high,
+    );
     setLastFour(ingest_token_last_four ?? null);
   }
 
@@ -288,6 +293,7 @@ export default function SettingsPage({ user, onDeleted }: Props) {
     if (field !== "max_heart_rate") {
       if (field === "zone_boundary_1" || field === "zone_boundary_2") {
         setBoundariesFilled(false);
+        setUnsavedFill(false);
       }
       update(field, value);
       return;
@@ -421,6 +427,12 @@ export default function SettingsPage({ user, onDeleted }: Props) {
                     </div>
                   ))}
                 </div>
+                {unsavedFill && (
+                  <p className="small">
+                    Boundaries were filled in from your max heart rate. Save to
+                    use them.
+                  </p>
+                )}
                 <ZonePreview form={form} />
               </fieldset>
 
