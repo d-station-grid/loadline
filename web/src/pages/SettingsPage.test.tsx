@@ -79,9 +79,65 @@ test("Save で入力した値を送り、Saved と出る", async () => {
   // 送るのは設定の項目だけ。トークンの末尾 4 文字は含めない
   const { ingest_token_last_four: _, ...fields } = defaults;
   expect(putSettings).toHaveBeenCalledWith(
-    { ...fields, max_heart_rate: 185, review_weekday: 6 },
+    {
+      ...fields,
+      max_heart_rate: 185,
+      // 境目が空だったので、最大心拍の 80% と 90% が入る
+      zone_boundary_1: 148,
+      zone_boundary_2: 167,
+      review_weekday: 6,
+    },
     "token",
   );
+});
+
+test("境目が空なら、最大心拍を入れると 80% と 90% が入り、最大心拍に合わせて変わる", async () => {
+  render(<SettingsPage user={user} onDeleted={onDeleted} />);
+  const max = await screen.findByLabelText("Max heart rate");
+  const low = screen.getByLabelText("Low / Mid boundary");
+  const high = screen.getByLabelText("Mid / High boundary");
+
+  // 打っている途中（範囲の外）では入れない
+  fireEvent.change(max, { target: { value: "17" } });
+  expect(low).toHaveValue(null);
+  fireEvent.change(max, { target: { value: "176" } });
+  expect(low).toHaveValue(141);
+  expect(high).toHaveValue(158);
+
+  // 出した値のままなら、最大心拍を直すと出し直す。途中の値を経ても同じ
+  fireEvent.change(max, { target: { value: "18" } });
+  fireEvent.change(max, { target: { value: "180" } });
+  expect(low).toHaveValue(144);
+  expect(high).toHaveValue(162);
+});
+
+test("自分で入れた境目は、最大心拍を変えても変わらない", async () => {
+  vi.mocked(getSettings).mockResolvedValue({
+    ...defaults,
+    max_heart_rate: 176,
+    zone_boundary_1: 135,
+    zone_boundary_2: 160,
+  });
+  render(<SettingsPage user={user} onDeleted={onDeleted} />);
+  const max = await screen.findByLabelText("Max heart rate");
+
+  fireEvent.change(max, { target: { value: "180" } });
+
+  expect(screen.getByLabelText("Low / Mid boundary")).toHaveValue(135);
+  expect(screen.getByLabelText("Mid / High boundary")).toHaveValue(160);
+});
+
+test("出した境目を直したら、そのあと最大心拍を変えても変わらない", async () => {
+  render(<SettingsPage user={user} onDeleted={onDeleted} />);
+  const max = await screen.findByLabelText("Max heart rate");
+  const low = screen.getByLabelText("Low / Mid boundary");
+
+  fireEvent.change(max, { target: { value: "176" } });
+  fireEvent.change(low, { target: { value: "138" } });
+  fireEvent.change(max, { target: { value: "180" } });
+
+  expect(low).toHaveValue(138);
+  expect(screen.getByLabelText("Mid / High boundary")).toHaveValue(158);
 });
 
 test("トークンを発行すると平文が 1 回出る", async () => {

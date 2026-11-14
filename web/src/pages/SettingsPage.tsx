@@ -9,6 +9,7 @@ import {
   issueIngestToken,
   putSettings,
 } from "../lib/api";
+import { boundariesForMax } from "../lib/zones";
 
 const WEEKDAYS = [
   "Monday",
@@ -177,6 +178,8 @@ type Props = {
 
 export default function SettingsPage({ user, onDeleted }: Props) {
   const [form, setForm] = useState<SettingsIn | null>(null);
+  // 強度の境目が、最大心拍から出した値のままか。そのままなら最大心拍に合わせて出し直す
+  const [boundariesFilled, setBoundariesFilled] = useState(false);
   const [lastFour, setLastFour] = useState<string | null>(null);
   const [freshToken, setFreshToken] = useState<string | null>(null);
   const [issuing, setIssuing] = useState(false);
@@ -228,11 +231,36 @@ export default function SettingsPage({ user, onDeleted }: Props) {
   function applySettings(s: SettingsOut) {
     const { ingest_token_last_four, ...fields } = s;
     setForm(fields);
+    setBoundariesFilled(false);
     setLastFour(ingest_token_last_four ?? null);
   }
 
   function update<K extends keyof SettingsIn>(key: K, value: SettingsIn[K]) {
     setForm((prev) => (prev ? { ...prev, [key]: value } : prev));
+  }
+
+  /** 心拍の項目を変える。最大心拍を変えたら、境目が空か出した値のままなら出し直す */
+  function updateHeartRate(field: HeartRateField, value: number | null) {
+    if (field !== "max_heart_rate") {
+      if (field === "zone_boundary_1" || field === "zone_boundary_2") {
+        setBoundariesFilled(false);
+      }
+      update(field, value);
+      return;
+    }
+    if (!form) return;
+    const next = boundariesForMax(
+      value,
+      { low: form.zone_boundary_1 ?? null, high: form.zone_boundary_2 ?? null },
+      boundariesFilled,
+    );
+    setForm({
+      ...form,
+      max_heart_rate: value,
+      zone_boundary_1: next.boundaries.low,
+      zone_boundary_2: next.boundaries.high,
+    });
+    setBoundariesFilled(next.filled);
   }
 
   async function handleSave(e: SubmitEvent<HTMLFormElement>) {
@@ -321,7 +349,11 @@ export default function SettingsPage({ user, onDeleted }: Props) {
                 <legend className="card-title">Heart rate</legend>
                 <p className="muted small">
                   Your zones and daily load are calculated from these. Changing
-                  them recalculates your history.
+                  them recalculates your history. Weekly reviews need all four.
+                </p>
+                <p className="muted small">
+                  Empty boundaries are filled in from your max heart rate (80%
+                  and 90%). Change them if you know your own thresholds.
                 </p>
                 <div className="field-grid">
                   {HEART_RATE_FIELDS.map(({ field, label, min, max }) => (
@@ -335,7 +367,9 @@ export default function SettingsPage({ user, onDeleted }: Props) {
                           max={max}
                           step={1}
                           value={form[field] ?? ""}
-                          onChange={(e) => update(field, toInt(e.target.value))}
+                          onChange={(e) =>
+                            updateHeartRate(field, toInt(e.target.value))
+                          }
                         />
                         <span className="muted small">bpm</span>
                       </div>

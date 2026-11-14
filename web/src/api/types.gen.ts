@@ -435,25 +435,29 @@ export type SelectionIn = {
 /**
  * SettingsIn
  *
- * PUT /settings の本文。
+ * PUT /settings の本文。心拍の 4 つは必須で、空（null）や省略は 422。
+ *
+ * 負荷、強度ごとの時間、週次レビューの判定がすべてこの 4 つから出るので、そろわない設定は
+ * 保存させない。境目は、web が最大心拍から初期値を入れる。読むとき（SettingsOut）は、
+ * 必須にする前に作った利用者の空の値も返すので、SettingsFields のまま任意にしておく。
  */
 export type SettingsIn = {
   /**
    * Max Heart Rate
    */
-  max_heart_rate?: number | null;
+  max_heart_rate: number;
   /**
    * Resting Heart Rate
    */
-  resting_heart_rate?: number | null;
+  resting_heart_rate: number;
   /**
    * Zone Boundary 1
    */
-  zone_boundary_1?: number | null;
+  zone_boundary_1: number;
   /**
    * Zone Boundary 2
    */
-  zone_boundary_2?: number | null;
+  zone_boundary_2: number;
   /**
    * Timezone
    */
