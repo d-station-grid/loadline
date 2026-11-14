@@ -35,6 +35,15 @@ const defaults: SettingsOut = {
   ingest_token_last_four: null,
 };
 
+/** 心拍の 4 つがそろった、保存できる設定 */
+const complete: SettingsOut = {
+  ...defaults,
+  max_heart_rate: 176,
+  resting_heart_rate: 50,
+  zone_boundary_1: 141,
+  zone_boundary_2: 158,
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getSettings).mockResolvedValue(defaults);
@@ -70,6 +79,9 @@ test("Save で入力した値を送り、Saved と出る", async () => {
   const max = await screen.findByLabelText("Max heart rate");
 
   fireEvent.change(max, { target: { value: "185" } });
+  fireEvent.change(screen.getByLabelText("Resting heart rate"), {
+    target: { value: "50" },
+  });
   fireEvent.change(screen.getByLabelText("Review day"), {
     target: { value: "6" },
   });
@@ -82,6 +94,7 @@ test("Save で入力した値を送り、Saved と出る", async () => {
     {
       ...fields,
       max_heart_rate: 185,
+      resting_heart_rate: 50,
       // 境目が空だったので、最大心拍の 80% と 90% が入る
       zone_boundary_1: 148,
       zone_boundary_2: 167,
@@ -233,7 +246,7 @@ test.each([
     message: "Resting heart rate must be lower than max heart rate.",
   },
 ])("$name なら送らずに分かる文言を出す", async ({ fields, message }) => {
-  vi.mocked(getSettings).mockResolvedValue({ ...defaults, ...fields });
+  vi.mocked(getSettings).mockResolvedValue({ ...complete, ...fields });
   render(<SettingsPage user={user} onDeleted={onDeleted} />);
   await screen.findByLabelText("Max heart rate");
 
@@ -243,21 +256,50 @@ test.each([
   expect(putSettings).not.toHaveBeenCalled();
 });
 
-test("片方だけ入っているなら比べずに送る", async () => {
+test.each([
+  { field: "max_heart_rate", message: "Max heart rate is required." },
+  { field: "resting_heart_rate", message: "Resting heart rate is required." },
+  { field: "zone_boundary_2", message: "Mid / High boundary is required." },
+])("$field が空なら送らない", async ({ field, message }) => {
+  vi.mocked(getSettings).mockResolvedValue(complete);
+  render(<SettingsPage user={user} onDeleted={onDeleted} />);
+  const labels: Record<string, string> = {
+    max_heart_rate: "Max heart rate",
+    resting_heart_rate: "Resting heart rate",
+    zone_boundary_2: "Mid / High boundary",
+  };
+  const input = await screen.findByLabelText(labels[field]);
+
+  fireEvent.change(input, { target: { value: "" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(message);
+  expect(putSettings).not.toHaveBeenCalled();
+});
+
+test("最大心拍があって境目が空なら、読んだ時点で境目を埋める", async () => {
   vi.mocked(getSettings).mockResolvedValue({
     ...defaults,
-    zone_boundary_1: 150,
+    max_heart_rate: 176,
   });
-  vi.mocked(putSettings).mockImplementation(async (body) => ({
-    ...body,
-    ingest_token_last_four: null,
-  }));
   render(<SettingsPage user={user} onDeleted={onDeleted} />);
   await screen.findByLabelText("Max heart rate");
 
-  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(screen.getByLabelText("Low / Mid boundary")).toHaveValue(141);
+  expect(screen.getByLabelText("Mid / High boundary")).toHaveValue(158);
+});
 
-  expect(await screen.findByRole("status")).toHaveTextContent("Saved");
+test("境目が片方だけなら、空いている方だけを埋める", async () => {
+  vi.mocked(getSettings).mockResolvedValue({
+    ...defaults,
+    max_heart_rate: 176,
+    zone_boundary_1: 150,
+  });
+  render(<SettingsPage user={user} onDeleted={onDeleted} />);
+  await screen.findByLabelText("Max heart rate");
+
+  expect(screen.getByLabelText("Low / Mid boundary")).toHaveValue(150);
+  expect(screen.getByLabelText("Mid / High boundary")).toHaveValue(158);
 });
 
 test("範囲の端の値は送る", async () => {

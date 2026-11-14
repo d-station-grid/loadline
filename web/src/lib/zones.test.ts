@@ -44,3 +44,14 @@ test("自分で入れた境目と、入力の途中の最大心拍では変え�
     filled: true,
   });
 });
+
+test("片方だけ空なら、空いている方だけを埋める", () => {
+  expect(boundariesForMax(176, { low: 150, high: null }, false)).toEqual({
+    boundaries: { low: 150, high: 158 },
+    filled: false,
+  });
+  expect(boundariesForMax(176, { low: null, high: 160 }, false)).toEqual({
+    boundaries: { low: 141, high: 160 },
+    filled: false,
+  });
+});

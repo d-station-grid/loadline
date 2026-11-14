@@ -38,8 +38,12 @@ export function suggestBoundaries(
 /**
  * 最大心拍を変えたときの境目と、それが最大心拍から出した値か。
  *
- * 境目が空か、最大心拍から出した値のまま（filled）なら、新しい最大心拍から出し直す。
+ * 境目が 2 つとも空か、最大心拍から出した値のまま（filled）なら、新しい最大心拍から出し
+ * 直す。片方だけ空なら、空いている方だけを埋める（入っている方は利用者の値なので変えない）。
  * 利用者が自分で入れた境目は変えない。最大心拍が入力の途中（範囲の外）なら何もしない。
+ *
+ * 心拍の 4 つは保存に必須なので、境目を空のまま残さないために埋める。埋めた値が
+ * 入っている方と前後していれば、保存の前の検査で知らせる。
  */
 export function boundariesForMax(
   maxHeartRate: number | null,
@@ -47,9 +51,15 @@ export function boundariesForMax(
   filled: boolean,
 ): { boundaries: Boundaries; filled: boolean } {
   const next = suggestBoundaries(maxHeartRate);
-  const empty = current.low == null && current.high == null;
-  if (next === null || !(empty || filled)) {
-    return { boundaries: current, filled };
+  if (next === null) return { boundaries: current, filled };
+  if (filled || (current.low == null && current.high == null)) {
+    return { boundaries: next, filled: true };
   }
-  return { boundaries: next, filled: true };
+  return {
+    boundaries: {
+      low: current.low ?? next.low,
+      high: current.high ?? next.high,
+    },
+    filled: false,
+  };
 }
