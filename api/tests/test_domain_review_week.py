@@ -18,7 +18,7 @@ def test_on_the_review_day_the_period_ends_yesterday() -> None:
 
 
 def test_the_day_before_the_review_day_still_uses_the_previous_review() -> None:
-    """日曜の振り返りで今日が土曜なら、まだ先週の日曜の回。"""
+    """週次レビューの曜日が日曜で今日が土曜なら、まだ先週の日曜の回。"""
     assert review_period(date(2026, 10, 24), 6) == (date(2026, 10, 11), date(2026, 10, 17))
 
 

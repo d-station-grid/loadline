@@ -1,4 +1,4 @@
-"""週に 1 回の振り返りを作る、読む。
+"""週次レビューを作る、読む。
 
 判定の材料（体力、疲労、日ごとの負荷）はダッシュボードと同じ計算から取る。チャートの
 数字とアバターの話す数字を食い違わせないため。
@@ -42,7 +42,9 @@ logger = logging.getLogger(__name__)
 
 
 class ReviewWriter(Protocol):
-    """LLM で振り返りを書く。書けなければ None（定型に切り替える）。adapter の Gemini が実体。"""
+    """LLM で週次レビューを書く。書けなければ None（定型に切り替える）。
+    adapter の Gemini が実体。
+    """
 
     async def write(self, contents: str) -> ReviewContent | None: ...
 
@@ -61,11 +63,13 @@ class HeartRateSettingsMissingError(Exception):
 
 
 class ReviewNotFoundError(Exception):
-    """その利用者の振り返りに、その id がない。選択肢がその振り返りのものでない場合も含む。"""
+    """その利用者の週次レビューに、その id がない。
+    選択肢がその週次レビューのものでない場合も含む。
+    """
 
 
 class ReviewClosedError(Exception):
-    """今の週の振り返りではない。過ぎた週の選択は、次の週の材料に使った後なので変えない。"""
+    """今の週の週次レビューではない。過ぎた週の選択は、次の週の材料に使った後なので変えない。"""
 
 
 def _point(p: DayPoint) -> FitnessPoint:
@@ -142,9 +146,9 @@ async def judge_review_week(
 async def review_material(
     session: AsyncSession, user: User, start: date, today: date
 ) -> ReviewMaterial:
-    """start から 7 日間の振り返りを作る材料。判定と、ちょうど 1 週前の回で選んだ選択肢。
+    """start から 7 日間の週次レビューを作る材料。判定と、ちょうど 1 週前の回で選んだ選択肢。
 
-    1 週前は start の 7 日前に始まる回だけを見る。間が空いた後や、振り返りの曜日を変えた
+    1 週前は start の 7 日前に始まる回だけを見る。間が空いた後や、週次レビューの曜日を変えた
     直後は、前の回の選択が今の週と離れているので渡さない。
     """
     week = await judge_review_week(session, user, start, today)
@@ -340,7 +344,7 @@ async def create_review(
     voice: Voice | None = None,
     audio: AudioStore | None = None,
 ) -> tuple[WeeklyReviewOut, bool]:
-    """今の振り返りの週の振り返りを作る。作ったら True、もうあればそれと False。
+    """今の週の週次レビューを作る。作ったら True、もうあればそれと False。
 
     writer と checker の両方があれば LLM に書いてもらい、Jev で話してよいと確かめられた
     ときだけその文で作る。それ以外（どちらかがない、書けない、引っかかった、確かめられ
@@ -349,12 +353,12 @@ async def create_review(
     voice と audio の両方があれば、決まったセリフ（LLM の文でも定型でも）を声にして置く。
     読めない、置けないときは音声なし（audio_url が null）で作り、文字だけで見せる。
 
-    週は、今日以前でいちばん近い振り返りの曜日の前日までの 7 日間（利用者のタイムゾーン）。
+    週は、今日以前でいちばん近い週次レビューの曜日の前日までの 7 日間（利用者のタイムゾーン）。
     一度作った週は作り直さない。作った時点の記録で書いた、その週の 1 通にする。選択肢を
     選んだ後にセリフが変わると選んだ理由とずれ、LLM で作るようになれば作り直すたびに
     費用もかかるため。遅れて届く記録は、自動で作る時刻を遅らせて拾う。
     同時に 2 回呼ばれても 1 件だけ入る（ON CONFLICT DO NOTHING）。そのときは LLM も
-    2 回呼ばれるが、残るのは先に入れた側。振り返りと選択肢は同じトランザクションで
+    2 回呼ばれるが、残るのは先に入れた側。週次レビューと選択肢は同じトランザクションで
     入れるので、後から来た側には選択肢までそろって見える。
     """
     today = today or today_for(user.timezone)
@@ -392,7 +396,7 @@ async def create_review(
         return await _out(session, raced, audio), False
 
     if wav is not None and audio is not None:
-        # 置き場所に振り返りの id を使うので、行を入れてから置く。置いてから commit に
+        # 置き場所に週次レビューの id を使うので、行を入れてから置く。置いてから commit に
         # 失敗したときに残るファイルも、利用者ごとの場所にあるので、アカウントを消せば消える
         path = review_audio_path(user.id, review.id)
         if await audio.put(path, wav):
@@ -425,9 +429,9 @@ async def current_review(
     *,
     audio: AudioStore | None = None,
 ) -> WeeklyReviewOut | None:
-    """今の振り返りの週の振り返り。週の決め方は create_review と同じ。まだなければ None。
+    """今の週の週次レビュー。週の決め方は create_review と同じ。まだなければ None。
 
-    いちばん新しい期間の行ではなく、今の週で探す。振り返りの曜日を変えた直後は、
+    いちばん新しい期間の行ではなく、今の週で探す。週次レビューの曜日を変えた直後は、
     いちばん新しい行が今の週より古い回のことがあるため。
 
     デモの利用者だけは、いちばん新しい期間の行を返す。デモデータは日付が動かないので、
@@ -456,10 +460,10 @@ async def select_option(
     *,
     audio: AudioStore | None = None,
 ) -> WeeklyReviewOut:
-    """振り返りの選択肢を 1 つ選ぶ。もう別のものを選んでいれば、そちらを外して選び直す。
+    """週次レビューの選択肢を 1 つ選ぶ。もう別のものを選んでいれば、そちらを外して選び直す。
 
-    選び直せるのは今の週の振り返りだけ。同じものをもう一度選んだときは、最初に選んだ
-    時刻のまま返す。振り返りの行を FOR UPDATE で押さえ、同時に 2 つ選ばれても 1 つだけ残す。
+    選び直せるのは今の週の週次レビューだけ。同じものをもう一度選んだときは、最初に選んだ
+    時刻のまま返す。週次レビューの行を FOR UPDATE で押さえ、同時に 2 つ選ばれても 1 つだけ残す。
     応答は、そのリクエストで選んだ時点の状態。
     """
     review = await session.scalar(
@@ -484,7 +488,7 @@ async def select_option(
         raise ReviewClosedError
 
     if option.selected_at is None:
-        # 1 つの振り返りで選べるのは 1 つだけ（部分ユニーク索引）。先に外してから入れる
+        # 1 つの週次レビューで選べるのは 1 つだけ（部分ユニーク索引）。先に外してから入れる
         await session.execute(
             update(WeeklyReviewOption)
             .where(

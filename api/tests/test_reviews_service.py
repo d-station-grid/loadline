@@ -38,7 +38,7 @@ from tests.factories import (
 )
 
 JST = ZoneInfo("Asia/Tokyo")
-# 2026-10-12（月）〜10-18（日）。振り返りの曜日が月曜なら、10-19〜10-25 の今日はこの週
+# 2026-10-12（月）〜10-18（日）。週次レビューの曜日が月曜なら、10-19〜10-25 の今日はこの週
 MONDAY = date(2026, 10, 12)
 SUNDAY = date(2026, 10, 18)
 TODAY = date(2026, 10, 20)
@@ -176,7 +176,7 @@ async def test_create_review_saves_the_fallback_script_and_options(session: Asyn
 
 
 async def test_create_review_twice_returns_the_same_review(session: AsyncSession) -> None:
-    """同じ週の振り返りは作り直さない。記録が増えても、最初に作ったものを返す。"""
+    """同じ週の週次レビューは作り直さない。記録が増えても、最初に作ったものを返す。"""
     user = await _user()
     first, _ = await create_review(session, user, today=TODAY)
     await _ride(user, "2026-10-14T07:00")
@@ -192,7 +192,7 @@ async def test_create_review_twice_returns_the_same_review(session: AsyncSession
 
 
 async def test_create_review_without_any_workout(session: AsyncSession) -> None:
-    """まだ記録がない人にも、記録が足りない週の定型で振り返りを作る。"""
+    """まだ記録がない人にも、記録が足りない週の定型で週次レビューを作る。"""
     user = await _user()
 
     review, _ = await create_review(session, user, today=TODAY)
@@ -236,7 +236,7 @@ async def test_current_review_is_the_review_of_the_current_week(session: AsyncSe
     me = await _user()
     other = await _user()
     current = await WeeklyReviewFactory.create_async(user_id=me.id, period_start=MONDAY)
-    # 振り返りの曜日を変える前に作った、今の週より後に始まる回
+    # 週次レビューの曜日を変える前に作った、今の週より後に始まる回
     await WeeklyReviewFactory.create_async(user_id=me.id, period_start=date(2026, 10, 14))
 
     found = await current_review(session, me, today=TODAY)
@@ -249,7 +249,9 @@ async def test_current_review_is_the_review_of_the_current_week(session: AsyncSe
 async def _review_with_options(
     user: User, start: date, chosen: int | None = None
 ) -> tuple[int, list[int]]:
-    """start に始まる振り返りと 3 つの選択肢の id。chosen を渡すと、その位置を選んだことにする。"""
+    """start に始まる週次レビューと 3 つの選択肢の id。
+    chosen を渡すと、その位置を選んだことにする。
+    """
     review = await WeeklyReviewFactory.create_async(user_id=user.id, period_start=start)
     option_ids = []
     for i, label in enumerate(["Rest fully", "Go easy", "Short and light"]):
@@ -375,10 +377,10 @@ async def test_select_option_of_someone_else_is_not_found(session: AsyncSession)
     their_review, their_options = await _review_with_options(other, MONDAY)
     my_review, _ = await _review_with_options(me, MONDAY)
 
-    # 他人の振り返り
+    # 他人の週次レビュー
     with pytest.raises(ReviewNotFoundError):
         await select_option(session, me, their_review, their_options[0], today=TODAY)
-    # 自分の振り返りに、他人の振り返りの選択肢
+    # 自分の週次レビューに、他人の週次レビューの選択肢
     with pytest.raises(ReviewNotFoundError):
         await select_option(session, me, my_review, their_options[0], today=TODAY)
 
@@ -573,7 +575,7 @@ async def test_writer_gets_the_notes_of_the_week_and_the_previous_choice(
 
 
 async def test_notes_are_not_sent_when_the_user_turned_it_off(session: AsyncSession) -> None:
-    """「メモを AI に送らない」設定なら、メモを渡さない。振り返りは Gemini で作る。"""
+    """「メモを AI に送らない」設定なら、メモを渡さない。週次レビューは Gemini で作る。"""
     user = await _user(send_notes_to_ai=False)
     await NoteFactory.create_async(user_id=user.id, date=MONDAY, body="Back pain again")
     writer = FakeWriter(WRITTEN)
@@ -1009,7 +1011,7 @@ async def test_create_review_voices_what_the_writer_wrote(session: AsyncSession)
 async def test_review_is_saved_without_audio_when_voicing_fails(
     session: AsyncSession, voice: FakeVoice, audio: FakeAudioStore
 ) -> None:
-    # 声を作れなくても振り返りは作り、文字だけで見せる
+    # 声を作れなくても週次レビューは作り、文字だけで見せる
     user = await _user()
 
     review, created = await create_review(session, user, today=TODAY, voice=voice, audio=audio)
@@ -1070,7 +1072,7 @@ async def test_current_review_and_selection_have_the_audio_url(session: AsyncSes
 async def test_select_option_signs_the_url_after_the_commit(
     session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # 署名（IAM に頼む）を待つあいだ、振り返りの行のロックを持たない
+    # 署名（IAM に頼む）を待つあいだ、週次レビューの行のロックを持たない
     user = await _user()
     review_id, option_ids = await _review_with_options(user, MONDAY)
     await session.execute(

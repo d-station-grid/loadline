@@ -46,7 +46,7 @@ export type Changes = {
  * zones、workouts、zone_weeks、totals、previous_totals だけ。最大心拍か安静時心拍が
  * 未設定なら、負荷が出ないので days は空で、needs_heart_rate_settings が true。
  *
- * changes と form も全種目。form は until の余力の区分（振り返りの週の判定と同じ境目）で、
+ * changes と form も全種目。form は until の余力の区分（週次レビューの週の判定と同じ境目）で、
  * days が空なら None。zone_weeks は until から 7 日ずつ区切った強度の時間で、古い順。
  * 境目がそろわなければ None。totals は期間の合計、previous_totals は since の前の同じ
  * 日数の合計。last_received_at は Health Auto Export からの取り込みが最後に成功した日時で、
@@ -419,14 +419,14 @@ export type ReviewOptionOut = {
 /**
  * ReviewStatus
  *
- * 振り返りを作る処理の状態。
+ * 週次レビューを作る処理の状態。
  */
 export type ReviewStatus = "generating" | "completed" | "failed";
 
 /**
  * SelectionIn
  *
- * 選ぶ選択肢。その振り返りの options の id。
+ * 選ぶ選択肢。その週次レビューの options の id。
  */
 export type SelectionIn = {
   /**
@@ -630,7 +630,7 @@ export type Vo2MaxPoint = {
 /**
  * WeeklyReviewOut
  *
- * 週に 1 回の振り返り。期間は利用者のタイムゾーンでの日付で、両端を含む。
+ * 週次レビュー。期間は利用者のタイムゾーンでの日付で、両端を含む。
  *
  * script はアバターのセリフで、字幕にも使う。is_fallback が true なら人が書いた定型。
  * expression はセリフを話すときのアバターの表情。定型なら relaxed。
@@ -1181,7 +1181,7 @@ export type AddReviewReviewsPostErrors = {
 
 export type AddReviewReviewsPostResponses = {
   /**
-   * その週の振り返りはもうある
+   * その週の週次レビューはもうある
    */
   200: WeeklyReviewOut;
   /**
@@ -1202,7 +1202,7 @@ export type ReadCurrentReviewReviewsCurrentGetData = {
 
 export type ReadCurrentReviewReviewsCurrentGetErrors = {
   /**
-   * 今の週の振り返りはまだない（ゲストは、デモの振り返りがひとつもない）
+   * 今の週の週次レビューはまだない（ゲストは、デモの週次レビューがない）
    */
   404: unknown;
 };
@@ -1235,11 +1235,11 @@ export type PutSelectionReviewsReviewIdSelectionPutErrors = {
    */
   403: unknown;
   /**
-   * 振り返りか、その振り返りの選択肢がない
+   * 週次レビューか、その選択肢がない
    */
   404: unknown;
   /**
-   * 今の週の振り返りではない
+   * 今の週の週次レビューではない
    */
   409: unknown;
   /**

@@ -12,11 +12,11 @@
 心拍、VO2max、メモを入れる。記録は決まった乱数で作るので、毎回同じになる。日付も
 動かさない。ゲストのダッシュボードは最後のワークアウトの日を今日として切る。
 
-振り返りは、利用者と同じ create_review で最後の 4 週分を作る。数字の判定はコードで
+週次レビューは、利用者と同じ create_review で最後の 4 週分を作る。数字の判定はコードで
 するので、チャートとセリフの数字が食い違わない。GEMINI_PROJECT と TYPESAFE_API_KEY が
 あれば Gemini が書いて Jev で確かめ、なければ定型になる。前の 3 週は選択肢を 1 つ
 選んでおく。最後の週は選ばずに残す（ゲストには押せない選択肢として見せる）。
-TTS_URL と AUDIO_BUCKET があれば、利用者と同じく振り返りを声にして置く。
+TTS_URL と AUDIO_BUCKET があれば、利用者と同じく週次レビューのセリフを声にして置く。
 
 全体を 1 つのトランザクションで入れる。途中で失敗したら何も変えず、前のデモデータが
 そのまま残る。同時に 2 回流しても、advisory lock で 1 回ずつ順に入る。
@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 
 DEMO_EMAIL = "demo@loadline.invalid"
 TIMEZONE = "Asia/Tokyo"
-# 最後の記録の日（日曜）。振り返りの曜日は月曜なので、最後の回はこの日までの 7 日間になる
+# 最後の記録の日（日曜）。週次レビューの曜日は月曜なので、最後の回はこの日までの 7 日間になる
 LAST_DAY = date(2026, 11, 1)
 WEEKS = 16
 FIRST_DAY = LAST_DAY - timedelta(weeks=WEEKS) + timedelta(days=1)
@@ -191,7 +191,7 @@ async def seed_demo(
     voice: Voice | None = None,
     audio: AudioStore | None = None,
 ) -> User:
-    """デモの利用者を作り直して、記録、メモ、振り返りを入れる。
+    """デモの利用者を作り直して、記録、メモ、週次レビューを入れる。
 
     session は外のトランザクションに入れておく（seed_demo_atomically）。中の commit は
     savepoint になり、外のトランザクションを確定するまで、ほかからは前のデモが見える。
@@ -199,7 +199,7 @@ async def seed_demo(
     rng = random.Random(45)
     # 同時に流れたら、先のほうが確定するまで待つ。待たずに進むと両方がデモの利用者を作る
     await session.execute(select(func.pg_advisory_xact_lock(_LOCK_KEY)))
-    # 行を消せば、外部キーの ON DELETE CASCADE で記録も振り返りも消える
+    # 行を消せば、外部キーの ON DELETE CASCADE で記録も週次レビューも消える
     await session.execute(delete(User).where(User.is_demo.is_(True)))
     user = User(
         email=DEMO_EMAIL,
@@ -235,7 +235,7 @@ async def seed_demo(
     )
     await session.commit()
 
-    # 振り返りの日（月曜）。最後の回は LAST_DAY の翌日
+    # 週次レビューを作る日（月曜）。最後の回は LAST_DAY の翌日
     review_days = [LAST_DAY + timedelta(days=1) - timedelta(weeks=n) for n in range(REVIEWS)][::-1]
     for i, day in enumerate(review_days):
         review, _ = await create_review(
@@ -315,7 +315,7 @@ class _Tracked:
 
 
 async def voiced_reviews(engine: AsyncEngine, user_id: int) -> int:
-    """デモの振り返りのうち、声が付いた数。tts に断られても seed は通るので、数で確かめる。"""
+    """デモの週次レビューのうち、声が付いた数。tts に断られても seed は通るので、数で確かめる。"""
     async with engine.connect() as conn:
         count = await conn.scalar(
             select(func.count())

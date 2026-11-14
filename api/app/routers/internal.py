@@ -50,7 +50,8 @@ class AutoReviewOut(BaseModel):
 
 @router.post("/reviews/dispatch")
 async def dispatch_reviews(session: DbSession, queue: ReviewQueueDep) -> DispatchOut:
-    """Scheduler が 1 時間おきに呼ぶ。振り返りを自動で作る相手と週を探し、1 人ずつ Tasks に積む。
+    """Scheduler が 1 時間おきに呼ぶ。週次レビューを自動で作る相手と週を探し、
+    1 人ずつ Tasks に積む。
 
     積めなかった人がいれば、残りを積み終えてから 500 を返す（Scheduler のログに失敗が残る）。
     その人は 1 時間後の次の回でもう一度見つかる。TASKS_QUEUE が空なら探すだけ。
@@ -82,7 +83,7 @@ async def create_review_for_user(
     voice: VoiceDep,
     audio: AudioStoreDep,
 ) -> AutoReviewOut:
-    """Tasks が 1 人ずつ呼ぶ。探したときの週（period_start に始まる 7 日間）の振り返りを作る。
+    """Tasks が 1 人ずつ呼ぶ。探したときの週（period_start に始まる 7 日間）の週次レビューを作る。
 
     2xx 以外を返すと Tasks がやり直す。作れない相手（アカウントを消した、ゲスト、心拍の
     設定がない、今の週が period_start でなくなった）はやり直しても変わらないので 200 の

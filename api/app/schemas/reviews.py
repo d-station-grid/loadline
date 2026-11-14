@@ -20,7 +20,7 @@ class ReviewOptionOut(BaseModel):
 
 
 class WeeklyReviewOut(BaseModel):
-    """週に 1 回の振り返り。期間は利用者のタイムゾーンでの日付で、両端を含む。
+    """週次レビュー。期間は利用者のタイムゾーンでの日付で、両端を含む。
 
     script はアバターのセリフで、字幕にも使う。is_fallback が true なら人が書いた定型。
     expression はセリフを話すときのアバターの表情。定型なら relaxed。
@@ -43,6 +43,6 @@ class WeeklyReviewOut(BaseModel):
 
 
 class SelectionIn(BaseModel):
-    """選ぶ選択肢。その振り返りの options の id。"""
+    """選ぶ選択肢。その週次レビューの options の id。"""
 
     option_id: int

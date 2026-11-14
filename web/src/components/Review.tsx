@@ -35,8 +35,8 @@ type SelectError = { kind: "closed" } | { kind: "other"; message: string };
 type Props = { user: User; onOpenSettings: () => void };
 
 /**
- * 再生に使う音声。振り返りとは別に持つ。選択肢を選ぶと api は同じ音声の新しい署名付き
- * URL を返すが、差し替えると再生が最初に戻るので、同じ振り返りのあいだは替えない。
+ * 再生に使う音声。週次レビューとは別に持つ。選択肢を選ぶと api は同じ音声の新しい署名付き
+ * URL を返すが、差し替えると再生が最初に戻るので、同じ週次レビューのあいだは替えない。
  * url が null なら再生ボタンを出さない（声がない、または再生できなかった）。
  */
 type Audio = {
@@ -58,15 +58,15 @@ const CREATE_HINT = "This usually takes 20–30 seconds.";
 const AvatarStage = lazy(() => import("../features/avatar/AvatarStage"));
 
 /**
- * 今の週の振り返り。画面の右下に、アバターと吹き出しを重ねて出す（Figma の S08）。
+ * 今の週の週次レビュー。画面の右下に、アバターと吹き出しを重ねて出す（Figma の S08）。
  * 吹き出しにはセリフを字幕として出し、声があれば再生ボタン（Play・Pause・Replay）を出し、
  * その週の過ごし方の選択肢を並べる。声を流すあいだは、アバターの口を声の大きさに合わせて
  * 動かし、字幕の今読んでいる文を目立たせる。まだなければ、その場で作るボタンを出す。
- * 選んだ後もボタンは残し、押せば選び直せる。ゲストはデモの振り返りを見るだけ。
+ * 選んだ後もボタンは残し、押せば選び直せる。ゲストはデモの週次レビューを見るだけ。
  * 作るボタンは出さず、選択肢は押せない。
  *
  * Hide でアバターごと畳み、Hide text で吹き出しの文字だけを隠す。どちらも外さずに隠すので、
- * 振り返りの状態もアバターのモデルも残る。アバターをつかめば、吹き出しごと動かせる。
+ * 週次レビューの状態もアバターのモデルも残る。アバターをつかめば、吹き出しごと動かせる。
  */
 export default function Review({ user, onOpenSettings }: Props) {
   // undefined は読み込み中、null はまだない週
@@ -113,7 +113,7 @@ export default function Review({ user, onOpenSettings }: Props) {
   const busy = useRef(false);
   const guest = user.isAnonymous;
 
-  // 別の振り返りになったら、その振り返りの URL で再生する。同じ振り返りでは今の URL を
+  // 別の週次レビューになったら、その週次レビューの URL で再生する。同じ週次レビューでは今の URL を
   // 残す。まだ URL がなく（署名できなかった）、再生できないと決まってもいなければ、
   // 後から返った URL を使う
   if (
@@ -189,7 +189,7 @@ export default function Review({ user, onOpenSettings }: Props) {
   }, [user, attempt]);
 
   function retry() {
-    // 読み直すと同じ振り返りの同じ URL が返ることがあり、どの声かでは区別できない。
+    // 読み直すと同じ週次レビューの同じ URL が返ることがあり、どの声かでは区別できない。
     // <audio> は作り直されて最初からになるので、位置もここで戻す
     setPlayback({ source: "", time: 0, duration: 0 });
     setLoadError(null);
@@ -222,13 +222,13 @@ export default function Review({ user, onOpenSettings }: Props) {
   }
 
   /**
-   * 音声を読めなかったとき。署名付き URL の期限（1 時間）が切れたと見て、振り返りを
-   * 読み直して新しい URL にする。1 つの振り返りで 1 回だけ。読み直した URL でも読めない、
+   * 音声を読めなかったとき。署名付き URL の期限（1 時間）が切れたと見て、週次レビューを
+   * 読み直して新しい URL にする。1 つの週次レビューで 1 回だけ。読み直した URL でも読めない、
    * 読み直せない、読み直したら URL がない、のどれかなら再生ボタンを消し、字幕だけにする。
    *
-   * 反映するのは音声の URL だけ。振り返りは差し替えないので、読み直しが遅れて返っても、
+   * 反映するのは音声の URL だけ。週次レビューは差し替えないので、読み直しが遅れて返っても、
    * そのあいだに選んだ選択肢や、読み直した今の週を消さない。反映するのは、読み直しを
-   * 始めたときと同じ振り返りの、同じ URL を再生しているときだけ
+   * 始めたときと同じ週次レビューの、同じ URL を再生しているときだけ
    */
   async function onAudioError(failed: Audio) {
     function update(next: Partial<Audio>) {
@@ -267,7 +267,7 @@ export default function Review({ user, onOpenSettings }: Props) {
         await selectReviewOption(reviewId, optionId, await user.getIdToken()),
       );
     } catch (e) {
-      // 409 は、開いている間に振り返りの週が替わったとき。読み直せば今の週が出る
+      // 409 は、開いている間に週次レビューの週が替わったとき。読み直せば今の週が出る
       setSelectError(
         e instanceof ApiError && e.status === 409
           ? { kind: "closed" }

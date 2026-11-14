@@ -1,4 +1,4 @@
-"""tts（Kokoro、Cloud Run）に、振り返りのセリフを読み上げてもらう。
+"""tts（Kokoro、Cloud Run）に、週次レビューのセリフを読み上げてもらう。
 
 tts は認証が必須なので、tts の URL を宛先（audience）にした ID トークンを付ける。本番は
 Cloud Run のサービスアカウント（loadline-api）で、tts の run.invoker が要る。

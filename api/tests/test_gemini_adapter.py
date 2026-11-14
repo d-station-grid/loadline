@@ -67,7 +67,7 @@ def writer(generate: FakeGenerate, timeout_sec: float = 5.0) -> GeminiReviewWrit
 
 @pytest.mark.parametrize("name", ["steady", "fatigued", "no_training"])
 async def test_recorded_responses_become_reviews(name: str) -> None:
-    """記録した本物の応答が、そのまま振り返りになる。"""
+    """記録した本物の応答が、そのまま週次レビューになる。"""
     response = recorded(name)
     generate = FakeGenerate(response)
 

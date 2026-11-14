@@ -118,7 +118,7 @@ async def test_current_returns_the_created_review(client: AsyncClient) -> None:
 
 
 async def test_current_does_not_show_an_older_week(client: AsyncClient) -> None:
-    """前の週の振り返りがあっても、今の週のものがなければ 404。"""
+    """前の週の週次レビューがあっても、今の週のものがなければ 404。"""
     me = await _me()
     start, _ = _current_period("Asia/Tokyo", 0)
     await WeeklyReviewFactory.create_async(
@@ -142,7 +142,7 @@ async def test_current_does_not_show_someone_elses_review(client: AsyncClient) -
 
 
 async def test_post_does_not_count_someone_elses_workouts(client: AsyncClient) -> None:
-    """自分は 1 回、他人は同じ週に 2 回。振り返りの回数は自分の 1 回だけ。"""
+    """自分は 1 回、他人は同じ週に 2 回。週次レビューの回数は自分の 1 回だけ。"""
     me = await _me()
     other = await UserFactory.create_async(max_heart_rate=177, resting_heart_rate=75)
     start, _ = _current_period("Asia/Tokyo", 0)
@@ -297,7 +297,7 @@ async def test_post_voices_the_review_and_get_returns_the_audio_url(client: Asyn
 
 
 async def test_audio_url_is_null_without_voice(client: AsyncClient) -> None:
-    # 手元と CI は TTS_URL と AUDIO_BUCKET が空。文字だけの振り返りになる
+    # 手元と CI は TTS_URL と AUDIO_BUCKET が空。文字だけの週次レビューになる
     await _me()
 
     res = await client.post("/reviews", headers=HEADERS)

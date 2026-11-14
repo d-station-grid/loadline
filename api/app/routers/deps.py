@@ -63,7 +63,7 @@ GUEST_FORBIDDEN: dict[int | str, dict[str, Any]] = {
 
 @lru_cache
 def get_review_writer() -> ReviewWriter | None:
-    """振り返りを書く Gemini。プロセスで 1 つ。GEMINI_PROJECT が空なら None（定型だけ）。"""
+    """週次レビューを書く Gemini。プロセスで 1 つ。GEMINI_PROJECT が空なら None（定型だけ）。"""
     return gemini_writer(get_settings())
 
 
@@ -99,7 +99,7 @@ AudioStoreDep = Annotated[AudioStore | None, Depends(get_audio_store)]
 
 @lru_cache
 def get_review_queue() -> ReviewQueue | None:
-    """振り返りのタスクを積む Cloud Tasks。プロセスで 1 つ。TASKS_QUEUE が空なら None。"""
+    """週次レビューのタスクを積む Cloud Tasks。プロセスで 1 つ。TASKS_QUEUE が空なら None。"""
     return review_queue(get_settings())
 
 

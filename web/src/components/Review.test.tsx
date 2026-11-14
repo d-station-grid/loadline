@@ -63,7 +63,7 @@ vi.mock("../features/avatar/AvatarStage", async () => {
 
 const user = { getIdToken: async () => "token" } as unknown as User;
 
-/** 3 つの選択肢を持つ振り返り。chosen を渡すと、その位置を選んだことにする */
+/** 3 つの選択肢を持つ週次レビュー。chosen を渡すと、その位置を選んだことにする */
 function review(chosen: number | null = null): WeeklyReviewOut {
   const options = [
     ["Rest fully", "Take a few days off to recover."],
@@ -124,7 +124,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test("今の週の振り返りがあれば、期間とセリフと選択肢を出す", async () => {
+test("今の週の週次レビューがあれば、期間とセリフと選択肢を出す", async () => {
   vi.mocked(getCurrentReview).mockResolvedValue(review());
   renderReview();
 
@@ -206,7 +206,7 @@ test("保存中はボタンを止め、連打しても 1 回だけ送る", async
   await vi.waitFor(() => expect(option("Rest fully")).toBeEnabled());
 });
 
-test("過ぎた週の振り返りを選ぼうとしたら、その場で今の週を読み直せる", async () => {
+test("過ぎた週の週次レビューを選ぼうとしたら、その場で今の週を読み直せる", async () => {
   const next: WeeklyReviewOut = {
     ...review(),
     id: 8,
@@ -334,7 +334,7 @@ const guest = {
   getIdToken: async () => "token",
 } as unknown as User;
 
-test("ゲストは振り返りを読めるが、選択肢は押せない", async () => {
+test("ゲストは週次レビューを読めるが、選択肢は押せない", async () => {
   vi.mocked(getCurrentReview).mockResolvedValue(review());
   render(<Review user={guest} onOpenSettings={vi.fn()} />);
 
@@ -347,7 +347,7 @@ test("ゲストは振り返りを読めるが、選択肢は押せない", async
   expect(selectReviewOption).not.toHaveBeenCalled();
 });
 
-test("ゲストには振り返りを作るボタンを出さない", async () => {
+test("ゲストには週次レビューを作るボタンを出さない", async () => {
   vi.mocked(getCurrentReview).mockResolvedValue(null);
   render(<Review user={guest} onOpenSettings={vi.fn()} />);
 
@@ -658,7 +658,7 @@ test("読み直しが遅れて返っても、そのあいだに選んだ選択�
     expect(option("Go easy")).toHaveAttribute("aria-pressed", "true"),
   );
 
-  // 選ぶ前に読んだ、まだ選んでいない振り返りが遅れて返る
+  // 選ぶ前に読んだ、まだ選んでいない週次レビューが遅れて返る
   await act(async () => {
     slow.resolve({ ...review(), audio_url: FRESH });
   });
@@ -667,7 +667,7 @@ test("読み直しが遅れて返っても、そのあいだに選んだ選択�
   expect(player()).toHaveAttribute("src", FRESH);
 });
 
-test("表示している振り返りが替わっていたら、読み直した URL は使わない", async () => {
+test("表示している週次レビューが替わっていたら、読み直した URL は使わない", async () => {
   const slow = deferred<WeeklyReviewOut | null>();
   const next = `${AUDIO}&next-week`;
   vi.mocked(getCurrentReview)
@@ -722,7 +722,7 @@ test("作り直すときは、経った秒数を 0 から数える", async () =>
   ).toBeInTheDocument();
 });
 
-test("アバターは振り返りの表情で立ち、声を流すあいだは話す顔にする", async () => {
+test("アバターは週次レビューの表情で立ち、声を流すあいだは話す顔にする", async () => {
   vi.mocked(getCurrentReview).mockResolvedValue({
     ...review(),
     expression: "happy",
@@ -769,7 +769,7 @@ test("Hide text で文字だけを隠し、再生ボタンと Hide とアバタ�
   expect(script).toBeVisible();
 });
 
-test("Hide でアバターごと畳み、出し直しても振り返りもアバターも作り直さない", async () => {
+test("Hide でアバターごと畳み、出し直しても週次レビューもアバターも作り直さない", async () => {
   vi.mocked(getCurrentReview).mockResolvedValue(review(1));
   renderReview();
 
@@ -788,7 +788,7 @@ test("Hide でアバターごと畳み、出し直しても振り返りもアバ
   expect(script).toBeVisible();
   expect(screen.getByTestId("avatar")).toHaveAttribute("data-visible", "true");
   expect(option("Go easy")).toHaveAttribute("aria-pressed", "true");
-  // 振り返りを読み直さず、アバター（モデル）も作り直さない
+  // 週次レビューを読み直さず、アバター（モデル）も作り直さない
   expect(getCurrentReview).toHaveBeenCalledTimes(1);
   expect(avatar.mounts).toBe(1);
 });

@@ -194,7 +194,7 @@
           "me"
         ],
         "summary": "Delete Me",
-        "description": "ログイン中の本人を消す。記録、メモ、振り返りとその音声、取り込み用トークン、\nFirebase の利用者。\n\n音声か Firebase の利用者を消せなければ、記録とログインを残して 502 を返す。もう一度\n呼べばやり直せる。\n消したあとは、同じ ID トークンでも 401 になる。",
+        "description": "ログイン中の本人を消す。記録、メモ、週次レビューとその音声、取り込み用トークン、\nFirebase の利用者。\n\n音声か Firebase の利用者を消せなければ、記録とログインを残して 502 を返す。もう一度\n呼べばやり直せる。\n消したあとは、同じ ID トークンでも 401 になる。",
         "operationId": "delete_me_me_delete",
         "responses": {
           "204": {
@@ -456,7 +456,7 @@
           "reviews"
         ],
         "summary": "Add Review",
-        "description": "今の振り返りの週の振り返りを作る。週は、今日以前でいちばん近い振り返りの曜日の\n前日までの 7 日間（利用者のタイムゾーン）。\n\nその週の振り返りがもうあれば、作り直さずにそれを 200 で返す。後から届いた記録も\n入れない。GEMINI_PROJECT と TYPESAFE_API_KEY が設定されていればセリフと選択肢を\nGemini が書き、Jev で話してよいと確かめられたときだけその文にする。書けない、\n引っかかった、確かめられなかった（時間切れも）ときは定型にする。設定がなければ\n定型だけ。どちらだったかは is_fallback で分かる。\n\nTTS_URL と AUDIO_BUCKET が設定されていれば、セリフを声にして audio_url を付ける。\n声を作れなかったときは audio_url が null。",
+        "description": "今の週の週次レビューを作る。週は、今日以前でいちばん近い週次レビューの曜日の\n前日までの 7 日間（利用者のタイムゾーン）。\n\nその週の週次レビューがもうあれば、作り直さずにそれを 200 で返す。後から届いた記録も\n入れない。GEMINI_PROJECT と TYPESAFE_API_KEY が設定されていればセリフと選択肢を\nGemini が書き、Jev で話してよいと確かめられたときだけその文にする。書けない、\n引っかかった、確かめられなかった（時間切れも）ときは定型にする。設定がなければ\n定型だけ。どちらだったかは is_fallback で分かる。\n\nTTS_URL と AUDIO_BUCKET が設定されていれば、セリフを声にして audio_url を付ける。\n声を作れなかったときは audio_url が null。",
         "operationId": "add_review_reviews_post",
         "responses": {
           "201": {
@@ -470,7 +470,7 @@
             }
           },
           "200": {
-            "description": "その週の振り返りはもうある",
+            "description": "その週の週次レビューはもうある",
             "content": {
               "application/json": {
                 "schema": {
@@ -499,7 +499,7 @@
           "reviews"
         ],
         "summary": "Read Current Review",
-        "description": "今の振り返りの週の振り返り。週の決め方は POST /reviews と同じ。\n\nゲスト（デモの利用者）には、今の週ではなく、いちばん新しい期間の振り返りを返す。\nデモデータは日付が動かず、今の週の振り返りはないため。",
+        "description": "今の週の週次レビュー。週の決め方は POST /reviews と同じ。\n\nゲスト（デモの利用者）には、今の週ではなく、いちばん新しい期間の週次レビューを返す。\nデモデータは日付が動かず、今の週の週次レビューはないため。",
         "operationId": "read_current_review_reviews_current_get",
         "responses": {
           "200": {
@@ -513,7 +513,7 @@
             }
           },
           "404": {
-            "description": "今の週の振り返りはまだない（ゲストは、デモの振り返りがひとつもない）"
+            "description": "今の週の週次レビューはまだない（ゲストは、デモの週次レビューがない）"
           }
         },
         "security": [
@@ -529,7 +529,7 @@
           "reviews"
         ],
         "summary": "Put Selection",
-        "description": "振り返りの選択肢を 1 つ選ぶ。選び直すと、前に選んだものは外れる。\n\n選び直せるのは今の週の振り返りだけ。過ぎた週の選択は、次の週の振り返りの材料に\n使うので変えない。",
+        "description": "週次レビューの選択肢を 1 つ選ぶ。選び直すと、前に選んだものは外れる。\n\n選び直せるのは今の週の週次レビューだけ。過ぎた週の選択は、次の週の週次レビューの材料に\n使うので変えない。",
         "operationId": "put_selection_reviews__review_id__selection_put",
         "security": [
           {
@@ -572,10 +572,10 @@
             "description": "ゲスト（デモの利用者）は選べない"
           },
           "404": {
-            "description": "振り返りか、その振り返りの選択肢がない"
+            "description": "週次レビューか、その選択肢がない"
           },
           "409": {
-            "description": "今の週の振り返りではない"
+            "description": "今の週の週次レビューではない"
           },
           "422": {
             "description": "Validation Error",
@@ -1076,7 +1076,7 @@
           "last_received_at"
         ],
         "title": "Dashboard",
-        "description": "ダッシュボードの 1 画面ぶん。日付は利用者のタイムゾーンで区切る。\n\ndays は全種目で計算する（種目で絞ると疲労を低く見積もるため）。sport で絞るのは\nzones、workouts、zone_weeks、totals、previous_totals だけ。最大心拍か安静時心拍が\n未設定なら、負荷が出ないので days は空で、needs_heart_rate_settings が true。\n\nchanges と form も全種目。form は until の余力の区分（振り返りの週の判定と同じ境目）で、\ndays が空なら None。zone_weeks は until から 7 日ずつ区切った強度の時間で、古い順。\n境目がそろわなければ None。totals は期間の合計、previous_totals は since の前の同じ\n日数の合計。last_received_at は Health Auto Export からの取り込みが最後に成功した日時で、\n成功したことがなければ None（デモの利用者は常に None）。新しい記録が保存されたとは限らない\n（同じ記録が届き直しただけでも進む）。"
+        "description": "ダッシュボードの 1 画面ぶん。日付は利用者のタイムゾーンで区切る。\n\ndays は全種目で計算する（種目で絞ると疲労を低く見積もるため）。sport で絞るのは\nzones、workouts、zone_weeks、totals、previous_totals だけ。最大心拍か安静時心拍が\n未設定なら、負荷が出ないので days は空で、needs_heart_rate_settings が true。\n\nchanges と form も全種目。form は until の余力の区分（週次レビューの週の判定と同じ境目）で、\ndays が空なら None。zone_weeks は until から 7 日ずつ区切った強度の時間で、古い順。\n境目がそろわなければ None。totals は期間の合計、previous_totals は since の前の同じ\n日数の合計。last_received_at は Health Auto Export からの取り込みが最後に成功した日時で、\n成功したことがなければ None（デモの利用者は常に None）。新しい記録が保存されたとは限らない\n（同じ記録が届き直しただけでも進む）。"
       },
       "DayPoint": {
         "properties": {
@@ -1541,7 +1541,7 @@
           "failed"
         ],
         "title": "ReviewStatus",
-        "description": "振り返りを作る処理の状態。"
+        "description": "週次レビューを作る処理の状態。"
       },
       "SelectionIn": {
         "properties": {
@@ -1555,7 +1555,7 @@
           "option_id"
         ],
         "title": "SelectionIn",
-        "description": "選ぶ選択肢。その振り返りの options の id。"
+        "description": "選ぶ選択肢。その週次レビューの options の id。"
       },
       "SettingsIn": {
         "properties": {
@@ -1949,7 +1949,7 @@
           "options"
         ],
         "title": "WeeklyReviewOut",
-        "description": "週に 1 回の振り返り。期間は利用者のタイムゾーンでの日付で、両端を含む。\n\nscript はアバターのセリフで、字幕にも使う。is_fallback が true なら人が書いた定型。\nexpression はセリフを話すときのアバターの表情。定型なら relaxed。\naudio_url はセリフの音声を期限つきで再生できる URL。null なら文字だけで見せる。\nnull は、声を作れなかった、声にしない設定、今は署名できなかった、のどれか。最後の\n場合は、次に読むと URL が出ることがある。options は position の順。"
+        "description": "週次レビュー。期間は利用者のタイムゾーンでの日付で、両端を含む。\n\nscript はアバターのセリフで、字幕にも使う。is_fallback が true なら人が書いた定型。\nexpression はセリフを話すときのアバターの表情。定型なら relaxed。\naudio_url はセリフの音声を期限つきで再生できる URL。null なら文字だけで見せる。\nnull は、声を作れなかった、声にしない設定、今は署名できなかった、のどれか。最後の\n場合は、次に読むと URL が出ることがある。options は position の順。"
       },
       "WorkoutDetail": {
         "properties": {

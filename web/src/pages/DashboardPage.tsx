@@ -266,7 +266,7 @@ export default function DashboardPage({
         </div>
       </div>
 
-      {/* 振り返りは期間の切り替えに左右されない。画面の右下に浮かせて出す（位置は CSS）。
+      {/* 週次レビューは期間の切り替えに左右されない。画面の右下に浮かせて出す（位置は CSS）。
           読み上げの順で、数字より先に届くよう、ここに置く */}
       <Review user={user} onOpenSettings={onOpenSettings} />
 

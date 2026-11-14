@@ -171,7 +171,7 @@ export function deleteAccount(idToken: string): Promise<void> {
   return request<void>("/me", { method: "DELETE" }, idToken);
 }
 
-/** 今の週の振り返り。まだなければ null（api は 404）。 */
+/** 今の週の週次レビュー。まだなければ null（api は 404）。 */
 export async function getCurrentReview(
   idToken: string,
 ): Promise<WeeklyReviewOut | null> {
@@ -187,12 +187,12 @@ export async function getCurrentReview(
   }
 }
 
-/** 今の週の振り返りを作る。もうあればそれを返す。心拍の設定がなければ 409、ゲストは 403。 */
+/** 今の週の週次レビューを作る。もうあればそれを返す。心拍の設定がなければ 409、ゲストは 403。 */
 export function createReview(idToken: string): Promise<WeeklyReviewOut> {
   return request<WeeklyReviewOut>("/reviews", { method: "POST" }, idToken);
 }
 
-/** 選択肢を 1 つ選ぶ。選び直せるのは今の週の振り返りだけで、過ぎた週は 409。 */
+/** 選択肢を 1 つ選ぶ。選び直せるのは今の週の週次レビューだけで、過ぎた週は 409。 */
 export function selectReviewOption(
   reviewId: number,
   optionId: number,

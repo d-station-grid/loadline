@@ -21,7 +21,7 @@ from app.models.base import Base
 
 
 class ReviewStatus(StrEnum):
-    """振り返りを作る処理の状態。"""
+    """週次レビューを作る処理の状態。"""
 
     GENERATING = "generating"
     COMPLETED = "completed"
@@ -29,13 +29,13 @@ class ReviewStatus(StrEnum):
 
 
 class WeeklyReview(Base):
-    """週に 1 回、アバターが話す振り返り。
+    """アバターが週に 1 回話す、週次レビュー。
 
     判定に使った数値は保存しない。ワークアウトと心拍の設定から、いつでも計算し直せる。
     """
 
     __tablename__ = "weekly_reviews"
-    # 同じ期間の振り返りを、二重に作らない
+    # 同じ期間の週次レビューを、二重に作らない
     __table_args__ = (UniqueConstraint("user_id", "period_start"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -62,13 +62,13 @@ class WeeklyReview(Base):
 
 
 class WeeklyReviewOption(Base):
-    """振り返りのあとに並べる、その週の過ごし方の選択肢。1 つの振り返りに 2〜3 個。"""
+    """週次レビューのあとに並べる、その週の過ごし方の選択肢。1 つの週次レビューに 2〜3 個。"""
 
     __tablename__ = "weekly_review_options"
     __table_args__ = (
-        # 並びの位置は、1 つの振り返りの中で重ねない
+        # 並びの位置は、1 つの週次レビューの中で重ねない
         UniqueConstraint("weekly_review_id", "position"),
-        # 1 つの振り返りで選べるのは 1 つだけ
+        # 1 つの週次レビューで選べるのは 1 つだけ
         Index(
             "uq_weekly_review_options_selected",
             "weekly_review_id",

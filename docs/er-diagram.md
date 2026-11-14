@@ -111,9 +111,9 @@ erDiagram
 | workouts | user_id, external_id | 同じ記録が何度届いても、二重に数えない |
 | vo2max_readings | user_id, measured_at | 同じ測定が何度届いても、二重に数えない |
 | notes | user_id, date | メモは1日1件 |
-| weekly_reviews | user_id, period_start | 同じ期間の振り返りを、二重に作らない |
-| weekly_review_options | weekly_review_id, position | 1つの振り返りの中で、並びの位置を重ねない |
-| weekly_review_options | weekly_review_id（selected_at があるものだけ） | 1つの振り返りで選べるのは、1つだけ |
+| weekly_reviews | user_id, period_start | 同じ期間の週次レビューを、二重に作らない |
+| weekly_review_options | weekly_review_id, position | 1つの週次レビューの中で、並びの位置を重ねない |
+| weekly_review_options | weekly_review_id（selected_at があるものだけ） | 1つの週次レビューで選べるのは、1つだけ |
 
 ## 保存しない値
 
@@ -129,4 +129,4 @@ erDiagram
 
 ## ゲストのデータ
 
-ゲストログインでは、`is_demo` の利用者1人ぶんのデモデータを、ゲスト全員で共有します。ゲストができるのは閲覧だけです。メモの保存、設定の変更、トークンの発行、選択肢の保存、アカウントの削除はできません。振り返りのセリフと音声は、デモ用に作っておいたものを流します。
+ゲストログインでは、`is_demo` の利用者1人ぶんのデモデータを、ゲスト全員で共有します。ゲストができるのは閲覧だけです。メモの保存、設定の変更、トークンの発行、選択肢の保存、アカウントの削除はできません。週次レビューのセリフと音声は、デモ用に作っておいたものを流します。

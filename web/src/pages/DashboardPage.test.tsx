@@ -8,7 +8,7 @@ import { formatDay } from "../lib/format";
 import DashboardPage from "./DashboardPage";
 
 vi.mock("../lib/api", () => ({ getDashboard: vi.fn(), getWorkouts: vi.fn() }));
-// 振り返り、メモ、チャートは、それぞれのテストで見る。ここでは読み方と表だけを見る
+// 週次レビュー、メモ、チャートは、それぞれのテストで見る。ここでは読み方と表だけを見る
 vi.mock("../components/Review", () => ({ default: () => null }));
 vi.mock("../components/Notes", () => ({
   default: ({ pick }: { pick?: { date: string } }) => (

@@ -220,7 +220,7 @@ def jev_checker(settings: Settings) -> JevLineChecker | None:
     """設定から作る。キーが空なら None（確かめられないので、LLM の文は話さず定型にする）。
 
     キーの形が壊れている、時間切れの秒数が 0 以下などで作れないときも None にする。
-    振り返りを 500 にせず、定型で作れるようにするため。
+    週次レビューを 500 にせず、定型で作れるようにするため。
     """
     if not settings.typesafe_api_key:
         return None

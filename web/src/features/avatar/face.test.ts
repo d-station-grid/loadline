@@ -9,7 +9,7 @@ import {
   nextMouth,
 } from "./face";
 
-test("話していないときは、振り返りの表情だけを出す", () => {
+test("話していないときは、週次レビューの表情だけを出す", () => {
   expect(faceTarget("happy", false)).toEqual({
     happy: 0.8,
     relaxed: 0,
