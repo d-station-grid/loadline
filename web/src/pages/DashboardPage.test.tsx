@@ -271,19 +271,43 @@ test("メモの一覧は、モーダルを開く前から 1 回読み、チャ�
   });
 });
 
-test("前に読んだ期間に戻したときは、読み直さない", async () => {
+test("前に読んだ期間に戻したときは、持っている結果をすぐ出す", async () => {
   vi.mocked(getDashboard).mockResolvedValue(dashboard([point(1, 50)]));
   vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
-  renderPage();
+  // 戻るまでの時間で読み直すかが変わらないよう、読み直さない時間を長くする
+  renderPage(60_000);
   await screen.findByText("Time in each zone");
 
+  // 1M の読み込みは終わらせない。その間、上のカードは Loading
+  vi.mocked(getDashboard).mockReturnValue(new Promise(() => {}));
   const period = screen.getByRole("group", { name: "Period" });
   fireEvent.click(within(period).getByRole("button", { name: "1M" }));
   await vi.waitFor(() => expect(getDashboard).toHaveBeenCalledTimes(2));
+  expect(screen.queryByLabelText("Latest")).toBeNull();
+
   fireEvent.click(within(period).getByRole("button", { name: "3M" }));
 
-  await screen.findByText("Fitness, fatigue and VO2max");
+  expect(screen.getByLabelText("Latest")).toBeInTheDocument();
   expect(getDashboard).toHaveBeenCalledTimes(2);
+});
+
+test("戻ったあとの読み直しに失敗したら、前の数字は出さず、エラーと Retry だけにする", async () => {
+  vi.mocked(getDashboard).mockResolvedValue(dashboard([point(1, 50)]));
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
+  const { rerender } = renderPage(0);
+  await screen.findByLabelText("Latest");
+  rerender(<></>);
+
+  vi.mocked(getDashboard).mockRejectedValue(new Error("API returned 500"));
+  rerender(<DashboardPage {...props} />);
+
+  // 上のカードと Intensity の 2 か所にエラーが出る
+  await vi.waitFor(() =>
+    expect(screen.getAllByText(/API returned 500/)).toHaveLength(2),
+  );
+  expect(screen.queryByLabelText("Latest")).toBeNull();
+  expect(screen.queryByText("Time in each zone")).toBeNull();
+  expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(2);
 });
 
 test("「+ Note」でメモのモーダルを今日の日で開き、Esc と Close で閉じる", async () => {

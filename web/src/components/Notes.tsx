@@ -81,6 +81,11 @@ function LabelField({
   );
 }
 
+/** 下書きが、送ったときの本文とラベルのままか */
+function sameDraft(draft: EditDraft | undefined, sent: EditDraft): boolean {
+  return draft?.body === sent.body && draft.label === sent.label;
+}
+
 /** 1 件の下書きを消す。保存や削除が済んだメモの分だけ */
 function withoutDraft(drafts: EditDrafts, id: number): EditDrafts {
   const { [id]: _done, ...rest } = drafts;
@@ -213,6 +218,7 @@ export default function Notes({
       if (!canSaveEdit) return;
       const target = existing;
       const listSince = since;
+      const sent: EditDraft = { body: editBody, label: editLabel };
       await run(async () => {
         const note = await editNote(
           target.id,
@@ -220,13 +226,17 @@ export default function Notes({
           await user.getIdToken(),
         );
         await replaceInList(listSince, target.id, note);
-        setEditDrafts((d) => withoutDraft(d, target.id));
+        // 消すのは送った下書きだけ。保存中にモーダルを開き直して書き足した分は残す
+        setEditDrafts((d) =>
+          sameDraft(d[target.id], sent) ? withoutDraft(d, target.id) : d,
+        );
         return "Saved";
       });
       return;
     }
     if (!canSave) return;
     const listSince = since;
+    const sent: EditDraft = { body, label };
     await run(async () => {
       const note = await addNote(
         { date, body, label: normalizeLabel(label) },
@@ -235,9 +245,11 @@ export default function Notes({
       // 読み直しが届くまでの間も見えるよう、書いたときの期間の一覧に足しておく。
       // 保存中に期間を切り替えられても、足すのはその期間の一覧だけ
       await updateNotes(listSince, (items) => newestFirst([...items, note]));
-      // 保存中は欄を無効にしているので、ここで消すのは送った本文だけ
-      setBody("");
-      setLabel("");
+      // 消すのは送った本文とラベルだけ。保存中はこの欄を止めているが、モーダルを閉じて
+      // 開き直すと書ける（Notes が作り直されて saving が戻る）。そこで書いた分は残す
+      onDraftChange((d) =>
+        sameDraft(d, sent) ? { ...d, body: "", label: "" } : d,
+      );
       return "Saved";
     });
   }

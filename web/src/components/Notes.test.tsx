@@ -685,6 +685,106 @@ test("Notes を外しても、書きかけは親に残り、出し直すと続�
   expect(screen.queryByText("Loading notes…")).toBeNull();
 });
 
+test("保存中に Notes を外して出し直し、別の本文を書いても、保存が終わったときに消さない", async () => {
+  const added = deferred<NoteOut>();
+  vi.mocked(addNote).mockReturnValueOnce(added.promise);
+  const { rerender } = renderNotes();
+  await screen.findByText("No notes in this period.");
+  fireEvent.change(screen.getByLabelText("Note"), {
+    target: { value: "First." },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save note" }));
+
+  // 保存を待つ間にモーダルを閉じて開き直し、別の日の本文を書く
+  rerender(<Host user={user} since="2026-09-01" today="2026-10-18" hidden />);
+  rerender(
+    <Host
+      user={user}
+      since="2026-09-01"
+      today="2026-10-18"
+      pick={{ date: "2026-10-17", at: 1 }}
+    />,
+  );
+  fireEvent.change(await screen.findByLabelText("Note"), {
+    target: { value: "Second." },
+  });
+
+  await act(async () => {
+    const saved = note("2026-10-18", "First.");
+    stored.push(saved);
+    added.resolve(saved);
+    await added.promise;
+  });
+
+  expect(await screen.findByText("First.")).toBeInTheDocument();
+  expect(screen.getByLabelText("Note")).toHaveValue("Second.");
+});
+
+test("直した保存の途中で Notes を出し直して書き足しても、保存が終わったときにその下書きを消さない", async () => {
+  stored = [note("2026-10-10", "Rest day.")];
+  const edited = deferred<NoteOut>();
+  vi.mocked(editNote).mockReturnValueOnce(edited.promise);
+  const { rerender } = renderNotes();
+  fireEvent.click(await screen.findByRole("button", { name: "2026-10-10" }));
+  fireEvent.change(screen.getByLabelText("Note"), {
+    target: { value: "Rest day, A." },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+  rerender(<Host user={user} since="2026-09-01" today="2026-10-18" hidden />);
+  rerender(
+    <Host
+      user={user}
+      since="2026-09-01"
+      today="2026-10-18"
+      pick={{ date: "2026-10-10", at: 1 }}
+    />,
+  );
+  fireEvent.change(await screen.findByLabelText("Note"), {
+    target: { value: "Rest day, A and B." },
+  });
+
+  await act(async () => {
+    const saved = { ...note("2026-10-10", "Rest day, A."), id: 1 };
+    stored = [saved];
+    edited.resolve(saved);
+    await edited.promise;
+  });
+
+  await waitFor(() =>
+    expect(screen.getByRole("listitem")).toHaveTextContent("Rest day, A."),
+  );
+  expect(screen.getByLabelText("Note")).toHaveValue("Rest day, A and B.");
+});
+
+test("短い期間で保存してすぐ長い期間に戻しても、長い期間の一覧を読み直して新しいメモを出す", async () => {
+  stored = [note("2026-09-05", "Old.", 1)];
+  // 長い期間（9/1 から）を読んでから、短い期間（9/15 から）に切り替える
+  const { rerender } = renderNotes("2026-09-01");
+  await screen.findByText("Old.");
+  rerender(<Host user={user} since="2026-09-15" today="2026-10-18" />);
+  await screen.findByText("No notes in this period.");
+
+  fireEvent.change(screen.getByLabelText("Note"), {
+    target: { value: "New." },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save note" }));
+  expect(await screen.findByRole("status")).toHaveTextContent("Saved");
+
+  // 長い期間の一覧を読んでから 2 秒たたないうちに戻す。SWR の重複よけで止まらず読み直す
+  rerender(<Host user={user} since="2026-09-01" today="2026-10-18" />);
+
+  // 書いた日は直す欄になり本文が入るので、一覧の行で確かめる
+  await waitFor(() =>
+    expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual(
+      ["2026-10-18 New.", "2026-09-05 Old."],
+    ),
+  );
+  expect(
+    vi.mocked(getNotes).mock.calls.filter(([q]) => q.since === "2026-09-01"),
+  ).toHaveLength(2);
+});
+
 test("ラベルは幅で数え、全角 7 文字は保存できない", async () => {
   renderNotes();
   await screen.findByText("No notes in this period.");

@@ -136,7 +136,9 @@ export default function DashboardPage({
   // 片方の期間を変えても、もう片方は持っている結果をそのまま使う
   const main = useDashboard(user, mainWeeks);
   const intensity = useDashboard(user, intensityWeeks);
-  const data = main.data ?? null;
+  // 読み直しに失敗したら、SWR は前の結果を残すが、画面はエラーと Retry だけにする。
+  // 古い数字を今の値のように見せないため
+  const data = main.error ? null : (main.data ?? null);
 
   // 上の期間を切り替えて読み込む間も、メモの欄と Recent workouts の負荷は前の結果で出す
   // 描画の中で前の結果を覚える（React の「前の描画の情報を持つ」書き方）
@@ -283,7 +285,11 @@ export default function DashboardPage({
 
       {/* Intensity の欄は自分の条件で読むので、上の読み込みとは別に出す */}
       <IntensityCard
-        data={intensity.data?.by_sport[intensitySport] ?? null}
+        data={
+          intensity.error
+            ? null
+            : (intensity.data?.by_sport[intensitySport] ?? null)
+        }
         error={intensity.error ? errorMessage(intensity.error) : null}
         retry={() => void intensity.mutate()}
         range={intensityRange}
