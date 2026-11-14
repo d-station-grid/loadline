@@ -1,13 +1,11 @@
-import type { Form } from "../api";
-
 // ダッシュボードの数字の書き方。比べる計算は api がしているので、ここでは書き方だけを決める。
 
-/** 期間の選択肢。週の数を api に渡す。span は「last 3 months」「prev 3 months」の言い方 */
+/** 期間の選択肢。週の数を api に渡す。名前と「直近 3 か月」などの言い方は辞書（ranges） */
 export const RANGES = [
-  { key: "1w", label: "1W", weeks: 1, span: "week" },
-  { key: "1m", label: "1M", weeks: 4, span: "month" },
-  { key: "3m", label: "3M", weeks: 13, span: "3 months" },
-  { key: "6m", label: "6M", weeks: 26, span: "6 months" },
+  { key: "1w", weeks: 1 },
+  { key: "1m", weeks: 4 },
+  { key: "3m", weeks: 13 },
+  { key: "6m", weeks: 26 },
 ] as const;
 
 export type Range = (typeof RANGES)[number]["key"];
@@ -27,18 +25,6 @@ export function formatChange(value: number): string {
   const text = formatOneDecimal(value);
   return value > 0 && text !== "0.0" ? `+${text}` : text;
 }
-
-/**
- * Form の一言。api の form は、期間の最後の日の余力 ÷ 体力 だけを見る。
- * 何週か休んで疲労が抜けても fresh になるので、fresh は「疲労が抜けている」とだけ言い、
- * 練習が順調だとは読めない言い方にする。
- */
-export const FORM_LABEL: Record<Form, string> = {
-  fatigued: "Tired — ease off",
-  fresh: "Fresh — fatigue has cleared",
-  steady: "Balanced",
-  not_enough_data: "Not enough data to judge",
-};
 
 /** 秒を時間の小数 1 桁に。4028 秒 → "1.1" */
 export function formatHours(sec: number): string {

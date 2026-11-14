@@ -278,6 +278,27 @@ test("言語を保存すると、画面全体の言語をその場で切り替�
   expect(setLanguage).toHaveBeenCalledWith("ja");
 });
 
+test("画面の言語が日本語なら、項目と曜日と検査の文言を日本語で出す", async () => {
+  vi.mocked(getSettings).mockResolvedValue(complete);
+  render(
+    <I18nProvider language="ja" setLanguage={() => {}}>
+      <SettingsPage user={user} onDeleted={onDeleted} />
+    </I18nProvider>,
+  );
+  const max = await screen.findByLabelText("最大心拍数");
+
+  expect(
+    screen.getByRole("option", { name: "月曜日" }) as HTMLOptionElement,
+  ).toBeInTheDocument();
+  fireEvent.change(max, { target: { value: "" } });
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "最大心拍数を入力してください。",
+  );
+  expect(putSettings).not.toHaveBeenCalled();
+});
+
 test("トークンを発行すると平文が 1 回出る", async () => {
   vi.mocked(issueIngestToken).mockResolvedValue({
     token: "secret-wxyz",
