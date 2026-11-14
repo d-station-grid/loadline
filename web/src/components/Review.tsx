@@ -430,7 +430,7 @@ export default function Review({ user, onOpenSettings }: Props) {
                 )}
                 {createError?.kind === "settings" && (
                   <p role="alert">
-                    Set your max and resting heart rate before creating a
+                    Set your heart rate and zone boundaries before creating a
                     review.{" "}
                     <button type="button" onClick={onOpenSettings}>
                       Open settings

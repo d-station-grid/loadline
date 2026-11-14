@@ -282,7 +282,7 @@ test("Gemini が書いている間は、ボタンを止めて書いているこ�
   expect(await screen.findByText(/A heavy week/)).toBeInTheDocument();
 });
 
-test("心拍の設定がなくて作れなければ、設定画面へ案内する", async () => {
+test("心拍の設定か強度の境目がなくて作れなければ、設定画面へ案内する", async () => {
   vi.mocked(getCurrentReview).mockResolvedValue(null);
   vi.mocked(createReview).mockRejectedValue(new ApiError(409));
   const { onOpenSettings } = renderReview();
@@ -293,7 +293,7 @@ test("心拍の設定がなくて作れなければ、設定画面へ案内す�
   );
 
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Set your max and resting heart rate",
+    "Set your heart rate and zone boundaries",
   );
   fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
   expect(onOpenSettings).toHaveBeenCalledTimes(1);

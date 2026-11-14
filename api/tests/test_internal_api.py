@@ -61,10 +61,12 @@ def fake_caller() -> Iterator[None]:
 
 
 async def _runner(**fields: Any) -> User:
-    """心拍の設定がある、週次レビューの曜日が月曜の人。"""
+    """心拍の設定と強度の境目がある、週次レビューの曜日が月曜の人。"""
     defaults: dict[str, Any] = {
         "max_heart_rate": 177,
         "resting_heart_rate": 75,
+        "zone_boundary_1": 130,
+        "zone_boundary_2": 155,
         "timezone": "Asia/Tokyo",
         "review_weekday": 0,
     }
@@ -136,6 +138,8 @@ async def test_due_follows_each_users_timezone(session: AsyncSession) -> None:
 async def test_not_due_without_heart_rate_settings_or_as_a_guest(session: AsyncSession) -> None:
     await _runner(max_heart_rate=None)
     await _runner(resting_heart_rate=None)
+    await _runner(zone_boundary_1=None)
+    await _runner(zone_boundary_2=None)
     await _runner(is_demo=True)
 
     assert await due_reviews(session, MONDAY_6AM_TOKYO) == []
@@ -306,7 +310,9 @@ async def test_task_voices_the_review(client: AsyncClient, session: AsyncSession
 
 
 @pytest.mark.parametrize(
-    "fields", [{"max_heart_rate": None}, {"is_demo": True}], ids=["no-heart-rate", "guest"]
+    "fields",
+    [{"max_heart_rate": None}, {"zone_boundary_1": None}, {"is_demo": True}],
+    ids=["no-heart-rate", "no-zone-boundary", "guest"],
 )
 async def test_task_skips_who_cannot_have_a_review(
     client: AsyncClient, session: AsyncSession, fields: dict[str, Any]

@@ -1212,7 +1212,7 @@ export type AddReviewReviewsPostErrors = {
    */
   403: unknown;
   /**
-   * 最大心拍か安静時心拍が未設定
+   * 最大心拍、安静時心拍、強度の境目のどれかが未設定
    */
   409: unknown;
 };

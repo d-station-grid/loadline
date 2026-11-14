@@ -32,7 +32,9 @@ router = APIRouter(prefix="/reviews", tags=["reviews"])
             "description": "その週の週次レビューはもうある",
         },
         status.HTTP_403_FORBIDDEN: {"description": "ゲスト（デモの利用者）は作れない"},
-        status.HTTP_409_CONFLICT: {"description": "最大心拍か安静時心拍が未設定"},
+        status.HTTP_409_CONFLICT: {
+            "description": "最大心拍、安静時心拍、強度の境目のどれかが未設定"
+        },
     },
 )
 async def add_review(
@@ -61,7 +63,9 @@ async def add_review(
             session, user, writer, checker, voice=voice, audio=audio
         )
     except HeartRateSettingsMissingError as e:
-        raise HTTPException(status.HTTP_409_CONFLICT, "set max and resting heart rate first") from e
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "set heart rate and zone boundaries first"
+        ) from e
     if not created:
         response.status_code = status.HTTP_200_OK
     return review

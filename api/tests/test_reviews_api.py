@@ -42,10 +42,12 @@ def fake_verifier() -> Iterator[None]:
 
 
 async def _me(**fields: Any) -> User:
-    """ログインする本人（uid-1）。心拍の設定は入れておく。"""
+    """ログインする本人（uid-1）。心拍の設定と強度の境目は入れておく。"""
     defaults: dict[str, Any] = {
         "max_heart_rate": 177,
         "resting_heart_rate": 75,
+        "zone_boundary_1": 130,
+        "zone_boundary_2": 155,
         "timezone": "Asia/Tokyo",
         "review_weekday": 0,
     }
@@ -88,6 +90,15 @@ async def test_post_without_heart_rate_settings_is_409(client: AsyncClient) -> N
     res = await client.post("/reviews", headers=HEADERS)
 
     assert res.status_code == 409
+
+
+async def test_post_without_zone_boundaries_is_409(client: AsyncClient) -> None:
+    await _me(zone_boundary_2=None)
+
+    res = await client.post("/reviews", headers=HEADERS)
+
+    assert res.status_code == 409
+    assert res.json() == {"detail": "set heart rate and zone boundaries first"}
 
 
 async def test_guest_cannot_create_a_review(client: AsyncClient) -> None:

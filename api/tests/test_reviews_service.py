@@ -48,6 +48,8 @@ async def _user(**fields: Any) -> User:
     defaults: dict[str, Any] = {
         "max_heart_rate": 177,
         "resting_heart_rate": 75,
+        "zone_boundary_1": 130,
+        "zone_boundary_2": 155,
         "timezone": "Asia/Tokyo",
         "review_weekday": 0,
     }
@@ -139,6 +141,17 @@ async def test_without_heart_rate_settings_the_week_cannot_be_judged(
     session: AsyncSession,
 ) -> None:
     user = await _user(max_heart_rate=None)
+
+    with pytest.raises(HeartRateSettingsMissingError):
+        await judge_review_week(session, user, MONDAY, TODAY)
+
+
+@pytest.mark.parametrize("field", ["zone_boundary_1", "zone_boundary_2"])
+async def test_without_zone_boundaries_the_week_cannot_be_judged(
+    session: AsyncSession, field: str
+) -> None:
+    """強度の境目がなければ強度の配分を判定できないので、心拍の設定がないときと同じく作らない。"""
+    user = await _user(**{field: None})
 
     with pytest.raises(HeartRateSettingsMissingError):
         await judge_review_week(session, user, MONDAY, TODAY)
@@ -314,7 +327,12 @@ async def test_select_option_answers_its_own_choice_when_another_follows(
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as s:
         user = UserFactory.build(
-            max_heart_rate=177, resting_heart_rate=75, timezone="Asia/Tokyo", review_weekday=0
+            max_heart_rate=177,
+            resting_heart_rate=75,
+            zone_boundary_1=130,
+            zone_boundary_2=155,
+            timezone="Asia/Tokyo",
+            review_weekday=0,
         )
         s.add(user)
         await s.flush()

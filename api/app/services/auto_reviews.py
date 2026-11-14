@@ -39,7 +39,7 @@ class DueReview:
 async def due_reviews(session: AsyncSession, now: datetime) -> list[DueReview]:
     """now の時点で、週次レビューを自動で作る相手と週（利用者の id の昇順）。
 
-    ゲストではなく、心拍の設定があり、週次レビューの曜日の 6 時を過ぎていて、今の週の
+    ゲストではなく、心拍の設定と強度の境目があり、週次レビューの曜日の 6 時を過ぎていて、今の週の
     週次レビューがまだない人。時刻の判定は利用者ごとのタイムゾーンでするので、候補は
     Python の側で絞る。
     """
@@ -50,6 +50,8 @@ async def due_reviews(session: AsyncSession, now: datetime) -> list[DueReview]:
                 User.is_demo.is_(False),
                 User.max_heart_rate.is_not(None),
                 User.resting_heart_rate.is_not(None),
+                User.zone_boundary_1.is_not(None),
+                User.zone_boundary_2.is_not(None),
             )
             .order_by(User.id)
         )
@@ -139,7 +141,7 @@ async def create_for_user(
 ) -> AutoReview:
     """1 人分の、period_start に始まる週の週次レビューを作る。作り方は本人がボタンで作るときと同じ。
 
-    積んでから呼ばれるまでの間に、アカウントを消した・ゲストになった・心拍の設定を消した人は
+    積んでから呼ばれるまでの間に、アカウントを消した・ゲストになった・心拍の設定か強度の境目を消した人は
     飛ばす。
     今の週が period_start でなくなっていても飛ばす。7 日以上遅れた再試行（次の週次レビューの
     曜日の 0〜6 時に届けば、記録を待つ 6 時より前に次の週を作ってしまう）と、待つ間に

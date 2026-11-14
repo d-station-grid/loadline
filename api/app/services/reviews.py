@@ -59,7 +59,11 @@ class LineChecker(Protocol):
 
 
 class HeartRateSettingsMissingError(Exception):
-    """最大心拍か安静時心拍が未設定。負荷が出ないので、状況を判定できない。"""
+    """最大心拍、安静時心拍、強度の境目 2 つのどれかが未設定。
+
+    心拍の 2 つがなければ負荷が出ず、状況を判定できない。境目がなければ強度ごとの時間が
+    出ず、強度の配分を判定できない。どちらも週次レビューの材料なので、4 つそろうまで作らない。
+    """
 
 
 class ReviewNotFoundError(Exception):
@@ -87,7 +91,12 @@ async def judge_review_week(
     today は利用者のタイムゾーンでの今日。週は今日より前に終わっていなければならない。
     ダッシュボードの計算は今日で切るので、終わっていない週では最終日の値がない。
     """
-    if user.max_heart_rate is None or user.resting_heart_rate is None:
+    if (
+        user.max_heart_rate is None
+        or user.resting_heart_rate is None
+        or user.zone_boundary_1 is None
+        or user.zone_boundary_2 is None
+    ):
         raise HeartRateSettingsMissingError
     tz = ZoneInfo(user.timezone)
     end = start + timedelta(days=DAYS_IN_WEEK - 1)
