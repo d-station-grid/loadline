@@ -60,6 +60,15 @@ async def test_update_then_read_back(client: AsyncClient) -> None:
     assert get.json() == {**body, "ingest_token_last_four": None}
 
 
+# 心拍の 4 つがそろった、保存できる本文。422 のテストはここから 1 か所だけ崩す
+VALID = {
+    "max_heart_rate": 177,
+    "resting_heart_rate": 75,
+    "zone_boundary_1": 130,
+    "zone_boundary_2": 155,
+}
+
+
 @pytest.mark.parametrize(
     "body",
     [
@@ -67,9 +76,25 @@ async def test_update_then_read_back(client: AsyncClient) -> None:
         # 範囲の中で、安静時が最大と同じ（前後関係の検査で落ちる）
         {"max_heart_rate": 110, "resting_heart_rate": 110},
         {"timezone": "Mars/Olympus"},
+        # 心拍の 4 つは必須。空も省略も保存させない
+        {"max_heart_rate": None},
+        {"resting_heart_rate": None},
+        {"zone_boundary_1": None},
+        {"zone_boundary_2": None},
     ],
 )
 async def test_invalid_settings_are_422(client: AsyncClient, body: dict[str, object]) -> None:
+    res = await client.put("/settings", json={**VALID, **body}, headers=HEADERS)
+
+    assert res.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "field", ["max_heart_rate", "resting_heart_rate", "zone_boundary_1", "zone_boundary_2"]
+)
+async def test_heart_rate_settings_cannot_be_left_out(client: AsyncClient, field: str) -> None:
+    body = {k: v for k, v in VALID.items() if k != field}
+
     res = await client.put("/settings", json=body, headers=HEADERS)
 
     assert res.status_code == 422

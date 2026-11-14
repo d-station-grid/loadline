@@ -1542,55 +1542,27 @@
       "SettingsIn": {
         "properties": {
           "max_heart_rate": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 250.0,
-                "minimum": 100.0
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "integer",
+            "maximum": 250.0,
+            "minimum": 100.0,
             "title": "Max Heart Rate"
           },
           "resting_heart_rate": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 120.0,
-                "minimum": 30.0
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "integer",
+            "maximum": 120.0,
+            "minimum": 30.0,
             "title": "Resting Heart Rate"
           },
           "zone_boundary_1": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 250.0,
-                "minimum": 60.0
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "integer",
+            "maximum": 250.0,
+            "minimum": 60.0,
             "title": "Zone Boundary 1"
           },
           "zone_boundary_2": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 250.0,
-                "minimum": 60.0
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "integer",
+            "maximum": 250.0,
+            "minimum": 60.0,
             "title": "Zone Boundary 2"
           },
           "timezone": {
@@ -1612,8 +1584,14 @@
           }
         },
         "type": "object",
+        "required": [
+          "max_heart_rate",
+          "resting_heart_rate",
+          "zone_boundary_1",
+          "zone_boundary_2"
+        ],
         "title": "SettingsIn",
-        "description": "PUT /settings の本文。"
+        "description": "PUT /settings の本文。心拍の 4 つは必須で、空（null）や省略は 422。\n\n負荷、強度ごとの時間、週次レビューの判定がすべてこの 4 つから出るので、そろわない設定は\n保存させない。境目は、web が最大心拍から初期値を入れる。読むとき（SettingsOut）は、\n必須にする前に作った利用者の空の値も返すので、SettingsFields のまま任意にしておく。"
       },
       "SettingsOut": {
         "properties": {

@@ -9,6 +9,7 @@ import {
   issueIngestToken,
   putSettings,
 } from "../lib/api";
+import { boundariesForMax, isSuggested } from "../lib/zones";
 
 const WEEKDAYS = [
   "Monday",
@@ -62,12 +63,15 @@ const HEART_RATE_FIELDS: {
   { field: "zone_boundary_2", label: "Mid / High boundary", min: 60, max: 250 },
 ];
 
-/** 送る前に確かめる、各項目の範囲と、項目どうしの大小。api の検査と同じ決まりで、
- * 破っていれば画面に出す文言を返す。送ると 422 としか出ないため。 */
-function settingsProblem(form: SettingsIn): string | null {
+/** 入力中のフォーム。心拍の 4 つは空のこともある（必須にする前の利用者、入力の途中） */
+type SettingsForm = Omit<SettingsOut, "ingest_token_last_four">;
+
+/** 送る前に確かめる、心拍の 4 つがそろっているか、各項目の範囲、項目どうしの大小。api の
+ * 検査と同じ決まりで、破っていれば画面に出す文言を返す。送ると 422 としか出ないため。 */
+function settingsProblem(form: SettingsForm): string | null {
   for (const { field, label, min, max } of HEART_RATE_FIELDS) {
     const value = form[field];
-    if (value == null) continue;
+    if (value == null) return `${label} is required.`;
     if (!Number.isInteger(value) || value < min || value > max) {
       return `${label} must be a whole number from ${min} to ${max}.`;
     }
@@ -83,13 +87,38 @@ function settingsProblem(form: SettingsIn): string | null {
   return null;
 }
 
+/** 送る本文。心拍の 4 つが空なら null（settingsProblem が先に止める） */
+function settingsBody(form: SettingsForm): SettingsIn | null {
+  const {
+    max_heart_rate,
+    resting_heart_rate,
+    zone_boundary_1,
+    zone_boundary_2,
+  } = form;
+  if (
+    max_heart_rate == null ||
+    resting_heart_rate == null ||
+    zone_boundary_1 == null ||
+    zone_boundary_2 == null
+  ) {
+    return null;
+  }
+  return {
+    ...form,
+    max_heart_rate,
+    resting_heart_rate,
+    zone_boundary_1,
+    zone_boundary_2,
+  };
+}
+
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Something went wrong";
 }
 
 /** 心拍の幅の上に、強度の 3 つの帯を並べた見本。4 つの値がそろって順に並んでいるときだけ出す。
  * 帯の幅は心拍の幅に比べた長さ。数字は入力欄の値をそのまま使う */
-function ZonePreview({ form }: { form: SettingsIn }) {
+function ZonePreview({ form }: { form: SettingsForm }) {
   const {
     resting_heart_rate: resting,
     zone_boundary_1: low,
@@ -176,7 +205,11 @@ type Props = {
 };
 
 export default function SettingsPage({ user, onDeleted }: Props) {
-  const [form, setForm] = useState<SettingsIn | null>(null);
+  const [form, setForm] = useState<SettingsForm | null>(null);
+  // 強度の境目が、最大心拍から出した値のままか。そのままなら最大心拍に合わせて出し直す
+  const [boundariesFilled, setBoundariesFilled] = useState(false);
+  // 開いた時点で境目を埋めたか。埋めた値はまだ保存していないので、保存するよう案内する
+  const [unsavedFill, setUnsavedFill] = useState(false);
   const [lastFour, setLastFour] = useState<string | null>(null);
   const [freshToken, setFreshToken] = useState<string | null>(null);
   const [issuing, setIssuing] = useState(false);
@@ -227,12 +260,57 @@ export default function SettingsPage({ user, onDeleted }: Props) {
 
   function applySettings(s: SettingsOut) {
     const { ingest_token_last_four, ...fields } = s;
-    setForm(fields);
+    const max = fields.max_heart_rate ?? null;
+    const saved = {
+      low: fields.zone_boundary_1 ?? null,
+      high: fields.zone_boundary_2 ?? null,
+    };
+    // 心拍の 4 つは保存に必須。最大心拍があって境目が空なら、読んだ時点で埋めておく。
+    // 保存した境目が初期値と同じなら、保存の後も最大心拍に追従させる
+    const filled = boundariesForMax(max, saved, isSuggested(max, saved));
+    setForm({
+      ...fields,
+      zone_boundary_1: filled.boundaries.low,
+      zone_boundary_2: filled.boundaries.high,
+    });
+    setBoundariesFilled(filled.filled);
+    setUnsavedFill(
+      filled.boundaries.low !== saved.low ||
+        filled.boundaries.high !== saved.high,
+    );
     setLastFour(ingest_token_last_four ?? null);
   }
 
-  function update<K extends keyof SettingsIn>(key: K, value: SettingsIn[K]) {
+  function update<K extends keyof SettingsForm>(
+    key: K,
+    value: SettingsForm[K],
+  ) {
     setForm((prev) => (prev ? { ...prev, [key]: value } : prev));
+  }
+
+  /** 心拍の項目を変える。最大心拍を変えたら、境目が空か出した値のままなら出し直す */
+  function updateHeartRate(field: HeartRateField, value: number | null) {
+    if (field !== "max_heart_rate") {
+      if (field === "zone_boundary_1" || field === "zone_boundary_2") {
+        setBoundariesFilled(false);
+        setUnsavedFill(false);
+      }
+      update(field, value);
+      return;
+    }
+    if (!form) return;
+    const next = boundariesForMax(
+      value,
+      { low: form.zone_boundary_1 ?? null, high: form.zone_boundary_2 ?? null },
+      boundariesFilled,
+    );
+    setForm({
+      ...form,
+      max_heart_rate: value,
+      zone_boundary_1: next.boundaries.low,
+      zone_boundary_2: next.boundaries.high,
+    });
+    setBoundariesFilled(next.filled);
   }
 
   async function handleSave(e: SubmitEvent<HTMLFormElement>) {
@@ -241,12 +319,13 @@ export default function SettingsPage({ user, onDeleted }: Props) {
     setError(null);
     setStatus(null);
     const problem = settingsProblem(form);
-    if (problem) {
-      setError(problem);
+    const body = settingsBody(form);
+    if (problem || !body) {
+      setError(problem ?? "Fill in all heart rate settings.");
       return;
     }
     try {
-      applySettings(await putSettings(form, await user.getIdToken()));
+      applySettings(await putSettings(body, await user.getIdToken()));
       setStatus("Saved");
     } catch (e) {
       setError(errorMessage(e));
@@ -321,7 +400,11 @@ export default function SettingsPage({ user, onDeleted }: Props) {
                 <legend className="card-title">Heart rate</legend>
                 <p className="muted small">
                   Your zones and daily load are calculated from these. Changing
-                  them recalculates your history.
+                  them recalculates your history. All four are required.
+                </p>
+                <p className="muted small">
+                  Empty boundaries are filled in from your max heart rate (80%
+                  and 90%). Change them if you know your own thresholds.
                 </p>
                 <div className="field-grid">
                   {HEART_RATE_FIELDS.map(({ field, label, min, max }) => (
@@ -335,13 +418,21 @@ export default function SettingsPage({ user, onDeleted }: Props) {
                           max={max}
                           step={1}
                           value={form[field] ?? ""}
-                          onChange={(e) => update(field, toInt(e.target.value))}
+                          onChange={(e) =>
+                            updateHeartRate(field, toInt(e.target.value))
+                          }
                         />
                         <span className="muted small">bpm</span>
                       </div>
                     </div>
                   ))}
                 </div>
+                {unsavedFill && (
+                  <p className="small">
+                    Boundaries were filled in from your max heart rate. Save to
+                    use them.
+                  </p>
+                )}
                 <ZonePreview form={form} />
               </fieldset>
 
