@@ -1,13 +1,20 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { User } from "firebase/auth";
+import type { ReactNode } from "react";
+import { SWRConfig } from "swr";
 import { beforeEach, expect, test, vi } from "vitest";
 
 import type { Dashboard, SportView, WorkoutSummary } from "../api";
-import { getDashboard, getWorkouts } from "../lib/api";
+import { getDashboard, getNotes, getWorkouts } from "../lib/api";
 import { formatDay } from "../lib/format";
+import { SWR_OPTIONS } from "../lib/queries";
 import DashboardPage from "./DashboardPage";
 
-vi.mock("../lib/api", () => ({ getDashboard: vi.fn(), getWorkouts: vi.fn() }));
+vi.mock("../lib/api", () => ({
+  getDashboard: vi.fn(),
+  getNotes: vi.fn(),
+  getWorkouts: vi.fn(),
+}));
 // 週次レビュー、メモ、チャートは、それぞれのテストで見る。ここでは読み方と表だけを見る
 vi.mock("../components/Review", () => ({ default: () => null }));
 vi.mock("../components/Notes", () => ({
@@ -75,9 +82,6 @@ function dashboard(
     form: "steady",
     by_sport: { all: view, ride: view, run: view },
     last_received_at: null,
-    // 前の web のために api が残している項目。今の画面は読まない
-    sport: "all",
-    ...view,
     ...rest,
   };
 }
@@ -114,12 +118,30 @@ const props = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getNotes).mockResolvedValue({ items: [] });
 });
+
+/**
+ * テストごとに空のキャッシュで描く。rerender でも同じキャッシュを使う。
+ * dedupingInterval は、同じ期間を読んでから読み直さない時間（SWR の既定は 2 秒）
+ */
+function renderPage(dedupingInterval?: number) {
+  const value = {
+    ...SWR_OPTIONS,
+    ...(dedupingInterval === undefined ? {} : { dedupingInterval }),
+    provider: () => new Map(),
+  };
+  return render(<DashboardPage {...props} />, {
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <SWRConfig value={value}>{children}</SWRConfig>
+    ),
+  });
+}
 
 test("上の期間と Intensity が同じ期間の間は、GET /dashboard を 1 回だけ読む", async () => {
   vi.mocked(getDashboard).mockResolvedValue(dashboard([point(1, 50)]));
   vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
-  render(<DashboardPage {...props} />);
+  renderPage();
 
   await screen.findByText("Time in each zone");
   expect(getDashboard).toHaveBeenCalledTimes(1);
@@ -137,7 +159,7 @@ test("Intensity の種目を変えても読み直さず、その種目のぶん�
     by_sport: { ...all.by_sport, ride: rides },
   });
   vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
-  render(<DashboardPage {...props} />);
+  renderPage();
   expect(
     await screen.findByText("All · last 3 months · 1"),
   ).toBeInTheDocument();
@@ -155,7 +177,7 @@ test("期間を切り替えて読み込み直す間も、Recent workouts の負�
     since: null,
     items: [summary(1, "ride")],
   });
-  render(<DashboardPage {...props} />);
+  renderPage();
   await screen.findByText("82");
 
   // 次の読み込みは終わらせない
@@ -174,7 +196,7 @@ test("負荷は、心拍のない回を No HR、期間の外の回を – と分
     since: null,
     items: [summary(1, "ride"), summary(2, "run")],
   });
-  render(<DashboardPage {...props} />);
+  renderPage();
 
   expect(await screen.findByText("No HR")).toBeInTheDocument();
   expect(screen.getByTitle("Outside the dashboard period")).toHaveTextContent(
@@ -185,7 +207,7 @@ test("負荷は、心拍のない回を No HR、期間の外の回を – と分
 test("数字のカードは小数 1 桁で、0 に近い負の値を -0.0 と出さない。VO2max には測った日を添える", async () => {
   vi.mocked(getDashboard).mockResolvedValue(dashboard([]));
   vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
-  render(<DashboardPage {...props} />);
+  renderPage();
 
   const stats = await screen.findByLabelText("Latest");
   expect(within(stats).getByText("54.6")).toBeInTheDocument();
@@ -197,7 +219,7 @@ test("数字のカードは小数 1 桁で、0 に近い負の値を -0.0 と出
 test("上の期間だけを変えても、Intensity は持っている結果を使い、Loading にならず読み直さない", async () => {
   vi.mocked(getDashboard).mockResolvedValue(dashboard([point(1, 50)]));
   vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
-  render(<DashboardPage {...props} />);
+  renderPage();
   await screen.findByText("Time in each zone");
   expect(getDashboard).toHaveBeenCalledTimes(1);
 
@@ -214,10 +236,45 @@ test("上の期間だけを変えても、Intensity は持っている結果を�
   expect(within(card).queryByText("Loading…")).toBeNull();
 });
 
+test("ほかの画面から戻ると、前の結果をすぐ出し、裏で読み直す", async () => {
+  vi.mocked(getDashboard).mockResolvedValue(dashboard([point(1, 50)]));
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
+  // App と同じく、ほかの画面に移るとダッシュボードを外す。キャッシュは残る。
+  // 戻るまでに 2 秒以上たった扱いにするため、読み直さない時間を 0 にする
+  const { rerender } = renderPage(0);
+  await screen.findByText("Fitness, fatigue and VO2max");
+  expect(getDashboard).toHaveBeenCalledTimes(1);
+  expect(getNotes).toHaveBeenCalledTimes(1);
+  rerender(<></>);
+
+  // 読み直しは終わらせない。それでも前の結果で描く
+  vi.mocked(getDashboard).mockReturnValue(new Promise(() => {}));
+  rerender(<DashboardPage {...props} />);
+
+  // Recent workouts は GET /workouts を自分で読むので、上のカードと Intensity を見る
+  expect(screen.getByLabelText("Latest")).toBeInTheDocument();
+  expect(screen.getByText("Fitness, fatigue and VO2max")).toBeInTheDocument();
+  const card = screen.getByRole("region", { name: "Intensity" });
+  expect(within(card).getByText("Time in each zone")).toBeInTheDocument();
+  await vi.waitFor(() => expect(getDashboard).toHaveBeenCalledTimes(2));
+});
+
+test("メモの一覧は、モーダルを開く前から 1 回読み、チャートの印に使う", async () => {
+  vi.mocked(getDashboard).mockResolvedValue(dashboard([]));
+  vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
+  renderPage();
+  await screen.findByText("Fitness, fatigue and VO2max");
+
+  await vi.waitFor(() => expect(getNotes).toHaveBeenCalledTimes(1));
+  expect(vi.mocked(getNotes).mock.calls[0][0]).toEqual({
+    since: "2026-08-10",
+  });
+});
+
 test("前に読んだ期間に戻したときは、読み直さない", async () => {
   vi.mocked(getDashboard).mockResolvedValue(dashboard([point(1, 50)]));
   vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
-  render(<DashboardPage {...props} />);
+  renderPage();
   await screen.findByText("Time in each zone");
 
   const period = screen.getByRole("group", { name: "Period" });
@@ -232,11 +289,12 @@ test("前に読んだ期間に戻したときは、読み直さない", async ()
 test("「+ Note」でメモのモーダルを今日の日で開き、Esc と Close で閉じる", async () => {
   vi.mocked(getDashboard).mockResolvedValue(dashboard([]));
   vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
-  render(<DashboardPage {...props} />);
+  renderPage();
 
-  // 閉じている間も中身は外さず、隠すだけ
+  // 閉じている間は、モーダルも Notes も描かない
   await screen.findByText("Fitness, fatigue and VO2max");
   expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.queryByText(/notes for/)).toBeNull();
 
   fireEvent.click(screen.getByRole("button", { name: "+ Note" }));
   const dialog = screen.getByRole("dialog");
@@ -244,6 +302,7 @@ test("「+ Note」でメモのモーダルを今日の日で開き、Esc と Clo
 
   fireEvent.keyDown(dialog, { key: "Escape" });
   expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.queryByText(/notes for/)).toBeNull();
 
   fireEvent.click(screen.getByRole("button", { name: "+ Note" }));
   fireEvent.click(
@@ -255,7 +314,7 @@ test("「+ Note」でメモのモーダルを今日の日で開き、Esc と Clo
 test("メモのモーダルは Tab を中で回し、外にフォーカスがあっても Esc で閉じ、開いたボタンに戻す", async () => {
   vi.mocked(getDashboard).mockResolvedValue(dashboard([]));
   vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
-  render(<DashboardPage {...props} />);
+  renderPage();
   await screen.findByText("Fitness, fatigue and VO2max");
 
   const opener = screen.getByRole("button", { name: "+ Note" });
@@ -294,7 +353,7 @@ test("カードの下に、api の差と Form の一言を出す。VO2max は比
     }),
   );
   vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
-  render(<DashboardPage {...props} />);
+  renderPage();
 
   const stats = await screen.findByLabelText("Latest");
   expect(within(stats).getByText("+5.0 vs last week")).toBeInTheDocument();
@@ -323,7 +382,7 @@ test("比べる値がなければ、差の行を出さない。VO2max は測っ�
     }),
   );
   vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
-  render(<DashboardPage {...props} />);
+  renderPage();
 
   const stats = await screen.findByLabelText("Latest");
   expect(within(stats).queryByText(/vs last week/)).toBeNull();
@@ -334,7 +393,7 @@ test("比べる値がなければ、差の行を出さない。VO2max は測っ�
 test("Last received は、取り込みが成功していれば見出しの横に出し、null なら出さない", async () => {
   vi.mocked(getDashboard).mockResolvedValueOnce(dashboard([]));
   vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
-  const { unmount } = render(<DashboardPage {...props} />);
+  const { unmount } = renderPage();
   await screen.findByLabelText("Latest");
   expect(screen.queryByText(/Last received/)).toBeNull();
   unmount();
@@ -342,14 +401,14 @@ test("Last received は、取り込みが成功していれば見出しの横に
   vi.mocked(getDashboard).mockResolvedValueOnce(
     dashboard([], { last_received_at: "2026-09-24T07:12:00+09:00" }),
   );
-  render(<DashboardPage {...props} />);
+  renderPage();
   expect(await screen.findByText(/^Last received · /)).toBeInTheDocument();
 });
 
 test("期間は 1W・1M・3M・6M で、最初は 3M（13 週）。選んだ期間の週の数を渡す", async () => {
   vi.mocked(getDashboard).mockResolvedValue(dashboard([point(1, 50)]));
   vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
-  render(<DashboardPage {...props} />);
+  renderPage();
   await screen.findByText("Time in each zone");
 
   const period = screen.getByRole("group", { name: "Period" });
@@ -397,7 +456,7 @@ test("Totals は api の値を出す。負荷の 0 と分からない（–）�
     }),
   );
   vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
-  render(<DashboardPage {...props} />);
+  renderPage();
 
   const totals = await screen.findByLabelText("Totals");
   const tile = (label: string) =>
@@ -425,7 +484,7 @@ test("週ごとの強度は、心拍のない回を含む週を注記し、境�
     dashboard([point(1, 50)], { zone_weeks: [week(0), week(1)] }),
   );
   vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
-  const { unmount } = render(<DashboardPage {...props} />);
+  const { unmount } = renderPage();
   expect(
     await screen.findByText(/▲ marks 1 week\(s\) with a workout/),
   ).toBeInTheDocument();
@@ -434,7 +493,7 @@ test("週ごとの強度は、心拍のない回を含む週を注記し、境�
   vi.mocked(getDashboard).mockResolvedValueOnce(
     dashboard([point(1, 50)], { zone_weeks: null }),
   );
-  render(<DashboardPage {...props} />);
+  renderPage();
   expect(
     await screen.findByText("Needs zone boundaries in settings."),
   ).toBeInTheDocument();
@@ -461,7 +520,7 @@ test("境目があって期間の合計が出ないときは、心拍のない�
     }),
   );
   vi.mocked(getWorkouts).mockResolvedValue({ since: null, items: [] });
-  render(<DashboardPage {...props} />);
+  renderPage();
 
   expect(
     await screen.findByText(

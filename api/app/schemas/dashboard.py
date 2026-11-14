@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.domain.situation import Form
 from app.schemas.workouts import ZoneSeconds
@@ -121,10 +121,6 @@ class Dashboard(BaseModel):
     days が空なら None。last_received_at は Health Auto Export からの取り込みが最後に
     成功した日時で、成功したことがなければ None（デモの利用者は常に None）。新しい記録が
     保存されたとは限らない（同じ記録が届き直しただけでも進む）。
-
-    sport から previous_totals までは、by_sport を読まない前の web のために残している項目で、
-    sport クエリ（省けば all）の by_sport と同じ値。配信の前に開いたタブが、新しい応答で
-    落ちないようにするため。今の web は読まない。web が SWR に替わる PR で消す。
     """
 
     since: date
@@ -136,9 +132,3 @@ class Dashboard(BaseModel):
     form: Form | None
     by_sport: SportViews
     last_received_at: datetime | None
-    sport: Sport = Field(deprecated="by_sport を使う")
-    zones: ZoneSeconds | None = Field(deprecated="by_sport を使う")
-    workouts: list[WorkoutPoint] = Field(deprecated="by_sport を使う")
-    zone_weeks: list[ZoneWeek] | None = Field(deprecated="by_sport を使う")
-    totals: Totals = Field(deprecated="by_sport を使う")
-    previous_totals: Totals = Field(deprecated="by_sport を使う")

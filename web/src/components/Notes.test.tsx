@@ -7,10 +7,14 @@ import {
   within,
 } from "@testing-library/react";
 import type { User } from "firebase/auth";
+import { type ComponentProps, type ReactNode, useState } from "react";
+import { SWRConfig } from "swr";
 import { beforeEach, expect, test, vi } from "vitest";
 
 import type { NoteOut } from "../api";
 import { addNote, ApiError, deleteNote, editNote, getNotes } from "../lib/api";
+import { SWR_OPTIONS, useNotes } from "../lib/queries";
+import { EMPTY_NOTE_DRAFT } from "../lib/noteDraft";
 import Notes from "./Notes";
 
 vi.mock("../lib/api", async (importOriginal) => ({
@@ -40,8 +44,41 @@ function note(
   };
 }
 
+type HostProps = Omit<
+  ComponentProps<typeof Notes>,
+  "draft" | "onDraftChange"
+> & {
+  /** Notes を外す。書きかけが親に残るかを見るため */
+  hidden?: boolean;
+};
+
+/** 書きかけを持つ親。ダッシュボードと同じく、Notes を外しても書きかけを残す */
+function Host({ hidden = false, ...props }: HostProps) {
+  const [draft, setDraft] = useState(EMPTY_NOTE_DRAFT);
+  return hidden ? null : (
+    <Notes {...props} draft={draft} onDraftChange={setDraft} />
+  );
+}
+
+/** チャートの代わり。同じ期間のメモを SWR で読み、ラベルを並べる */
+function ChartLabels({ since }: { since: string }) {
+  const notes = useNotes(user, since).data ?? [];
+  return <p>labels: {notes.map((n) => n.label ?? "-").join(",")}</p>;
+}
+
+/** テストごとに空のキャッシュで描く */
+function renderSWR(ui: ReactNode) {
+  return render(ui, {
+    wrapper: ({ children }) => (
+      <SWRConfig value={{ ...SWR_OPTIONS, provider: () => new Map() }}>
+        {children}
+      </SWRConfig>
+    ),
+  });
+}
+
 function renderNotes(since = "2026-09-01") {
-  return render(<Notes user={user} since={since} today="2026-10-18" />);
+  return renderSWR(<Host user={user} since={since} today="2026-10-18" />);
 }
 
 /** 保存したメモが次の一覧に出る、偽の api。保存のあとに一覧を読み直すため */
@@ -282,7 +319,7 @@ test("保存中に期間を切り替え、保存より前に頼んだ一覧が�
   // 保存を待つ間に期間を切り替える。この一覧は保存より前の状態で、あとから届く
   const stale = deferred<{ items: NoteOut[] }>();
   vi.mocked(getNotes).mockReturnValueOnce(stale.promise);
-  rerender(<Notes user={user} since="2026-09-15" today="2026-10-18" />);
+  rerender(<Host user={user} since="2026-09-15" today="2026-10-18" />);
 
   // 保存が終わる。api には保存され、読み直した一覧に出る
   await act(async () => {
@@ -335,7 +372,7 @@ test("期間を切り替えて選んでいた日が外に出たら、保存を�
     target: { value: "Draft." },
   });
 
-  rerender(<Notes user={user} since="2026-09-15" today="2026-10-18" />);
+  rerender(<Host user={user} since="2026-09-15" today="2026-10-18" />);
   await screen.findByText("No notes in this period.");
 
   expect(screen.getByRole("button", { name: "Save note" })).toBeDisabled();
@@ -580,18 +617,16 @@ test("保存に失敗したあとに一覧から別の日を開くと、エラ�
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
 
-test("ラベルを付けて書くと、一覧の本文の前に出し、親に一覧を渡す", async () => {
-  const onNotesChange = vi.fn();
-  render(
-    <Notes
-      user={user}
-      since="2026-09-01"
-      today="2026-10-18"
-      onNotesChange={onNotesChange}
-    />,
+test("ラベルを付けて書くと、一覧の本文の前に出し、チャートも同じ一覧を見る", async () => {
+  renderSWR(
+    <>
+      <Host user={user} since="2026-09-01" today="2026-10-18" />
+      <ChartLabels since="2026-09-01" />
+    </>,
   );
   await screen.findByText("No notes in this period.");
-  await waitFor(() => expect(onNotesChange).toHaveBeenLastCalledWith([]));
+  // 同じ期間を 2 か所から頼んでも、1 回だけ読む
+  expect(getNotes).toHaveBeenCalledTimes(1);
 
   fireEvent.change(screen.getByLabelText("Note"), {
     target: { value: "Race day." },
@@ -609,13 +644,45 @@ test("ラベルを付けて書くと、一覧の本文の前に出し、親に�
   expect(screen.getByRole("listitem")).toHaveTextContent(
     "2026-10-18 [Race] Race day.",
   );
-  // 親はチャートの印に使う。保存の直後に新しい一覧が届く。親に渡すのは描いた後の
-  // useEffect なので、一覧の文字が出た時点ではまだ呼ばれていないことがある（遅い CI で落ちた）
-  await waitFor(() =>
-    expect(onNotesChange).toHaveBeenLastCalledWith([
-      expect.objectContaining({ date: "2026-10-18", label: "Race" }),
-    ]),
+  // チャートの印も、保存の直後に同じ一覧から出る
+  expect(screen.getByText("labels: Race")).toBeInTheDocument();
+});
+
+test("Notes を外しても、書きかけは親に残り、出し直すと続きから書ける", async () => {
+  stored = [note("2026-10-10", "Rest day.")];
+  const { rerender } = renderNotes();
+  await screen.findByText("Rest day.");
+  fireEvent.change(screen.getByLabelText("Note"), {
+    target: { value: "Half written" },
+  });
+  fireEvent.change(screen.getByLabelText("Label (optional)"), {
+    target: { value: "Half" },
+  });
+  // 書いてあるメモを直している途中も残す
+  fireEvent.click(screen.getByRole("button", { name: "2026-10-10" }));
+  fireEvent.change(screen.getByLabelText("Note"), {
+    target: { value: "Rest day, edited" },
+  });
+
+  rerender(<Host user={user} since="2026-09-01" today="2026-10-18" hidden />);
+  expect(screen.queryByLabelText("Note")).toBeNull();
+  rerender(
+    <Host
+      user={user}
+      since="2026-09-01"
+      today="2026-10-18"
+      pick={{ date: "2026-10-10", at: 1 }}
+    />,
   );
+
+  expect(await screen.findByLabelText("Note")).toHaveValue("Rest day, edited");
+  fireEvent.change(screen.getByLabelText("Date"), {
+    target: { value: "2026-10-18" },
+  });
+  expect(screen.getByLabelText("Note")).toHaveValue("Half written");
+  expect(screen.getByLabelText("Label (optional)")).toHaveValue("Half");
+  // 出し直しても、持っている一覧で描く（読み直しは裏で）
+  expect(screen.queryByText("Loading notes…")).toBeNull();
 });
 
 test("ラベルは幅で数え、全角 7 文字は保存できない", async () => {
@@ -675,7 +742,7 @@ test("ゲストはメモを読めるが、書く欄とボタンは押せない",
     isAnonymous: true,
     getIdToken: async () => "token",
   } as unknown as User;
-  render(<Notes user={guest} since="2026-09-01" today="2026-10-18" />);
+  renderSWR(<Host user={guest} since="2026-09-01" today="2026-10-18" />);
 
   // 書いてある日を選ぶと読める。直す欄とボタンは止まったまま
   fireEvent.click(await screen.findByRole("button", { name: "2026-10-10" }));
@@ -690,8 +757,8 @@ test("ゲストはメモを読めるが、書く欄とボタンは押せない",
 
 test("外から日を選ぶと、その日を選び直す。同じ選び方を渡し直しても変えない", async () => {
   vi.mocked(getNotes).mockResolvedValue({ items: [] });
-  const { rerender } = render(
-    <Notes
+  const { rerender } = renderSWR(
+    <Host
       user={user}
       since="2026-09-01"
       today="2026-10-18"
@@ -704,7 +771,7 @@ test("外から日を選ぶと、その日を選び直す。同じ選び方を�
   // 利用者が日付欄で選び直したあと、同じ pick を渡し直しても戻さない
   fireEvent.change(dateInput, { target: { value: "2026-10-05" } });
   rerender(
-    <Notes
+    <Host
       user={user}
       since="2026-09-01"
       today="2026-10-18"
@@ -715,7 +782,7 @@ test("外から日を選ぶと、その日を選び直す。同じ選び方を�
 
   // 新しく選ばれたら、その日にする
   rerender(
-    <Notes
+    <Host
       user={user}
       since="2026-09-01"
       today="2026-10-18"
