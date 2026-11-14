@@ -21,17 +21,16 @@ from app.services.reviews import LineChecker, ReviewWriter
 from app.services.users import AccountDeletedError, DemoUnavailableError, get_or_create_user
 
 
-async def get_current_user(
-    identity: Annotated[Identity, Depends(get_identity)],
-    session: Annotated[AsyncSession, Depends(get_session)],
+async def resolve_user(
+    session: AsyncSession, identity: Identity, timezone: str | None = None
 ) -> User:
-    """ログイン済みの本人の行。ID トークンの検証は get_identity に任せる。
+    """本人の行。なければ作る。timezone は行を作るときだけ使う。
 
     アカウントを消した人のトークンは、期限の前でも 401 にする。ゲスト（匿名ログイン）は
     デモの利用者になる。デモの利用者がまだいなければ 503。
     """
     try:
-        return await get_or_create_user(session, identity)
+        return await get_or_create_user(session, identity, timezone)
     except AccountDeletedError:
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED, headers={"WWW-Authenticate": "Bearer"}
@@ -42,8 +41,17 @@ async def get_current_user(
         ) from None
 
 
+async def get_current_user(
+    identity: Annotated[Identity, Depends(get_identity)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> User:
+    """ログイン済みの本人の行。ID トークンの検証は get_identity に任せる。"""
+    return await resolve_user(session, identity)
+
+
 CurrentUser = Annotated[User, Depends(get_current_user)]
 DbSession = Annotated[AsyncSession, Depends(get_session)]
+CurrentIdentity = Annotated[Identity, Depends(get_identity)]
 
 
 def get_writable_user(user: CurrentUser) -> User:

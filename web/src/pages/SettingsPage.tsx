@@ -20,12 +20,17 @@ const WEEKDAYS = [
   "Sunday",
 ];
 
-function timezones(): string[] {
+/**
+ * 選べるタイムゾーン。今の値は一覧になくても先頭に足す。ブラウザの一覧には UTC がなく、
+ * 初回ログインでブラウザの値（UTC など）が保存されると、先頭の候補が選ばれて見えるため。
+ */
+function timezones(current: string | undefined): string[] {
   // 新しいブラウザは一覧を持っている。古いものには最低限だけ
   const intl = Intl as unknown as {
     supportedValuesOf?: (k: string) => string[];
   };
-  return intl.supportedValuesOf?.("timeZone") ?? ["UTC", "Asia/Tokyo"];
+  const list = intl.supportedValuesOf?.("timeZone") ?? ["UTC", "Asia/Tokyo"];
+  return !current || list.includes(current) ? list : [current, ...list];
 }
 
 /** 空欄は null、それ以外は整数。 */
@@ -350,7 +355,7 @@ export default function SettingsPage({ user, onDeleted }: Props) {
                       value={form.timezone}
                       onChange={(e) => update("timezone", e.target.value)}
                     >
-                      {timezones().map((tz) => (
+                      {timezones(form.timezone).map((tz) => (
                         <option key={tz} value={tz}>
                           {tz}
                         </option>

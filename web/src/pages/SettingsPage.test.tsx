@@ -53,6 +53,14 @@ test("読み込んだ設定がフォームに入る", async () => {
   expect(getSettings).toHaveBeenCalledWith("token");
 });
 
+test("保存した値がブラウザの一覧になくても、その値が選ばれて出る", async () => {
+  // ブラウザの Intl.supportedValuesOf("timeZone") は UTC を含まない
+  vi.mocked(getSettings).mockResolvedValue({ ...defaults, timezone: "UTC" });
+  render(<SettingsPage user={user} onDeleted={onDeleted} />);
+
+  expect(await screen.findByLabelText("Time zone")).toHaveValue("UTC");
+});
+
 test("Save で入力した値を送り、Saved と出る", async () => {
   vi.mocked(putSettings).mockImplementation(async (body) => ({
     ...body,

@@ -1,6 +1,7 @@
 import type {
   Dashboard,
   IngestTokenOut,
+  LoginIn,
   NoteIn,
   NoteList,
   NoteOut,
@@ -56,9 +57,22 @@ function sendJson(
   };
 }
 
-/** ID トークンで本人を確かめ、初回なら利用者の行を作る。 */
+/** ブラウザのタイムゾーン（"America/New_York" など）。取れなければ undefined。 */
+function browserTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * ID トークンで本人を確かめ、初回なら利用者の行を作る。
+ * 初回はブラウザのタイムゾーンを利用者の設定にする。2 回目からは api が見ない。
+ */
 export function login(idToken: string): Promise<UserOut> {
-  return request<UserOut>("/auth/login", { method: "POST" }, idToken);
+  const body: LoginIn = { timezone: browserTimeZone() };
+  return request<UserOut>("/auth/login", sendJson("POST", body), idToken);
 }
 
 export function getSettings(idToken: string): Promise<SettingsOut> {
