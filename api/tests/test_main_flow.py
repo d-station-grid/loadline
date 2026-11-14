@@ -139,12 +139,15 @@ async def test_main_flow_from_token_to_selection(client: AsyncClient) -> None:
     assert dashboard.status_code == 200
     board = dashboard.json()
     assert board["needs_heart_rate_settings"] is False
-    assert [w["day"] for w in board["workouts"]] == [ride_day.isoformat(), run_day.isoformat()]
+    assert [w["day"] for w in board["by_sport"]["all"]["workouts"]] == [
+        ride_day.isoformat(),
+        run_day.isoformat(),
+    ]
     loads = {d["day"]: d["load"] for d in board["days"]}
     assert loads[ride_day.isoformat()] > 0
     assert loads[run_day.isoformat()] > 0
     assert loads[start.isoformat()] == 0
-    assert board["zones"] == {"low": 600, "mid": 600 + 1800, "high": 600}
+    assert board["by_sport"]["all"]["zones"] == {"low": 600, "mid": 600 + 1800, "high": 600}
     assert [(p["day"], p["value"]) for p in board["vo2max"]] == [(run_day.isoformat(), 48.3)]
 
     # 週次レビューを作る。記録を始めたばかりなので「記録が足りない」で、回数は送った 2 回

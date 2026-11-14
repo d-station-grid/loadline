@@ -78,7 +78,7 @@ async def test_days_cover_the_period_and_carry_the_load(
     assert [d["day"] for d in body["days"]] == ["2026-09-12", "2026-09-13", "2026-09-14"]
     loads = [d["load"] for d in body["days"]]
     assert loads[0] == 0
-    assert loads[1] == pytest.approx(body["workouts"][0]["load"])
+    assert loads[1] == pytest.approx(body["by_sport"]["all"]["workouts"][0]["load"])
     assert loads[2] == 0
     # 負荷のあった日から体力と疲労が上がり、余力は体力から疲労を引いた値
     day = body["days"][1]
@@ -96,7 +96,7 @@ async def test_load_before_the_period_counts_toward_fitness(
 
     body = await _get(client, since="2026-10-01", until="2026-10-01")
 
-    assert body["workouts"] == []
+    assert body["by_sport"]["all"]["workouts"] == []
     assert body["days"][0]["load"] == 0
     assert body["days"][0]["fitness"] > 0
 
@@ -110,7 +110,7 @@ async def test_workout_point_has_load_and_day_in_user_timezone(
 
     body = await _get(client, since=SAMPLE_DAY, until="2026-09-14")
 
-    ride, run = body["workouts"]
+    ride, run = body["by_sport"]["all"]["workouts"]
     assert ride["day"] == SAMPLE_DAY
     assert ride["sport"] == "ride"
     assert ride["load"] > 0
@@ -121,22 +121,34 @@ async def test_workout_point_has_load_and_day_in_user_timezone(
     assert body["days"][1]["fitness"] > 0
 
 
-async def test_sport_narrows_points_and_zones_but_not_days(
+async def test_by_sport_narrows_points_and_zones_but_not_days(
     client: AsyncClient, session: AsyncSession
 ) -> None:
     await _user(session, zone_boundary_1=130, zone_boundary_2=155)
 
-    everything = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY)
-    runs = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY, sport="run")
+    body = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY)
 
+    everything, rides, runs = (body["by_sport"][s] for s in ("all", "ride", "run"))
     assert len(everything["workouts"]) == 1
     zones = everything["zones"]
     assert zones["low"] + zones["mid"] + zones["high"] == 4028
     assert everything["workouts"][0]["high_sec"] == zones["high"]
-    # ランだけに絞ると点と強度の時間は空になるが、体力と疲労はサイクリングも含めて出す
+    # サイクリング 1 回だけなので、サイクリングは全種目と同じ
+    assert rides == everything
+    # ランだけに絞ると点と強度の時間は空になる。体力と疲労（days）は種目で分けない
     assert runs["workouts"] == []
     assert runs["zones"] == {"low": 0, "mid": 0, "high": 0}
-    assert runs["days"] == everything["days"]
+    assert body["days"][0]["load"] > 0
+
+
+async def test_sport_is_no_longer_a_query(client: AsyncClient, session: AsyncSession) -> None:
+    """sport を渡しても無視し、3 種目ぶんを返す（前の web が送っても壊れない）。"""
+    await _user(session)
+
+    body = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY, sport="run")
+
+    assert "sport" not in body
+    assert len(body["by_sport"]["all"]["workouts"]) == 1
 
 
 async def test_zones_are_none_without_boundaries(
@@ -146,8 +158,8 @@ async def test_zones_are_none_without_boundaries(
 
     body = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY)
 
-    assert body["zones"] is None
-    assert body["workouts"][0]["high_sec"] is None
+    assert body["by_sport"]["all"]["zones"] is None
+    assert body["by_sport"]["all"]["workouts"][0]["high_sec"] is None
 
 
 async def test_zones_are_none_when_a_workout_has_no_heart_rate(
@@ -157,9 +169,8 @@ async def test_zones_are_none_when_a_workout_has_no_heart_rate(
     user = await _user(session, zone_boundary_1=130, zone_boundary_2=155)
     await _run(user, f"{SAMPLE_DAY} 06:00:00")
 
-    everything = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY)
-    runs = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY, sport="run")
-    rides = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY, sport="ride")
+    body = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY)
+    everything, rides, runs = (body["by_sport"][s] for s in ("all", "ride", "run"))
 
     assert everything["zones"] is None
     assert runs["zones"] is None
@@ -177,7 +188,7 @@ async def test_without_heart_rate_settings_days_are_empty(
 
     assert body["needs_heart_rate_settings"] is True
     assert body["days"] == []
-    assert body["workouts"][0]["load"] is None
+    assert body["by_sport"]["all"]["workouts"][0]["load"] is None
 
 
 async def test_vo2max_average_uses_readings_before_the_period(
@@ -257,7 +268,7 @@ async def test_only_own_records(client: AsyncClient, session: AsyncSession) -> N
 
     body = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY)
 
-    assert body["workouts"] == []
+    assert body["by_sport"]["all"]["workouts"] == []
     assert body["days"][0]["load"] == 0
 
 
@@ -413,8 +424,8 @@ async def test_totals_and_previous_totals_follow_the_sport(
     # 期間（9/14〜9/20）に心拍のないラン 1 回。前の期間（9/7〜9/13）に心拍のあるサイクリング 1 回
     await _run(user, "2026-09-15 07:00:00")
 
-    everything = await _get(client, since="2026-09-14", until="2026-09-20")
-    rides = await _get(client, since="2026-09-14", until="2026-09-20", sport="ride")
+    body = await _get(client, since="2026-09-14", until="2026-09-20")
+    everything, rides = body["by_sport"]["all"], body["by_sport"]["ride"]
 
     totals, previous = everything["totals"], everything["previous_totals"]
     assert (totals["start"], totals["end"]) == ("2026-09-14", "2026-09-20")
@@ -426,7 +437,8 @@ async def test_totals_and_previous_totals_follow_the_sport(
     assert totals["workouts_without_load"] == 1
     assert previous["workouts"] == 1
     assert previous["total_sec"] == 4028
-    ride_load = (await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY))["workouts"][0]["load"]
+    sample = await _get(client, since=SAMPLE_DAY, until=SAMPLE_DAY)
+    ride_load = sample["by_sport"]["all"]["workouts"][0]["load"]
     assert previous["load"] == pytest.approx(ride_load)
     assert previous["load_per_workout"] == pytest.approx(ride_load)
     # サイクリングだけなら、期間は 0 回で負荷も 0
@@ -445,8 +457,8 @@ async def test_previous_totals_reach_beyond_the_warmup(
 
     body = await _get(client, since="2026-02-01", until="2026-10-31")
 
-    assert body["previous_totals"]["start"] == "2025-05-04"
-    assert body["previous_totals"]["workouts"] == 1
+    assert body["by_sport"]["all"]["previous_totals"]["start"] == "2025-05-04"
+    assert body["by_sport"]["all"]["previous_totals"]["workouts"] == 1
 
 
 async def test_zone_weeks_count_back_from_until(client: AsyncClient, session: AsyncSession) -> None:
@@ -454,13 +466,13 @@ async def test_zone_weeks_count_back_from_until(client: AsyncClient, session: As
 
     body = await _get(client, weeks="2", until="2026-09-19")
 
-    weeks = body["zone_weeks"]
+    weeks = body["by_sport"]["all"]["zone_weeks"]
     assert [(w["start"], w["end"]) for w in weeks] == [
         ("2026-09-06", "2026-09-12"),
         (SAMPLE_DAY, "2026-09-19"),
     ]
     assert weeks[0]["zones"] == {"low": 0, "mid": 0, "high": 0}
-    assert weeks[1]["zones"] == body["zones"]
+    assert weeks[1]["zones"] == body["by_sport"]["all"]["zones"]
     assert weeks[1]["workouts_without_zones"] == 0
 
 
@@ -471,7 +483,7 @@ async def test_zone_weeks_are_none_without_boundaries(
 
     body = await _get(client, weeks="2", until="2026-09-19")
 
-    assert body["zone_weeks"] is None
+    assert body["by_sport"]["all"]["zone_weeks"] is None
 
 
 async def test_last_received_at_is_the_last_successful_ingest(

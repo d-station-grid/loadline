@@ -135,6 +135,7 @@ export type DashboardQuery = NonNullable<
 /**
  * 負荷と推移。since と until は利用者のタイムゾーンの日付（YYYY-MM-DD）で、両端を含む。
  * 「直近 N 週」は weeks で渡し、始まりの日は api が設定のタイムゾーンの今日から決める。
+ * 種目では絞らない。種目で変わる部分は by_sport に全種目・Ride・Run の 3 つが入っている。
  */
 export function getDashboard(
   query: DashboardQuery,
@@ -143,7 +144,6 @@ export function getDashboard(
   const params = new URLSearchParams();
   if (query.since) params.set("since", query.since);
   if (query.until) params.set("until", query.until);
-  if (query.sport) params.set("sport", query.sport);
   if (query.weeks) params.set("weeks", String(query.weeks));
   const qs = params.size > 0 ? `?${params}` : "";
   return request<Dashboard>(`/dashboard${qs}`, { method: "GET" }, idToken);

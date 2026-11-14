@@ -42,16 +42,15 @@ export type Changes = {
  *
  * ダッシュボードの 1 画面ぶん。日付は利用者のタイムゾーンで区切る。
  *
- * days は全種目で計算する（種目で絞ると疲労を低く見積もるため）。sport で絞るのは
- * zones、workouts、zone_weeks、totals、previous_totals だけ。最大心拍か安静時心拍が
- * 未設定なら、負荷が出ないので days は空で、needs_heart_rate_settings が true。
+ * days は全種目で計算する（種目で絞ると疲労を低く見積もるため）。種目で変わるのは
+ * 強度の時間、1 回ごとの点、期間の合計だけで、by_sport に 3 種目ぶんまとめて入れる。
+ * 最大心拍か安静時心拍が未設定なら、負荷が出ないので days は空で、
+ * needs_heart_rate_settings が true。
  *
  * changes と form も全種目。form は until の余力の区分（週次レビューの判定と同じ境目）で、
- * days が空なら None。zone_weeks は until から 7 日ずつ区切った強度の時間で、古い順。
- * 境目がそろわなければ None。totals は期間の合計、previous_totals は since の前の同じ
- * 日数の合計。last_received_at は Health Auto Export からの取り込みが最後に成功した日時で、
- * 成功したことがなければ None（デモの利用者は常に None）。新しい記録が保存されたとは限らない
- * （同じ記録が届き直しただけでも進む）。
+ * days が空なら None。last_received_at は Health Auto Export からの取り込みが最後に
+ * 成功した日時で、成功したことがなければ None（デモの利用者は常に None）。新しい記録が
+ * 保存されたとは限らない（同じ記録が届き直しただけでも進む）。
  */
 export type Dashboard = {
   /**
@@ -62,10 +61,6 @@ export type Dashboard = {
    * Until
    */
   until: string;
-  /**
-   * Sport
-   */
-  sport: "all" | "run" | "ride";
   /**
    * Needs Heart Rate Settings
    */
@@ -78,19 +73,9 @@ export type Dashboard = {
    * Vo2Max
    */
   vo2max: Array<Vo2MaxPoint>;
-  zones: ZoneSeconds | null;
-  /**
-   * Workouts
-   */
-  workouts: Array<WorkoutPoint>;
   changes: Changes;
   form: Form | null;
-  /**
-   * Zone Weeks
-   */
-  zone_weeks: Array<ZoneWeek> | null;
-  totals: Totals;
-  previous_totals: Totals;
+  by_sport: SportViews;
   /**
    * Last Received At
    */
@@ -537,6 +522,41 @@ export type Situation =
   | "steady";
 
 /**
+ * SportView
+ *
+ * 1 つの種目で絞ったぶん。sport が all なら全種目。
+ *
+ * zones は期間の強度ごとの時間で、境目が未設定か、心拍のない回を含めば None。
+ * workouts は期間の 1 回ごとの負荷と高強度の時間。zone_weeks は until から 7 日ずつ
+ * 区切った強度の時間で、古い順。境目がそろわなければ None。totals は期間の合計、
+ * previous_totals は since の前の同じ日数の合計。
+ */
+export type SportView = {
+  zones: ZoneSeconds | null;
+  /**
+   * Workouts
+   */
+  workouts: Array<WorkoutPoint>;
+  /**
+   * Zone Weeks
+   */
+  zone_weeks: Array<ZoneWeek> | null;
+  totals: Totals;
+  previous_totals: Totals;
+};
+
+/**
+ * SportViews
+ *
+ * 全種目、サイクリング、ランの 3 つ。画面が種目を切り替えても、api を呼び直さずに済む。
+ */
+export type SportViews = {
+  all: SportView;
+  ride: SportView;
+  run: SportView;
+};
+
+/**
  * Totals
  *
  * 期間（start から end まで、両端を含む）の合計。
@@ -941,10 +961,6 @@ export type ReadDashboardDashboardGetData = {
      * Until
      */
     until?: string | null;
-    /**
-     * Sport
-     */
-    sport?: "all" | "run" | "ride";
     /**
      * Weeks
      */

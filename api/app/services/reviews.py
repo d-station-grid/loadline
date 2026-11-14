@@ -115,9 +115,7 @@ async def judge_review_week(
     this_week = [(day, sec) for day, sec in sessions if day >= start]
     last_week = [(day, sec) for day, sec in sessions if day < start]
 
-    dashboard = await build_dashboard(
-        session, user, since=previous_start, until=end, sport="all", today=today
-    )
+    dashboard = await build_dashboard(session, user, since=previous_start, until=end, today=today)
     days = {p.day: p for p in dashboard.days}
     last_before = None if last_before_at is None else last_before_at.astimezone(tz).date()
 

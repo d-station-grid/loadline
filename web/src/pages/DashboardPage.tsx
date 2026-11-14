@@ -1,12 +1,18 @@
 import type { User } from "firebase/auth";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
-import type { Dashboard, NoteOut, WorkoutSummary } from "../api";
+import type {
+  Dashboard,
+  NoteOut,
+  SportViews,
+  SportView,
+  WorkoutSummary,
+} from "../api";
 import Chart from "../components/Chart";
 import Notes from "../components/Notes";
 import Review from "../components/Review";
 import ZoneBreakdown from "../components/ZoneBreakdown";
-import { getDashboard, getWorkouts, type DashboardQuery } from "../lib/api";
+import { getDashboard, getWorkouts } from "../lib/api";
 import {
   TREND_CHART_HEIGHT,
   trendOption,
@@ -31,7 +37,7 @@ import {
   type Range,
 } from "../lib/summary";
 
-type Sport = NonNullable<DashboardQuery["sport"]>;
+type Sport = keyof SportViews;
 
 /** 最初に選ばれている期間。Figma と同じ 3M */
 const DEFAULT_RANGE: Range = "3m";
@@ -49,33 +55,24 @@ function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Something went wrong";
 }
 
-type Query = { weeks: number; sport: Sport };
-/** 読んだ結果か、失敗の文。まだ読んでいない条件は置き場にない */
+/** 読んだ結果か、失敗の文。まだ読んでいない期間は置き場にない */
 type Entry = { data: Dashboard | null; error: string | null };
 
-function keyOf({ weeks, sport }: Query): string {
-  return `${weeks}|${sport}`;
-}
-
-function queryOf(key: string): Query {
-  const [weeks, sport] = key.split("|");
-  return { weeks: Number(weeks), sport: sport as Sport };
-}
-
 /**
- * GET /dashboard を条件ごとに読み、ダッシュボードを開いている間は結果を条件ごとに持つ。
- * 期間は週の数だけ渡し、始まりの日は api が設定のタイムゾーンで決める。
+ * GET /dashboard を期間（週の数）ごとに読み、ダッシュボードを開いている間は結果を期間ごとに持つ。
+ * 始まりの日は api が設定のタイムゾーンで決める。種目は api が 3 つまとめて返すので、
+ * 種目を切り替えても読み直さない。
  *
- * 上の期間と Intensity は同じ置き場を見る。同じ条件は 1 回だけ読み、片方の条件を
- * 変えても、もう片方は持っている結果をそのまま使う。前に読んだ条件に戻したときも
+ * 上の期間と Intensity は同じ置き場を見る。同じ期間は 1 回だけ読み、片方の期間を
+ * 変えても、もう片方は持っている結果をそのまま使う。前に読んだ期間に戻したときも
  * 読み直さない。ほかの画面から戻れば、ページごと作り直すので読み直す。
  */
-function useDashboards(user: User, queries: Query[]) {
-  const [entries, setEntries] = useState<Record<string, Entry>>({});
-  // 読んでいる最中の条件。同じ条件を 2 か所から頼んでも、重ねて読まない
-  const loading = useRef(new Set<string>());
+function useDashboards(user: User, weeksList: number[]) {
+  const [entries, setEntries] = useState<Record<number, Entry>>({});
+  // 読んでいる最中の期間。同じ期間を 2 か所から頼んでも、重ねて読まない
+  const loading = useRef(new Set<number>());
   const mounted = useRef(true);
-  const wanted = [...new Set(queries.map(keyOf))].join(",");
+  const wanted = [...new Set(weeksList)].join(",");
 
   useEffect(() => {
     mounted.current = true;
@@ -85,39 +82,34 @@ function useDashboards(user: User, queries: Query[]) {
   }, []);
 
   useEffect(() => {
-    for (const key of wanted.split(",")) {
-      if (key in entries || loading.current.has(key)) continue;
-      loading.current.add(key);
-      const { weeks, sport } = queryOf(key);
+    for (const weeks of wanted.split(",").map(Number)) {
+      if (weeks in entries || loading.current.has(weeks)) continue;
+      loading.current.add(weeks);
       void (async () => {
         let entry: Entry;
         try {
-          const data = await getDashboard(
-            { weeks, sport },
-            await user.getIdToken(),
-          );
+          const data = await getDashboard({ weeks }, await user.getIdToken());
           entry = { data, error: null };
         } catch (e) {
           entry = { data: null, error: errorMessage(e) };
         }
-        loading.current.delete(key);
-        if (mounted.current) setEntries((prev) => ({ ...prev, [key]: entry }));
+        loading.current.delete(weeks);
+        if (mounted.current)
+          setEntries((prev) => ({ ...prev, [weeks]: entry }));
       })();
     }
   }, [user, wanted, entries]);
 
-  return (query: Query) => {
-    const key = keyOf(query);
-    const entry = entries[key];
+  return (weeks: number) => {
+    const entry = entries[weeks];
     return {
-      key,
       data: entry?.data ?? null,
       error: entry?.error ?? null,
-      // 置き場から外すと、effect がその条件だけを読み直す
+      // 置き場から外すと、effect がその期間だけを読み直す
       retry: () =>
         setEntries((prev) => {
           const next = { ...prev };
-          delete next[key];
+          delete next[weeks];
           return next;
         }),
     };
@@ -195,15 +187,11 @@ export default function DashboardPage({
   const [noteOpen, setNoteOpen] = useState(false);
   const [notePick, setNotePick] = useState<{ date: string; at: number }>();
 
-  // 数字のカードとチャートは全種目。体力と疲労は種目で絞らないため（api も同じ）
-  const mainQuery: Query = { weeks: rangeOf(range).weeks, sport: "all" };
-  const intensityQuery: Query = {
-    weeks: rangeOf(intensityRange).weeks,
-    sport: intensitySport,
-  };
-  const dashboardOf = useDashboards(user, [mainQuery, intensityQuery]);
-  const main = dashboardOf(mainQuery);
-  const intensity = dashboardOf(intensityQuery);
+  const mainWeeks = rangeOf(range).weeks;
+  const intensityWeeks = rangeOf(intensityRange).weeks;
+  const dashboardOf = useDashboards(user, [mainWeeks, intensityWeeks]);
+  const main = dashboardOf(mainWeeks);
+  const intensity = dashboardOf(intensityWeeks);
   const data = main.data;
 
   // 上の期間を切り替えて読み込む間も、メモの欄と Recent workouts の負荷は前の結果で出す
@@ -344,7 +332,7 @@ export default function DashboardPage({
 
       {/* Intensity の欄は自分の条件で読むので、上の読み込みとは別に出す */}
       <IntensityCard
-        data={intensity.data}
+        data={intensity.data?.by_sport[intensitySport] ?? null}
         error={intensity.error}
         retry={intensity.retry}
         range={intensityRange}
@@ -356,7 +344,8 @@ export default function DashboardPage({
       <RecentWorkouts
         user={user}
         // 期間を切り替えて読み込み直す間も、前の結果の負荷で出し続ける
-        loads={last?.workouts ?? []}
+        // 数字のカードと同じく全種目
+        loads={last?.by_sport.all.workouts ?? []}
         onOpenWorkouts={onOpenWorkouts}
         onOpenWorkout={onOpenWorkout}
       />
@@ -516,7 +505,8 @@ function Stat({ kind, label, value, note }: StatProps) {
 }
 
 type IntensityProps = {
-  data: Dashboard | null;
+  /** 選んだ種目のぶん */
+  data: SportView | null;
   error: string | null;
   retry: () => void;
   range: Range;
@@ -655,7 +645,7 @@ function IntensityCard({
  * 負荷は、回がなければ 0、回はあるのに負荷が 1 回も分からなければ –（null）。
  * 1 回あたりは api が負荷の分かる回の数で割った値で、ここで割り直さない。
  */
-function Totals({ data, span }: { data: Dashboard; span: string }) {
+function Totals({ data, span }: { data: SportView; span: string }) {
   const now = data.totals;
   const prev = data.previous_totals;
   const prevLabel = `prev ${span}`;
@@ -719,7 +709,7 @@ function TotalTile({ label, value, unit, prev }: TotalTileProps) {
 type RecentProps = {
   user: User;
   /** ダッシュボードの期間にある回の負荷。id で引く。期間の外の回は –、心拍のない回は No HR */
-  loads: Dashboard["workouts"];
+  loads: SportView["workouts"];
   onOpenWorkouts: () => void;
   onOpenWorkout: (id: number) => void;
 };

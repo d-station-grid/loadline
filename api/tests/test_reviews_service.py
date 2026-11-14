@@ -119,13 +119,12 @@ async def test_fitness_and_fatigue_match_the_dashboard(session: AsyncSession) ->
     await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
 
     week = await judge_review_week(session, user, MONDAY, TODAY)
-    dashboard = await build_dashboard(session, user, since=SUNDAY, until=SUNDAY, sport="all")
+    dashboard = await build_dashboard(session, user, since=SUNDAY, until=SUNDAY)
     previous = await build_dashboard(
         session,
         user,
         since=MONDAY - timedelta(days=1),
         until=MONDAY - timedelta(days=1),
-        sport="all",
     )
 
     assert week.fitness == pytest.approx(dashboard.days[0].fitness)

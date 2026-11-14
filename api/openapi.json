@@ -68,7 +68,7 @@
           "dashboard"
         ],
         "summary": "Read Dashboard",
-        "description": "本人の負荷と推移。since と until は利用者のタイムゾーンでの日付で、両端を含む。\n\nweeks は「直近 N 週」。until（省けば今日）までのちょうど N × 7 日で、since は N 週前の\n翌日になる。since とは\n一緒に渡せない。期間の誤りは、入力の検査と同じ 422 の形（detail が loc と msg の配列）で返す。",
+        "description": "本人の負荷と推移。since と until は利用者のタイムゾーンでの日付で、両端を含む。\n種目で変わる部分は全種目・サイクリング・ランの 3 つをまとめて返すので、種目では絞らない。\n\nweeks は「直近 N 週」。until（省けば今日）までのちょうど N × 7 日で、since は N 週前の\n翌日になる。since とは\n一緒に渡せない。期間の誤りは、入力の検査と同じ 422 の形（detail が loc と msg の配列）で返す。",
         "operationId": "read_dashboard_dashboard_get",
         "security": [
           {
@@ -108,21 +108,6 @@
                 }
               ],
               "title": "Until"
-            }
-          },
-          {
-            "name": "sport",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "enum": [
-                "all",
-                "run",
-                "ride"
-              ],
-              "type": "string",
-              "default": "all",
-              "title": "Sport"
             }
           },
           {
@@ -995,15 +980,6 @@
             "format": "date",
             "title": "Until"
           },
-          "sport": {
-            "type": "string",
-            "enum": [
-              "all",
-              "run",
-              "ride"
-            ],
-            "title": "Sport"
-          },
           "needs_heart_rate_settings": {
             "type": "boolean",
             "title": "Needs Heart Rate Settings"
@@ -1022,23 +998,6 @@
             "type": "array",
             "title": "Vo2Max"
           },
-          "zones": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ZoneSeconds"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "workouts": {
-            "items": {
-              "$ref": "#/components/schemas/WorkoutPoint"
-            },
-            "type": "array",
-            "title": "Workouts"
-          },
           "changes": {
             "$ref": "#/components/schemas/Changes"
           },
@@ -1052,25 +1011,8 @@
               }
             ]
           },
-          "zone_weeks": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/ZoneWeek"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Zone Weeks"
-          },
-          "totals": {
-            "$ref": "#/components/schemas/Totals"
-          },
-          "previous_totals": {
-            "$ref": "#/components/schemas/Totals"
+          "by_sport": {
+            "$ref": "#/components/schemas/SportViews"
           },
           "last_received_at": {
             "anyOf": [
@@ -1089,21 +1031,16 @@
         "required": [
           "since",
           "until",
-          "sport",
           "needs_heart_rate_settings",
           "days",
           "vo2max",
-          "zones",
-          "workouts",
           "changes",
           "form",
-          "zone_weeks",
-          "totals",
-          "previous_totals",
+          "by_sport",
           "last_received_at"
         ],
         "title": "Dashboard",
-        "description": "ダッシュボードの 1 画面ぶん。日付は利用者のタイムゾーンで区切る。\n\ndays は全種目で計算する（種目で絞ると疲労を低く見積もるため）。sport で絞るのは\nzones、workouts、zone_weeks、totals、previous_totals だけ。最大心拍か安静時心拍が\n未設定なら、負荷が出ないので days は空で、needs_heart_rate_settings が true。\n\nchanges と form も全種目。form は until の余力の区分（週次レビューの判定と同じ境目）で、\ndays が空なら None。zone_weeks は until から 7 日ずつ区切った強度の時間で、古い順。\n境目がそろわなければ None。totals は期間の合計、previous_totals は since の前の同じ\n日数の合計。last_received_at は Health Auto Export からの取り込みが最後に成功した日時で、\n成功したことがなければ None（デモの利用者は常に None）。新しい記録が保存されたとは限らない\n（同じ記録が届き直しただけでも進む）。"
+        "description": "ダッシュボードの 1 画面ぶん。日付は利用者のタイムゾーンで区切る。\n\ndays は全種目で計算する（種目で絞ると疲労を低く見積もるため）。種目で変わるのは\n強度の時間、1 回ごとの点、期間の合計だけで、by_sport に 3 種目ぶんまとめて入れる。\n最大心拍か安静時心拍が未設定なら、負荷が出ないので days は空で、\nneeds_heart_rate_settings が true。\n\nchanges と form も全種目。form は until の余力の区分（週次レビューの判定と同じ境目）で、\ndays が空なら None。last_received_at は Health Auto Export からの取り込みが最後に\n成功した日時で、成功したことがなければ None（デモの利用者は常に None）。新しい記録が\n保存されたとは限らない（同じ記録が届き直しただけでも進む）。"
       },
       "DayPoint": {
         "properties": {
@@ -1777,6 +1714,78 @@
         ],
         "title": "Situation",
         "description": "その週の状況。"
+      },
+      "SportView": {
+        "properties": {
+          "zones": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ZoneSeconds"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "workouts": {
+            "items": {
+              "$ref": "#/components/schemas/WorkoutPoint"
+            },
+            "type": "array",
+            "title": "Workouts"
+          },
+          "zone_weeks": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ZoneWeek"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone Weeks"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/Totals"
+          },
+          "previous_totals": {
+            "$ref": "#/components/schemas/Totals"
+          }
+        },
+        "type": "object",
+        "required": [
+          "zones",
+          "workouts",
+          "zone_weeks",
+          "totals",
+          "previous_totals"
+        ],
+        "title": "SportView",
+        "description": "1 つの種目で絞ったぶん。sport が all なら全種目。\n\nzones は期間の強度ごとの時間で、境目が未設定か、心拍のない回を含めば None。\nworkouts は期間の 1 回ごとの負荷と高強度の時間。zone_weeks は until から 7 日ずつ\n区切った強度の時間で、古い順。境目がそろわなければ None。totals は期間の合計、\nprevious_totals は since の前の同じ日数の合計。"
+      },
+      "SportViews": {
+        "properties": {
+          "all": {
+            "$ref": "#/components/schemas/SportView"
+          },
+          "ride": {
+            "$ref": "#/components/schemas/SportView"
+          },
+          "run": {
+            "$ref": "#/components/schemas/SportView"
+          }
+        },
+        "type": "object",
+        "required": [
+          "all",
+          "ride",
+          "run"
+        ],
+        "title": "SportViews",
+        "description": "全種目、サイクリング、ランの 3 つ。画面が種目を切り替えても、api を呼び直さずに済む。"
       },
       "Totals": {
         "properties": {

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.calendar import start_of_day
 from app.domain.load import (
     FITNESS_DAYS,
+    WorkoutLoad,
     daily_loads,
     fitness_fatigue,
     total_zones,
@@ -31,7 +32,8 @@ from app.schemas.dashboard import (
     Changes,
     Dashboard,
     DayPoint,
-    Sport,
+    SportView,
+    SportViews,
     Totals,
     Vo2maxPoint,
     WorkoutPoint,
@@ -121,12 +123,52 @@ async def _vo2max_change(
     return latest.value - float(value), measured_at.astimezone(tz).date()
 
 
+def _sport_view(
+    loads: list[tuple[Workout, date, WorkoutLoad]],
+    sport: str,
+    since: date,
+    until: date,
+    previous: tuple[date, date],
+    has_boundaries: bool,
+) -> SportView:
+    """sport（all なら全種目）で絞った強度の時間、1 回ごとの点、期間の合計。"""
+    mine = [(w, day, wl) for w, day, wl in loads if sport == "all" or w.sport == sport]
+    items = [WorkoutItem(day=day, duration_sec=w.duration_sec, load=wl) for w, day, wl in mine]
+    picked = [(w, day, wl) for w, day, wl in mine if day >= since]
+    return SportView(
+        zones=zone_seconds(total_zones([wl for _, _, wl in picked])) if has_boundaries else None,
+        workouts=[
+            WorkoutPoint(
+                id=w.id,
+                sport=w.sport,
+                started_at=w.started_at,
+                day=day,
+                load=wl.load,
+                high_sec=None if wl.zones is None else wl.zones.high,
+            )
+            for w, day, wl in picked
+        ],
+        zone_weeks=[
+            ZoneWeek(
+                start=week.start,
+                end=week.end,
+                zones=ZoneSeconds(**asdict(week.zones)),
+                workouts_without_zones=week.workouts_without_zones,
+            )
+            for week in weekly_zones(items, since, until)
+        ]
+        if has_boundaries
+        else None,
+        totals=Totals(**asdict(totals(items, since, until))),
+        previous_totals=Totals(**asdict(totals(items, *previous))),
+    )
+
+
 async def build_dashboard(
     session: AsyncSession,
     user: User,
     since: date | None,
     until: date | None,
-    sport: Sport,
     weeks: int | None = None,
     today: date | None = None,
 ) -> Dashboard:
@@ -191,36 +233,19 @@ async def build_dashboard(
     vo2max_change = await _vo2max_change(
         session, user.id, vo2max[-1] if vo2max else None, until, tz
     )
-    items = [
-        WorkoutItem(day=day, duration_sec=w.duration_sec, load=wl)
-        for w, day, wl in loads
-        if sport == "all" or w.sport == sport
-    ]
-    picked = [
-        (w, day, wl)
-        for w, day, wl in loads
-        if day >= since and (sport == "all" or w.sport == sport)
-    ]
     has_boundaries = user.zone_boundary_1 is not None and user.zone_boundary_2 is not None
+
+    def view(sport: str) -> SportView:
+        return _sport_view(
+            loads, sport, since, until, (previous_since, previous_until), has_boundaries
+        )
+
     return Dashboard(
         since=since,
         until=until,
-        sport=sport,
         needs_heart_rate_settings=needs_settings,
         days=days,
         vo2max=vo2max,
-        zones=zone_seconds(total_zones([wl for _, _, wl in picked])) if has_boundaries else None,
-        workouts=[
-            WorkoutPoint(
-                id=w.id,
-                sport=w.sport,
-                started_at=w.started_at,
-                day=day,
-                load=wl.load,
-                high_sec=None if wl.zones is None else wl.zones.high,
-            )
-            for w, day, wl in picked
-        ],
         changes=Changes(
             fitness=None if change is None else change.fitness,
             fatigue=None if change is None else change.fatigue,
@@ -229,18 +254,6 @@ async def build_dashboard(
             vo2max_since=None if vo2max_change is None else vo2max_change[1],
         ),
         form=form,
-        zone_weeks=[
-            ZoneWeek(
-                start=week.start,
-                end=week.end,
-                zones=ZoneSeconds(**asdict(week.zones)),
-                workouts_without_zones=week.workouts_without_zones,
-            )
-            for week in weekly_zones(items, since, until)
-        ]
-        if has_boundaries
-        else None,
-        totals=Totals(**asdict(totals(items, since, until))),
-        previous_totals=Totals(**asdict(totals(items, previous_since, previous_until))),
+        by_sport=SportViews(all=view("all"), ride=view("ride"), run=view("run")),
         last_received_at=user.last_ingested_at,
     )

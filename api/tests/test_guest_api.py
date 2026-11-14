@@ -101,7 +101,7 @@ async def test_guest_sees_the_last_weeks_of_the_demo_data(client: AsyncClient, d
     body = dashboard.json()
     assert body["until"] == LAST_DAY.isoformat()
     assert body["needs_heart_rate_settings"] is False
-    assert body["workouts"]
+    assert body["by_sport"]["all"]["workouts"]
     assert body["vo2max"]
     assert workouts.status_code == 200
     assert workouts.json()["items"]

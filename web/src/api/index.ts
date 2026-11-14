@@ -100,6 +100,8 @@ export type {
   SettingsIn,
   SettingsOut,
   Situation,
+  SportView,
+  SportViews,
   Totals,
   UpdateSettingsSettingsPutData,
   UpdateSettingsSettingsPutError,
