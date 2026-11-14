@@ -426,6 +426,37 @@ async def test_volume_is_not_judged_with_fewer_than_four_full_weeks(
     assert material.effort.mostly_moderate is True
 
 
+async def test_past_weeks_missing_heart_rate_are_not_compared(session: AsyncSession) -> None:
+    """毎週同じ 60 分でも、過去 5 週のうち 3 週に心拍がない。その 3 週を負荷 0 として
+    比べると今週は 2.5 倍の「多め」になるので、比べずに外す。残りは 2 週で、量は判定しない。"""
+    user = await _user()
+    for i in range(5, 0, -1):
+        bpm = None if i in (5, 3, 1) else 140
+        await _ride(user, f"{(MONDAY - timedelta(weeks=i)).isoformat()}T07:00", bpm=bpm)
+    await _ride(user, "2026-10-13T07:00")
+
+    material = await review_material(session, user, MONDAY, TODAY)
+
+    assert material.effort.volume is None
+    assert material.effort.load_ratio is None
+
+
+async def test_past_weeks_missing_heart_rate_leave_the_rest_to_compare(
+    session: AsyncSession,
+) -> None:
+    """心拍のない週を外しても 4 週残れば、残りの週と比べる。外した週は平均を下げない。"""
+    user = await _user()
+    await _weekly_rides(user, MONDAY - timedelta(weeks=5), 5)
+    # 3 週前の週に、心拍のないワークアウトを足す
+    await _ride(user, f"{(MONDAY - timedelta(weeks=3, days=-2)).isoformat()}T07:00", bpm=None)
+    await _ride(user, "2026-10-13T07:00")
+
+    material = await review_material(session, user, MONDAY, TODAY)
+
+    assert material.effort.volume is Volume.USUAL
+    assert material.effort.load_ratio == pytest.approx(1.0)
+
+
 async def test_heavy_week_keeps_the_writer_from_offering_more(session: AsyncSession) -> None:
     """普段より多めに練習した週は、量を増やす選択肢を出させない。コードで決めて渡す。"""
     user = await _user()

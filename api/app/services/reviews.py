@@ -160,8 +160,14 @@ async def _judge(
     # 区切りが週次レビューの週とそろう。境目が未設定なら None
     zone_weeks = {w.start: w for w in dashboard.by_sport.all.zone_weeks or []}
 
+    def week_days(week_start: date) -> list[date]:
+        return [week_start + timedelta(days=i) for i in range(DAYS_IN_WEEK)]
+
     def week_load(week_start: date) -> float:
-        return sum(days[week_start + timedelta(days=i)].load or 0.0 for i in range(DAYS_IN_WEEK))
+        return sum(days[d].load or 0.0 for d in week_days(week_start))
+
+    def has_unknown_load(week_start: date) -> bool:
+        return any(days[d].load is None for d in week_days(week_start))
 
     def high_sec(week_start: date) -> int:
         zw = zone_weeks.get(week_start)
@@ -172,7 +178,12 @@ async def _judge(
         PastWeek(load=week_load(ws), high_sec=high_sec(ws))
         for ws in (start - timedelta(days=DAYS_IN_WEEK * i) for i in range(HISTORY_WEEKS, 0, -1))
         # 記録を始める前の週（始めた日を含む途中の週も）は比べない。平均が下がるため
-        if first_day is not None and ws >= first_day
+        if first_day is not None
+        and ws >= first_day
+        # 心拍のないワークアウトを含む週も比べない。その日の負荷は 0 として数えられ、高強度の
+        # 時間も心拍のある回だけになるので、普段が低く出て「多め」になりやすい。
+        # ワークアウトのない週（休んだ週）は欠けではないので、負荷 0 のまま比べる
+        and not has_unknown_load(ws)
     ]
     effort = judge_effort(
         load=week_load(start),

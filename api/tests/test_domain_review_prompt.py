@@ -160,6 +160,14 @@ def test_system_instruction_explains_the_effort() -> None:
     assert "not as a mistake" in SYSTEM_INSTRUCTION
 
 
+def test_system_instruction_replaces_moderate_sessions_instead_of_adding_easy_ones() -> None:
+    """中強度寄りの選択肢は、置き換える形にする。足す形だと、量が多めの週に「増やすな」と
+    ぶつかり、Jev に引っかかって定型に落ち、中強度の話が消えるため。"""
+    assert "replaces some moderate sessions with easy ones" in SYSTEM_INSTRUCTION
+    assert "Replace, do not add" in SYSTEM_INSTRUCTION
+    assert "more easy sessions" not in SYSTEM_INSTRUCTION
+
+
 def test_prompt_passes_the_previous_choice() -> None:
     choice = ReviewOption("Keep it steady", "Train the same way as last week.")
 

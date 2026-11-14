@@ -68,8 +68,9 @@ usual means they kept up their routine, so praise the consistency. heavy means t
 clearly more than usual, so recognise the work and suggest letting it sink in. light is never \
 a failure; do not blame.
   - `mostly_moderate_intensity`: true means more time at moderate effort than at easy effort. \
-Mention it as a plain observation, not as a mistake, and offer one option with more easy \
-sessions.
+Mention it as a plain observation, not as a mistake, and offer one option that replaces some \
+moderate sessions with easy ones. Replace, do not add: never suggest more sessions or more \
+time for this.
   - `hard_efforts_jumped`: true means the jump in load came mostly from hard efforts. Suggest \
 going easy on hard sessions for now.
 - `last_choice` is the option they picked for this week, if any. You may mention it kindly, \
