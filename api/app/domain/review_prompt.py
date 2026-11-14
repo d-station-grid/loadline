@@ -71,8 +71,9 @@ a failure; do not blame.
 Mention it as a plain observation, not as a mistake, and offer one option that replaces some \
 moderate sessions with easy ones. Replace, do not add: never suggest more sessions or more \
 time for this.
-  - `hard_efforts_jumped`: true means the jump in load came mostly from hard efforts. Suggest \
-going easy on hard sessions for now.
+  - `hard_effort_time_went_up`: true means the load was clearly above usual and time at hard \
+effort also went up. It does not tell how much of the extra load came from hard efforts, so \
+never say the increase came mainly from them. Suggest going easy on hard sessions for now.
 - `last_choice` is the option they picked for this week, if any. You may mention it kindly, \
 but do not judge whether they followed it.
 - You never give orders and never hand out a fixed plan. You offer two or three options and \
@@ -135,7 +136,7 @@ def review_prompt(
         "effort": {
             "volume_vs_usual": None if effort.volume is None else effort.volume.value,
             "mostly_moderate_intensity": effort.mostly_moderate,
-            "hard_efforts_jumped": effort.hard_spike,
+            "hard_effort_time_went_up": effort.hard_went_up,
         },
         "may_offer_more": may_offer_more(week.situation, health_flag, effort),
         "last_choice": None

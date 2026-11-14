@@ -74,6 +74,12 @@ async def _ride(user: User, start: str, minutes: int = 60, bpm: int | None = 140
     return workout
 
 
+async def _fallback(session: AsyncSession, user: User, health_flag: bool = False) -> ReviewContent:
+    """create_review が定型にしたときと同じ材料（状況と、練習の量と強度の配分）で作る定型。"""
+    m = await review_material(session, user, MONDAY, TODAY)
+    return fallback_review(m.week, health_flag, m.effort)
+
+
 async def _rides_every_other_day(user: User, first: date, last: date) -> None:
     day = first
     while day <= last:
@@ -165,7 +171,7 @@ async def test_create_review_saves_the_fallback_script_and_options(session: Asyn
 
     review, created = await create_review(session, user, today=TODAY)
 
-    expected = fallback_review(await judge_review_week(session, user, MONDAY, TODAY))
+    expected = await _fallback(session, user)
     assert created
     assert (review.period_start, review.period_end) == (MONDAY, SUNDAY)
     assert review.script == expected.script
@@ -406,8 +412,8 @@ async def test_material_judges_the_volume_against_the_past_weeks(session: AsyncS
     assert material.effort.load_ratio == pytest.approx(2.0)
     # 時間はすべて中強度
     assert material.effort.mostly_moderate is True
-    # 高強度はどの週も 0 なので、急に増えたとは言わない
-    assert material.effort.hard_spike is False
+    # 高強度はどの週も 0 なので、比べる基準がなく判定しない
+    assert material.effort.hard_went_up is False
 
 
 async def test_volume_is_not_judged_with_fewer_than_four_full_weeks(
@@ -518,10 +524,7 @@ async def test_create_review_does_not_change_the_script_by_the_previous_choice(
 
     review, _ = await create_review(session, user, today=TODAY)
 
-    assert (
-        review.script
-        == fallback_review(await judge_review_week(session, user, MONDAY, TODAY)).script
-    )
+    assert review.script == (await _fallback(session, user)).script
 
 
 WRITTEN = ReviewContent(
@@ -611,7 +614,7 @@ async def test_create_review_falls_back_when_the_writer_cannot_write(
 
     review, created = await create_review(session, user, writer, checker, today=TODAY)
 
-    expected = fallback_review(await judge_review_week(session, user, MONDAY, TODAY))
+    expected = await _fallback(session, user)
     assert created
     assert len(writer.prompts) == 1
     assert checker.contents == []
@@ -697,7 +700,7 @@ async def test_create_review_falls_back_when_the_line_is_flagged(
 
     review, created = await create_review(session, user, FakeWriter(WRITTEN), checker, today=TODAY)
 
-    expected = fallback_review(await judge_review_week(session, user, MONDAY, TODAY))
+    expected = await _fallback(session, user)
     assert created
     assert checker.contents == [WRITTEN]
     assert review.is_fallback
@@ -721,7 +724,7 @@ async def test_create_review_falls_back_when_the_line_cannot_be_checked(
 
     review, _ = await create_review(session, user, FakeWriter(WRITTEN), checker, today=TODAY)
 
-    expected = fallback_review(await judge_review_week(session, user, MONDAY, TODAY))
+    expected = await _fallback(session, user)
     assert checker.contents == [WRITTEN]
     assert review.is_fallback
     assert review.script == expected.script
@@ -739,7 +742,7 @@ async def test_create_review_without_a_checker_does_not_speak_what_gemini_writes
 
     review, created = await create_review(session, user, writer, None, today=TODAY)
 
-    expected = fallback_review(await judge_review_week(session, user, MONDAY, TODAY))
+    expected = await _fallback(session, user)
     assert created
     assert writer.prompts == []
     assert review.is_fallback
@@ -794,12 +797,11 @@ async def test_health_flag_also_removes_more_from_the_fixed_options(session: Asy
 
     review, _ = await create_review(session, user, FakeWriter(WRITTEN), checker, today=TODAY)
 
-    week = await judge_review_week(session, user, MONDAY, TODAY)
     labels = [o.label for o in review.options]
     assert review.is_fallback
-    assert _adds_load([o.label for o in fallback_review(week).options]) != []
+    assert _adds_load([o.label for o in (await _fallback(session, user)).options]) != []
     assert _adds_load(labels) == []
-    assert labels == [o.label for o in fallback_review(week, health_flag=True).options]
+    assert labels == [o.label for o in (await _fallback(session, user, health_flag=True)).options]
 
 
 async def test_notes_that_cannot_be_checked_fall_back_without_more(
@@ -879,13 +881,12 @@ async def test_notes_are_checked_even_without_the_writer(session: AsyncSession) 
 
     review, created = await create_review(session, user, None, checker, today=TODAY)
 
-    week = await judge_review_week(session, user, MONDAY, TODAY)
     assert created
     assert review.is_fallback
     assert len(checker.notes) == 1
     assert checker.contents == []
     assert _adds_load([o.label for o in review.options]) == []
-    assert review.script == fallback_review(week, health_flag=True).script
+    assert review.script == (await _fallback(session, user, health_flag=True)).script
 
 
 @pytest.mark.parametrize(
