@@ -254,6 +254,11 @@ export type IngestTokenOut = {
 };
 
 /**
+ * Language
+ */
+export type Language = "en" | "ja";
+
+/**
  * LoginIn
  *
  * POST /auth/login の本文。省いてもよい。
@@ -263,6 +268,10 @@ export type LoginIn = {
    * Timezone
    */
   timezone?: string | null;
+  /**
+   * Language
+   */
+  language?: string | null;
 };
 
 /**
@@ -470,6 +479,7 @@ export type SettingsIn = {
    * Send Notes To Ai
    */
   send_notes_to_ai?: boolean;
+  language?: Language;
 };
 
 /**
@@ -506,6 +516,7 @@ export type SettingsOut = {
    * Send Notes To Ai
    */
   send_notes_to_ai?: boolean;
+  language?: Language;
   /**
    * Ingest Token Last Four
    */

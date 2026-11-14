@@ -17,8 +17,9 @@ function stubFetch() {
   return fetchMock;
 }
 
-test("login はブラウザのタイムゾーンを本文に入れて送る", async () => {
+test("login はブラウザのタイムゾーンと言語を本文に入れて送る", async () => {
   const fetchMock = stubFetch();
+  vi.spyOn(navigator, "language", "get").mockReturnValue("ja-JP");
   vi.spyOn(Intl.DateTimeFormat.prototype, "resolvedOptions").mockReturnValue({
     timeZone: "America/New_York",
   } as Intl.ResolvedDateTimeFormatOptions);
@@ -32,13 +33,16 @@ test("login はブラウザのタイムゾーンを本文に入れて送る", as
     Authorization: "Bearer token",
     "Content-Type": "application/json",
   });
+  // 言語はそのまま送り、どの言語にするかは api が決める
   expect(JSON.parse(init.body as string)).toEqual({
     timezone: "America/New_York",
+    language: "ja-JP",
   });
 });
 
-test("タイムゾーンが取れなければ、timezone を省いて送る", async () => {
+test("タイムゾーンと言語が取れなければ、省いて送る", async () => {
   const fetchMock = stubFetch();
+  vi.spyOn(navigator, "language", "get").mockReturnValue("");
   vi.spyOn(Intl.DateTimeFormat.prototype, "resolvedOptions").mockImplementation(
     () => {
       throw new RangeError("no time zone");

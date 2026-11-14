@@ -1,7 +1,7 @@
 import type { User } from "firebase/auth";
 import { type SubmitEvent, useEffect, useRef, useState } from "react";
 
-import type { SettingsIn, SettingsOut } from "../api";
+import type { Language, SettingsIn, SettingsOut } from "../api";
 import {
   ApiError,
   deleteAccount,
@@ -10,6 +10,12 @@ import {
   putSettings,
 } from "../lib/api";
 import { boundariesForMax, isSuggested } from "../lib/zones";
+
+/** 選べる言語。名前は、その言語を読む人に分かるよう、その言語で書く */
+const LANGUAGES: { value: Language; label: string }[] = [
+  { value: "en", label: "English" },
+  { value: "ja", label: "日本語" },
+];
 
 const WEEKDAYS = [
   "Monday",
@@ -465,6 +471,22 @@ export default function SettingsPage({ user, onDeleted }: Props) {
                       {WEEKDAYS.map((name, i) => (
                         <option key={name} value={i}>
                           {name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label htmlFor="settings-language">Language</label>
+                    <select
+                      id="settings-language"
+                      value={form.language ?? "en"}
+                      onChange={(e) =>
+                        update("language", e.target.value as Language)
+                      }
+                    >
+                      {LANGUAGES.map(({ value, label }) => (
+                        <option key={value} value={value}>
+                          {label}
                         </option>
                       ))}
                     </select>
