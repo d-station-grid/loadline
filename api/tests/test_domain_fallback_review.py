@@ -3,9 +3,9 @@ from datetime import date, timedelta
 
 import pytest
 
-from app.domain.effort import Effort, Volume
+from app.domain.effort import Effort, PastWeek, Volume, judge_effort
 from app.domain.fallback_review import fallback_review
-from app.domain.load import FitnessPoint
+from app.domain.load import FitnessPoint, ZoneTimes
 from app.domain.situation import Situation, WeekInput, WeekSituation, judge_week
 
 MONDAY = date(2026, 9, 28)
@@ -351,10 +351,10 @@ def test_effort_keeps_the_script_and_options_short(
 @pytest.mark.parametrize(
     ("e", "said"),
     [
-        (effort(Volume.LIGHT), "lighter week than usual"),
-        (effort(Volume.USUAL), "kept up your usual load"),
+        (effort(Volume.LIGHT), "Your load was lighter than usual."),
+        (effort(Volume.USUAL), "Your load matched your usual weeks."),
         (effort(Volume.HEAVY), "well above your usual load"),
-        (effort(Volume.HEAVY, hard_spike=True), "mostly from hard efforts"),
+        (effort(Volume.HEAVY, hard_spike=True), "hard-effort time went up too"),
         (effort(Volume.USUAL, mostly_moderate=True), "moderate effort"),
     ],
 )
@@ -368,7 +368,7 @@ def test_the_effort_line_says_one_thing_by_priority() -> None:
     """高強度で急に増えた > 多め > 中強度寄り > いつもどおり の順に 1 つだけ言う。"""
     script = fallback_review(week(Situation.STEADY), effort=effort(Volume.HEAVY, True, True)).script
 
-    assert "mostly from hard efforts" in script
+    assert "hard-effort time went up too" in script
     assert "moderate effort" not in script
     assert "well above your usual load" not in script
 
@@ -415,3 +415,42 @@ def test_heavy_and_mostly_moderate_week_swaps_without_adding() -> None:
 
     assert adds_load(text) == []
     assert "Swap in easy days" in {o.label for o in review.options}
+
+
+# 状況ごとの締め。いつもどおり・少なめの週も、この締めを残す
+CLOSINGS = [
+    pytest.param(Situation.FATIGUED, False, "A lighter week helps the work", id="fatigued"),
+    pytest.param(Situation.FRESH, False, "add a little more", id="fresh"),
+    pytest.param(Situation.FRESH, True, "listen to how your body feels", id="fresh_health_flag"),
+    pytest.param(Situation.STEADY, False, "Keeping this rhythm", id="steady"),
+]
+
+
+@pytest.mark.parametrize(("situation", "health_flag", "closing"), CLOSINGS)
+@pytest.mark.parametrize("volume", [Volume.USUAL, Volume.LIGHT])
+def test_usual_and_light_weeks_keep_the_closing_of_the_situation(
+    situation: Situation, health_flag: bool, closing: str, volume: Volume
+) -> None:
+    """いつもどおり・少なめは、状況の締め（回復を勧める、増やしてよい、体の声を聞く）を消すと
+    助言とずれるので、締めを残して事実だけを足す。褒め言葉や「休んでよい」は言わない。"""
+    script = fallback_review(week(situation), health_flag, effort(volume)).script
+
+    assert closing in script
+    assert script.index("Your load") < script.index(closing)
+    for praise in ("consistency", "Rest counts", "perfectly fine"):
+        assert praise not in script
+
+
+def test_hard_spike_line_says_only_what_the_judgment_checked() -> None:
+    """hard_spike は高強度の時間の増え方を比べただけで、負荷の増えた分の大半が高強度だったかは
+    確かめていない。過去は毎週、低強度 120 分・高強度 0 分、今週は低強度 240 分・高強度 1 分でも
+    立つ。セリフは「負荷が多く、高強度の時間も増えた」までにし、原因を断定しない。"""
+    past = [PastWeek(load=100.0, high_sec=0)] * 9
+    e = judge_effort(205.0, 0, ZoneTimes(low=240 * 60, mid=0, high=60), past)
+    assert e.hard_spike is True
+
+    script = fallback_review(week(Situation.STEADY), effort=e).script
+
+    assert "hard-effort time went up too" in script
+    for overstated in ("mostly", "mainly", "came from", "because of"):
+        assert overstated not in script

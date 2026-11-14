@@ -160,6 +160,14 @@ def test_system_instruction_explains_the_effort() -> None:
     assert "not as a mistake" in SYSTEM_INSTRUCTION
 
 
+def test_system_instruction_does_not_say_hard_efforts_caused_the_jump() -> None:
+    """hard_efforts_jumped は高強度の時間も増えたことしか示さない。増えた分の原因を
+    高強度と言わせない。"""
+    assert "came mostly from hard efforts" not in SYSTEM_INSTRUCTION
+    assert "time at hard effort also went up" in SYSTEM_INSTRUCTION
+    assert "never say the increase came mainly from them" in SYSTEM_INSTRUCTION
+
+
 def test_system_instruction_replaces_moderate_sessions_instead_of_adding_easy_ones() -> None:
     """中強度寄りの選択肢は、置き換える形にする。足す形だと、量が多めの週に「増やすな」と
     ぶつかり、Jev に引っかかって定型に落ち、中強度の話が消えるため。"""

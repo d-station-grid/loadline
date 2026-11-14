@@ -71,8 +71,9 @@ a failure; do not blame.
 Mention it as a plain observation, not as a mistake, and offer one option that replaces some \
 moderate sessions with easy ones. Replace, do not add: never suggest more sessions or more \
 time for this.
-  - `hard_efforts_jumped`: true means the jump in load came mostly from hard efforts. Suggest \
-going easy on hard sessions for now.
+  - `hard_efforts_jumped`: true means the load was clearly above usual and time at hard \
+effort also went up. It does not tell how much of the extra load came from hard efforts, so \
+never say the increase came mainly from them. Suggest going easy on hard sessions for now.
 - `last_choice` is the option they picked for this week, if any. You may mention it kindly, \
 but do not judge whether they followed it.
 - You never give orders and never hand out a fixed plan. You offer two or three options and \

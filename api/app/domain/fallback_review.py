@@ -81,19 +81,27 @@ _SAME_AS_NOW = frozenset(
     {"Same as usual", "Same as this week", "Keep it steady", "Keep the rhythm"}
 )
 
-# 練習の量と強度の配分の一言。セリフの締めの 1 文と入れ替えて、長さを 15 秒ほどに保つ。
-# 入れ替えるのは、疲労・休めている・順調の週だけ（記録が足りない週と中断明けは、
-# その週の事情を話す方を優先する）
+# 練習の量と強度の配分の一言。入れるのは、疲労・休めている・順調の週だけ（記録が
+# 足りない週と中断明けは、その週の事情を話す方を優先する）。言うのは判定で確かめられる
+# 事実だけにする。
+#
+# 高強度・多め・中強度寄りは、助言の向き（控える、なじませる、置き換える）が状況の締めと
+# そろうので、締めの 1 文と入れ替えて長さを 15 秒ほどに保つ。
+# 高強度は「負荷が普段より多く、高強度の時間も増えた」までしか言わない。判定は増え方の比べ
+# だけで、負荷の増えた分の大半が高強度だったとは確かめていないため（過去に高強度が 0 分なら、
+# 1 分増えただけでも立つ）。
 _HARD_SPIKE = (
-    "This week's load jumped above your usual, mostly from hard efforts, "
-    "so ease off the hard sessions."
+    "Your load was well above usual, and hard-effort time went up too, so ease off hard sessions."
 )
 _HEAVY = "You did well above your usual load this week, so let that work sink in."
 _MOSTLY_MODERATE = (
     "Much of your time was at moderate effort, so swapping some for easy sessions can help."
 )
-_USUAL = "You kept up your usual load, and that consistency really pays off."
-_LIGHT = "It was a lighter week than usual, and that's perfectly fine. Rest counts too."
+# いつもどおり・少なめは、状況の締め（回復を勧める、増やしてよい、体の声を聞く）を消すと
+# 助言とずれるので、締めは残し、その直前に事実だけの短い文を足す。いちばん長い定型
+# （34 語）に足しても 40 語に収まる長さにする
+_USUAL = "Your load matched your usual weeks."
+_LIGHT = "Your load was lighter than usual."
 
 
 def fallback_review(
@@ -113,7 +121,8 @@ def fallback_review(
         options = tuple(o for o in options if o.label not in _ADDS_LOAD)
     if effort.mostly_moderate:
         options = _with_swap(options)
-    return ReviewContent(script=_script(week, holds_back, _effort_line(effort)), options=options)
+    replacement, fact = _effort_line(effort)
+    return ReviewContent(script=_script(week, holds_back, replacement, fact), options=options)
 
 
 def _with_swap(options: tuple[ReviewOption, ...]) -> tuple[ReviewOption, ...]:
@@ -129,25 +138,38 @@ def _with_swap(options: tuple[ReviewOption, ...]) -> tuple[ReviewOption, ...]:
     return (*options[:i], _SWAP_IN_EASY, *options[i + 1 :])
 
 
-def _effort_line(effort: Effort) -> str | None:
-    """量と配分の一言。1 つだけ選ぶ。高強度で急に増えた > 多め > 中強度寄り > いつもどおり
-    > 少なめ の順。何も判定できなければ None（締めの 1 文をそのまま使う）。"""
+def _effort_line(effort: Effort) -> tuple[str | None, str | None]:
+    """量と配分の一言。(締めと入れ替える文, 締めの前に足す文) のどちらか 1 つだけを返す。
+
+    高強度で急に増えた > 多め > 中強度寄り > いつもどおり > 少なめ の順に 1 つ選ぶ。
+    何も判定できなければ (None, None)（締めの 1 文をそのまま使う）。
+    """
     if effort.hard_spike:
-        return _HARD_SPIKE
+        return _HARD_SPIKE, None
     if effort.volume is Volume.HEAVY:
-        return _HEAVY
+        return _HEAVY, None
     if effort.mostly_moderate:
-        return _MOSTLY_MODERATE
+        return _MOSTLY_MODERATE, None
     if effort.volume is Volume.USUAL:
-        return _USUAL
+        return None, _USUAL
     if effort.volume is Volume.LIGHT:
-        return _LIGHT
-    return None
+        return None, _LIGHT
+    return None, None
 
 
-def _script(week: WeekSituation, holds_back: bool, effort_line: str | None = None) -> str:
+def _script(
+    week: WeekSituation,
+    holds_back: bool,
+    replacement: str | None = None,
+    fact: str | None = None,
+) -> str:
     """holds_back は、量を増やすことを勧めない週（体調のフラグか、量が多め）。
-    effort_line があれば、疲労・休めている・順調の週の締めの 1 文と入れ替える。"""
+    疲労・休めている・順調の週は、replacement があれば締めの 1 文と入れ替え、fact があれば
+    締めの直前に足す。"""
+
+    def closing(default: str) -> str:
+        return " ".join(part for part in (fact, replacement or default) if part)
+
     sessions = _count(week.workouts, "session")
     match week.situation:
         case Situation.NOT_ENOUGH_DATA:
@@ -174,7 +196,7 @@ def _script(week: WeekSituation, holds_back: bool, effort_line: str | None = Non
             return (
                 "You've been working hard. Your fatigue is well above your fitness right now, "
                 "so your body is asking for some recovery. "
-                + (effort_line or "A lighter week helps the work you've done sink in.")
+                + closing("A lighter week helps the work you've done sink in.")
             )
         case Situation.FRESH if holds_back:
             # 選択肢と食い違わないように、増やすことを勧めない。痛みや病気がある週か、メモを
@@ -183,9 +205,8 @@ def _script(week: WeekSituation, holds_back: bool, effort_line: str | None = Non
             return (
                 "Your fatigue is below your fitness right now. "
                 "Numbers are only part of the picture, though. "
-                + (
-                    effort_line
-                    or "This week, keep things comfortable, take it at your own pace, "
+                + closing(
+                    "This week, keep things comfortable, take it at your own pace, "
                     "and listen to how your body feels."
                 )
             )
@@ -194,7 +215,7 @@ def _script(week: WeekSituation, holds_back: bool, effort_line: str | None = Non
                 # 判定は今の疲労と体力の比べだけなので、下がったとは言わない
                 "You're well rested. Your fatigue is below your fitness right now, "
                 "so you have room to train this week. "
-                + (effort_line or "If you feel good, this is a nice time to add a little more.")
+                + closing("If you feel good, this is a nice time to add a little more.")
             )
         case Situation.STEADY:
             # round は偶数への丸め（150.5 → 150）なので、30 秒を足して切り捨てる
@@ -202,7 +223,7 @@ def _script(week: WeekSituation, holds_back: bool, effort_line: str | None = Non
             return (
                 f"A steady week. You did {sessions} in {minutes}, "
                 "and your fitness and fatigue are in good balance. "
-                + (effort_line or "Keeping this rhythm is how fitness builds over time.")
+                + closing("Keeping this rhythm is how fitness builds over time.")
             )
 
 
