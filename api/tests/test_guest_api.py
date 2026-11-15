@@ -215,12 +215,114 @@ async def test_seed_demo_can_run_again(session: AsyncSession, demo: User) -> Non
     assert reviews == REVIEWS
 
 
-async def test_only_one_demo_user_can_exist(session: AsyncSession, demo: User) -> None:
-    """ゲストは全員デモの利用者 1 人として扱う。2 人目は DB が断る。"""
-    session.add(User(email="second@loadline.invalid", is_demo=True))
+async def test_only_one_demo_user_per_language_can_exist(session: AsyncSession, demo: User) -> None:
+    """ゲストは言語ごとに、デモの利用者 1 人として扱う。同じ言語の 2 人目は DB が断る。"""
+    session.add(User(email="second@loadline.invalid", is_demo=True, language="en"))
 
     with pytest.raises(IntegrityError):
         await session.flush()
+
+
+async def test_a_japanese_demo_user_can_exist_beside_the_english_one(
+    session: AsyncSession, demo: User
+) -> None:
+    japanese = await seed_demo(session, language=Language.JA)
+
+    assert japanese.id != demo.id
+    assert (japanese.language, japanese.is_demo) == ("ja", True)
+
+
+@pytest.fixture
+async def japanese_demo(session: AsyncSession, demo: User) -> User:
+    return await seed_demo(session, language=Language.JA)
+
+
+@pytest.mark.parametrize(
+    ("guest_language", "language"),
+    [
+        pytest.param("ja", "ja", id="japanese"),
+        pytest.param("en", "en", id="english"),
+        pytest.param(None, "en", id="no_header"),
+        pytest.param("fr", "en", id="unknown"),
+    ],
+)
+async def test_guest_sees_the_demo_in_the_browsers_language(
+    client: AsyncClient,
+    session: AsyncSession,
+    demo: User,
+    japanese_demo: User,
+    guest_language: str | None,
+    language: str,
+) -> None:
+    """ゲストは、web が送る画面の言語（X-Guest-Language）で英語と日本語のデモを選ぶ。"""
+    headers = dict(GUEST)
+    if guest_language is not None:
+        headers["X-Guest-Language"] = guest_language
+    expected = japanese_demo if language == "ja" else demo
+
+    review = await client.get("/reviews/current", headers=headers)
+    notes = await client.get("/notes", headers=headers)
+
+    assert review.status_code == 200
+    ids = set(
+        await session.scalars(select(WeeklyReview.id).where(WeeklyReview.user_id == expected.id))
+    )
+    assert review.json()["id"] in ids
+    assert notes.status_code == 200
+    bodies = [n["body"] for n in notes.json()["items"]]
+    assert bodies
+    assert all(any("\u3040" <= c <= "\u30ff" for c in b) == (language == "ja") for b in bodies)
+
+
+async def test_japanese_guest_sees_the_english_demo_before_it_is_seeded(
+    client: AsyncClient, demo: User
+) -> None:
+    """日本語のデモを seed で入れる前は、日本語のゲストにも英語のデモを見せる。"""
+    headers = {**GUEST, "X-Guest-Language": "ja"}
+
+    login = await client.post("/auth/login", headers=headers)
+    review = await client.get("/reviews/current", headers=headers)
+
+    assert login.status_code == review.status_code == 200
+    assert login.json()["id"] == demo.id
+    assert review.json() is not None
+
+
+async def test_guest_login_and_the_other_apis_pick_the_same_demo(
+    client: AsyncClient, session: AsyncSession, demo: User, japanese_demo: User
+) -> None:
+    """ログインもほかの窓口も、X-Guest-Language だけでデモの利用者を選ぶ。ログインの本文の
+    language（ブラウザの言語タグ）や Accept-Language が食い違っても、同じデモになる。"""
+    headers = {**GUEST, "X-Guest-Language": "en", "Accept-Language": "ja,en;q=0.9"}
+
+    login = await client.post("/auth/login", headers=headers, json={"language": "ja-JP"})
+    review = await client.get("/reviews/current", headers=headers)
+
+    assert login.json()["id"] == demo.id
+    english_reviews = set(
+        await session.scalars(select(WeeklyReview.id).where(WeeklyReview.user_id == demo.id))
+    )
+    assert review.json()["id"] in english_reviews
+
+
+async def test_japanese_demo_has_japanese_notes_and_reviews(
+    session: AsyncSession, japanese_demo: User
+) -> None:
+    """日本語のデモは、記録は英語と同じで、メモと週次レビューが日本語。"""
+    reviews = list(
+        await session.scalars(select(WeeklyReview).where(WeeklyReview.user_id == japanese_demo.id))
+    )
+    workouts = await session.scalar(
+        select(func.count()).select_from(Workout).where(Workout.user_id == japanese_demo.id)
+    )
+    english_workouts = await session.scalar(
+        select(func.count()).select_from(Workout).where(Workout.user_id != japanese_demo.id)
+    )
+
+    assert len(reviews) == REVIEWS
+    # 定型でも Gemini でも、日本語のセリフは「。」で終わる文で書く
+    assert all("。" in r.script for r in reviews)
+    assert workouts == english_workouts
 
 
 # ここから下は、seed をテストの外のトランザクションに入れずに本当に確定させる。
@@ -270,15 +372,20 @@ async def test_a_failed_seed_keeps_the_previous_demo_data(
     with pytest.raises(RuntimeError):
         await seed_demo_atomically(committed)
 
-    assert await _demo_state(committed) == ([first], REVIEWS, REVIEWS - 1)
+    # 英語と日本語のデモが、どちらも前のまま残る
+    ids, reviews, selected = await _demo_state(committed)
+    assert set(ids) == set(first)
+    assert (reviews, selected) == (2 * REVIEWS, 2 * (REVIEWS - 1))
 
 
-async def test_seeding_twice_at_once_leaves_one_demo_user(committed: AsyncEngine) -> None:
+async def test_seeding_twice_at_once_leaves_one_demo_user_per_language(
+    committed: AsyncEngine,
+) -> None:
     await asyncio.gather(seed_demo_atomically(committed), seed_demo_atomically(committed))
 
     ids, reviews, selected = await _demo_state(committed)
-    assert len(ids) == 1
-    assert (reviews, selected) == (REVIEWS, REVIEWS - 1)
+    assert len(ids) == 2
+    assert (reviews, selected) == (2 * REVIEWS, 2 * (REVIEWS - 1))
 
 
 async def test_seed_voices_the_demo_reviews(session: AsyncSession) -> None:
@@ -304,10 +411,10 @@ async def test_seeding_again_deletes_the_audio_of_the_previous_demo(
 
     second = await seed_demo_atomically(committed, voice=FakeVoice(), audio=audio)
 
-    # 前のデモの音声は残さない。新しいデモの音声だけがある
-    assert first != second
-    assert len(audio.files) == REVIEWS
-    assert all(name.startswith(f"users/{second}/") for name in audio.files)
+    # 前のデモの音声は残さない。新しいデモ（英語と日本語）の音声だけがある
+    assert set(first).isdisjoint(second)
+    assert len(audio.files) == 2 * REVIEWS
+    assert all(name.startswith(tuple(f"users/{i}/" for i in second)) for name in audio.files)
 
 
 async def test_a_failed_seed_deletes_its_new_audio_and_keeps_the_previous(
@@ -331,7 +438,7 @@ async def test_a_failed_seed_deletes_its_new_audio_and_keeps_the_previous(
         await seed_demo_atomically(committed, voice=FakeVoice(), audio=audio)
 
     # 前のデモは行も音声もそのまま。途中まで置いた新しい音声は消える
-    assert (await _demo_state(committed))[0] == [first]
+    assert set((await _demo_state(committed))[0]) == set(first)
     assert audio.files == before
 
 
@@ -343,7 +450,8 @@ async def test_seed_counts_the_voiced_reviews(committed: AsyncEngine) -> None:
             return None if len(self.spoken) == 1 else Speech(b"RIFF", WAV)
 
     voiced = await seed_demo_atomically(committed, voice=FakeVoice(), audio=FakeAudioStore())
-    assert await voiced_reviews(committed, voiced) == REVIEWS
+    assert [await voiced_reviews(committed, i) for i in voiced] == [REVIEWS, REVIEWS]
 
+    # 最初に読むのは英語のデモの最初の週
     partly = await seed_demo_atomically(committed, voice=RefusesTheFirst(), audio=FakeAudioStore())
-    assert await voiced_reviews(committed, partly) == REVIEWS - 1
+    assert [await voiced_reviews(committed, i) for i in partly] == [REVIEWS - 1, REVIEWS]

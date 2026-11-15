@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Annotated, Any
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.audio_storage import audio_store
@@ -21,20 +21,26 @@ from app.services.auto_reviews import ReviewQueue
 from app.services.reviews import LineChecker, ReviewWriter
 from app.services.users import AccountDeletedError, DemoUnavailableError, get_or_create_user
 
+# ゲストの画面の言語（"en" か "ja"）。web がどのリクエストにも付ける。画面はブラウザの言語で
+# 決まるので、web が同じ決め方の結果を送り、api はそれでデモの利用者を選ぶ。ログインも、
+# ほかの窓口も同じヘッダーを見るので、画面とデモの言語がずれない
+GuestLanguage = Annotated[str | None, Header(alias="X-Guest-Language")]
+
 
 async def resolve_user(
     session: AsyncSession,
     identity: Identity,
     timezone: str | None = None,
     language: str | None = None,
+    guest_language: str | None = None,
 ) -> User:
     """本人の行。なければ作る。timezone と language は行を作るときだけ使う。
 
     アカウントを消した人のトークンは、期限の前でも 401 にする。ゲスト（匿名ログイン）は
-    デモの利用者になる。デモの利用者がまだいなければ 503。
+    guest_language（ゲストの画面の言語）のデモの利用者になる。デモの利用者がまだいなければ 503。
     """
     try:
-        return await get_or_create_user(session, identity, timezone, language)
+        return await get_or_create_user(session, identity, timezone, language, guest_language)
     except AccountDeletedError:
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED, headers={"WWW-Authenticate": "Bearer"}
@@ -48,9 +54,10 @@ async def resolve_user(
 async def get_current_user(
     identity: Annotated[Identity, Depends(get_identity)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    guest_language: GuestLanguage = None,
 ) -> User:
     """ログイン済みの本人の行。ID トークンの検証は get_identity に任せる。"""
-    return await resolve_user(session, identity)
+    return await resolve_user(session, identity, guest_language=guest_language)
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]

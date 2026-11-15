@@ -8,11 +8,17 @@
   TTS_ID_TOKEN=$(gcloud auth print-identity-token --project loadline-app) \
     uv run python -m scripts.seed_demo
 
-デモの利用者（is_demo、firebase_uid は NULL）を消して作り直し、16 週分のワークアウトと
-心拍、VO2max、メモを入れる。記録は決まった乱数で作るので、毎回同じになる。日付も
-動かさない。ゲストのダッシュボードは最後のワークアウトの日を今日として切る。
+日本語の声（GOOGLE_TTS_MODEL）も入れるとき。手元の Google アカウントの資格情報で
+Cloud Text-to-Speech を呼ぶには、割り当てのプロジェクトが要る:
+  GOOGLE_TTS_MODEL=gemini-2.5-pro-tts GOOGLE_TTS_QUOTA_PROJECT=loadline-app \
+    TTS_ID_TOKEN=... uv run python -m scripts.seed_demo
 
-週次レビューは、利用者と同じ create_review で最後の 4 週分を作る。数字の判定はコードで
+デモの利用者（is_demo、firebase_uid は NULL）は言語ごとに 1 人（英語と日本語）。どちらも
+消して作り直し、16 週分のワークアウトと心拍、VO2max、メモを入れる。記録は決まった乱数で
+作るので、毎回同じになり、英語と日本語で同じ記録になる。メモは言語ごとに書いてある。
+日付も動かさない。ゲストのダッシュボードは最後のワークアウトの日を今日として切る。
+
+週次レビューは、利用者と同じ create_review で、言語ごとに最後の 4 週分を作る。数字の判定はコードで
 するので、チャートとセリフの数字が食い違わない。GEMINI_PROJECT と TYPESAFE_API_KEY が
 あれば Gemini が書いて Jev で確かめ、なければ定型になる。前の 3 週は選択肢を 1 つ
 選んでおく。最後の週は選ばずに残す（ゲストには押せない選択肢として見せる）。
@@ -40,17 +46,19 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.adapters.audio_storage import audio_store
 from app.adapters.gemini import gemini_writer
+from app.adapters.google_tts import google_voice
 from app.adapters.jev import jev_checker
 from app.adapters.tts import kokoro_voice
 from app.core.config import get_settings
 from app.core.db import get_engine
+from app.domain.language import Language
 from app.models import Note, User, Vo2maxReading, WeeklyReview, Workout, WorkoutHeartRate
 from app.services.audio import AudioStore, Voice, user_audio_prefix, voices
 from app.services.reviews import LineChecker, ReviewWriter, create_review, select_option
 
 logger = logging.getLogger(__name__)
 
-DEMO_EMAIL = "demo@loadline.invalid"
+DEMO_EMAILS = {Language.EN: "demo@loadline.invalid", Language.JA: "demo-ja@loadline.invalid"}
 TIMEZONE = "Asia/Tokyo"
 # 最後の記録の日（日曜）。週次レビューの曜日は月曜なので、最後の回はこの日までの 7 日間になる
 LAST_DAY = date(2026, 11, 1)
@@ -98,7 +106,7 @@ _SICK_WEEK = 9
 _RACE_DAY = FIRST_DAY + timedelta(weeks=14, days=5)
 
 # メモ。日付は最初の日からの日数。ラベルはチャートに出る
-_NOTES: list[tuple[int, str | None, str]] = [
+_NOTES_EN: list[tuple[int, str | None, str]] = [
     (5, None, "First long ride of the summer. Hot, drank a lot."),
     (17, "New shoes", "Tried the new running shoes. A bit stiff for the first 2 km."),
     (33, None, "Legs felt heavy on the intervals. Slept badly the night before."),
@@ -109,6 +117,21 @@ _NOTES: list[tuple[int, str | None, str]] = [
     (_RACE_DAY.toordinal() - FIRST_DAY.toordinal(), "10k race", "10k race. Finished in 47:30!"),
     (WEEKS * 7 - 2, None, "Easy week after the race. Body feels fresh."),
 ]
+
+# 日本語のデモのメモ。日付とラベルの有無は英語と同じ。ラベルは全角 6 文字まで
+_NOTES_JA: list[tuple[int, str | None, str]] = [
+    (5, None, "夏の初めてのロングライド。暑くて、水をたくさん飲んだ。"),
+    (17, "新シューズ", "新しいランニングシューズを試した。最初の2kmは少し硬かった。"),
+    (33, None, "インターバルで脚が重かった。前の晩はよく眠れなかった。"),
+    (47, "坂のライド", "友だちと坂のコースを走った。きつかったけど楽しかった。"),
+    (63, "風邪", "風邪をひいた。今週は休む。"),
+    (69, None, "まだ少し咳が出るので、軽いジョグだけ。"),
+    (80, None, "いつもの調子に戻った。今週は全部軽めにした。"),
+    (_RACE_DAY.toordinal() - FIRST_DAY.toordinal(), "10kmレース", "10kmレース。47分30秒で完走！"),
+    (WEEKS * 7 - 2, None, "レースのあとの軽い週。体が軽い。"),
+]
+
+_NOTES = {Language.EN: _NOTES_EN, Language.JA: _NOTES_JA}
 
 
 def _heart_rates(rng: random.Random, kind: str, minutes: int) -> list[int]:
@@ -190,8 +213,9 @@ async def seed_demo(
     *,
     voice: Voice | None = None,
     audio: AudioStore | None = None,
+    language: Language = Language.EN,
 ) -> User:
-    """デモの利用者を作り直して、記録、メモ、週次レビューを入れる。
+    """その言語のデモの利用者を作り直して、記録、メモ、週次レビューを入れる。
 
     session は外のトランザクションに入れておく（seed_demo_atomically）。中の commit は
     savepoint になり、外のトランザクションを確定するまで、ほかからは前のデモが見える。
@@ -200,10 +224,13 @@ async def seed_demo(
     # 同時に流れたら、先のほうが確定するまで待つ。待たずに進むと両方がデモの利用者を作る
     await session.execute(select(func.pg_advisory_xact_lock(_LOCK_KEY)))
     # 行を消せば、外部キーの ON DELETE CASCADE で記録も週次レビューも消える
-    await session.execute(delete(User).where(User.is_demo.is_(True)))
+    await session.execute(
+        delete(User).where(User.is_demo.is_(True), User.language == language.value)
+    )
     user = User(
-        email=DEMO_EMAIL,
+        email=DEMO_EMAILS[language],
         is_demo=True,
+        language=language.value,
         max_heart_rate=MAX_HR,
         resting_heart_rate=RESTING_HR,
         zone_boundary_1=ZONE_1,
@@ -231,7 +258,7 @@ async def seed_demo(
     session.add_all(_vo2max(user.id, rng))
     session.add_all(
         Note(user_id=user.id, date=FIRST_DAY + timedelta(days=d), label=label, body=body)
-        for d, label, body in _NOTES
+        for d, label, body in _NOTES[language]
     )
     await session.commit()
 
@@ -255,11 +282,13 @@ async def seed_demo_atomically(
     *,
     voice: Voice | None = None,
     audio: AudioStore | None = None,
-) -> int:
-    """seed_demo を 1 つのトランザクションで流し、最後まで済んだときだけ確定する。
+) -> list[int]:
+    """英語と日本語の seed_demo を 1 つのトランザクションで流し、最後まで済んだときだけ
+    確定する。
 
     create_review などは途中で commit するので、外のトランザクションに入れて savepoint に
-    する。途中で例外が出たら全部を巻き戻し、前のデモデータを残す。作ったデモの利用者の id を返す。
+    する。途中で例外が出たら全部を巻き戻し、前のデモデータを残す。作ったデモの利用者の id を
+    言語の順（英語、日本語）に返す。
 
     audio があれば、確定してから前のデモの音声を消す。途中で失敗したら、新しく置いた音声を
     消す（前のデモの音声は、前のデモの行と一緒に残る）。
@@ -274,7 +303,12 @@ async def seed_demo_atomically(
                 # 先に取らないと、同時に流れた側が確定する前の id を読み落とす
                 await session.execute(select(func.pg_advisory_xact_lock(_LOCK_KEY)))
                 old_ids = list(await session.scalars(select(User.id).where(User.is_demo.is_(True))))
-                user = await seed_demo(session, writer, checker, voice=voice, audio=tracked)
+                users = [
+                    await seed_demo(
+                        session, writer, checker, voice=voice, audio=tracked, language=language
+                    )
+                    for language in Language
+                ]
     except BaseException:
         if tracked is not None:
             # 1 つずつ、置いたファイルそのものを消す（名前を prefix として渡す）
@@ -282,7 +316,7 @@ async def seed_demo_atomically(
         raise
     if tracked is not None:
         await _delete_audio(tracked, [user_audio_prefix(i) for i in old_ids])
-    return user.id
+    return [user.id for user in users]
 
 
 async def _delete_audio(audio: AudioStore, prefixes: list[str]) -> None:
@@ -352,26 +386,29 @@ async def main() -> None:
     async def given_token() -> str:
         return token or ""
 
-    # デモの利用者は英語なので、英語の声（tts）だけでよい
-    voice = voices(kokoro_voice(settings, given_token if token else None), None)
+    voice = voices(kokoro_voice(settings, given_token if token else None), google_voice(settings))
     store = audio_store(settings)
     engine = get_engine()
-    user_id = await seed_demo_atomically(
+    user_ids = await seed_demo_atomically(
         engine,
         gemini_writer(settings),
         jev_checker(settings),
         voice=voice,
         audio=None if store is None else _UploadOnly(store),
     )
-    print(f"demo user {user_id}: {FIRST_DAY} to {LAST_DAY}")
+    for language, user_id in zip(Language, user_ids, strict=True):
+        print(f"demo user {user_id} ({language}): {FIRST_DAY} to {LAST_DAY}")
     if voice is None or store is None:
-        print("no audio: set TTS_URL and AUDIO_BUCKET to voice the reviews")
+        print("no audio: set TTS_URL, GOOGLE_TTS_MODEL and AUDIO_BUCKET to voice the reviews")
         return
-    voiced = await voiced_reviews(engine, user_id)
-    print(f"audio: {voiced} of {REVIEWS} reviews")
-    if voiced < REVIEWS:
-        # 声がない週は、ゲストには字幕だけで見える。tts のログを見て、流し直す
-        print("some reviews have no audio: check the tts warnings above and run again")
+    missing = False
+    for language, user_id in zip(Language, user_ids, strict=True):
+        voiced = await voiced_reviews(engine, user_id)
+        print(f"audio ({language}): {voiced} of {REVIEWS} reviews")
+        missing = missing or voiced < REVIEWS
+    if missing:
+        # 声がない週は、ゲストには字幕だけで見える。声のログを見て、流し直す
+        print("some reviews have no audio: check the voice warnings above and run again")
 
 
 if __name__ == "__main__":

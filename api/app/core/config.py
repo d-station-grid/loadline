@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # しない（手元とテストは空。費用がかかるので、本番だけで呼ぶ）
     google_tts_model: str = ""
     google_tts_voice: str = "Leda"
+    # 手元の Google アカウントの資格情報で呼ぶときの、割り当てのプロジェクト（seed を手元から
+    # 流すとき）。本番のサービスアカウントでは要らないので空
+    google_tts_quota_project: str = ""
     # 読み上げ 1 回に待つ上限（やり直しを含む）。超えたら声なし（文字だけ）にする
     google_tts_timeout_sec: float = 45.0
     # 週次レビューの音声を置くバケット（gs:// は付けない）。空なら声にしない
