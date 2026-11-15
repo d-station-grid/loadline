@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from app.domain.vo2max import vo2max_trend
+from app.domain.vo2max import Vo2maxTrend, vo2max_trend, vo2max_trend_of
 
 
 def test_vo2max_trend_averages_last_30_days() -> None:
@@ -40,3 +40,21 @@ def test_vo2max_trend_window_includes_day_29_back() -> None:
 
 def test_vo2max_trend_empty() -> None:
     assert vo2max_trend([]) == []
+
+
+@pytest.mark.parametrize(
+    ("change", "trend"),
+    [
+        (0.5, Vo2maxTrend.UP),
+        (0.4, Vo2maxTrend.FLAT),
+        (-0.4, Vo2maxTrend.FLAT),
+        (-0.5, Vo2maxTrend.DOWN),
+        (-3.5, Vo2maxTrend.DOWN),
+        (None, None),
+    ],
+)
+def test_trend_classifies_the_change_shown_on_the_card(
+    change: float | None, trend: Vo2maxTrend | None
+) -> None:
+    """カードと同じ差を 0.5 で区分する。差が 0.5 未満は横ばい。"""
+    assert vo2max_trend_of(change) is trend

@@ -33,6 +33,7 @@ from app.domain.situation import (
     WeekSituation,
     judge_week,
 )
+from app.domain.vo2max import Vo2maxTrend, vo2max_trend_of
 from app.models import Note, ReviewStatus, User, WeeklyReview, WeeklyReviewOption, Workout
 from app.schemas.dashboard import DayPoint
 from app.schemas.reviews import ReviewOptionOut, WeeklyReviewOut
@@ -88,14 +89,14 @@ async def judge_review_week(
     today は利用者のタイムゾーンでの今日。週は今日より前に終わっていなければならない。
     ダッシュボードの計算は今日で切るので、終わっていない週では最終日の値がない。
     """
-    week, _ = await _judge(session, user, start, today)
+    week, _, _ = await _judge(session, user, start, today)
     return week
 
 
 async def _judge(
     session: AsyncSession, user: User, start: date, today: date
-) -> tuple[WeekSituation, Effort]:
-    """start から 7 日間の状況と、練習の量と強度の配分を判定する。
+) -> tuple[WeekSituation, Effort, Vo2maxTrend | None]:
+    """start から 7 日間の状況と、練習の量と強度の配分、VO2max の傾向を判定する。
 
     量は、その週より前の HISTORY_WEEKS 週と比べる。ダッシュボードの計算を
     その分だけ前から読み、1 回の計算で状況と量の両方を出す。
@@ -196,7 +197,9 @@ async def _judge(
         ),
         history=history,
     )
-    return week, effort
+    # VO2max の差は、ダッシュボードのカードが週の最終日までで出したものをそのまま区分する
+    vo2max = vo2max_trend_of(dashboard.changes.vo2max)
+    return week, effort, vo2max
 
 
 async def review_material(
@@ -207,7 +210,7 @@ async def review_material(
     1 週前は start の 7 日前に始まる回だけを見る。間が空いた後や、週次レビューの曜日を変えた
     直後は、前の回の選択が今の週と離れているので渡さない。
     """
-    week, effort = await _judge(session, user, start, today)
+    week, effort, vo2max = await _judge(session, user, start, today)
     chosen = (
         await session.execute(
             select(WeeklyReviewOption.label, WeeklyReviewOption.description)
@@ -222,6 +225,7 @@ async def review_material(
     return ReviewMaterial(
         week=week,
         effort=effort,
+        vo2max=vo2max,
         previous_choice=None if chosen is None else ReviewOption(chosen.label, chosen.description),
     )
 

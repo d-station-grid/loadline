@@ -16,6 +16,7 @@ from app.domain.review_prompt import (
     review_prompt,
 )
 from app.domain.situation import Situation, WeekSituation
+from app.domain.vo2max import Vo2maxTrend
 
 MONDAY = date(2026, 10, 19)
 
@@ -176,6 +177,34 @@ def test_system_instruction_replaces_moderate_sessions_instead_of_adding_easy_on
     assert "more easy sessions" not in SYSTEM_INSTRUCTION
 
 
+def test_prompt_passes_the_vo2max_trend_without_the_value() -> None:
+    """VO2max は傾向の区分だけを渡す。測定が足りなければ null。"""
+    assert prompt_data(replace(material(), vo2max=Vo2maxTrend.UP))["vo2max_trend"] == "up"
+    assert prompt_data(material())["vo2max_trend"] is None
+
+
+def test_system_instruction_does_not_let_vo2max_be_explained_by_one_week() -> None:
+    """VO2max は時計の推定でぶれる。この週や 1 回の練習のおかげだとは言わせない。"""
+    assert "`vo2max_trend`" in SYSTEM_INSTRUCTION
+    assert "never say this week or any one session caused it" in SYSTEM_INSTRUCTION
+    assert "then do not mention VO2max" in SYSTEM_INSTRUCTION
+
+
+def test_system_instruction_asks_for_one_insight_grounded_in_one_principle() -> None:
+    """入力の数字の言い直しにせず、原則を 1 つだけ選んで理由として添えてもらう。"""
+    assert "never just read the input back" in SYSTEM_INSTRUCTION
+    assert "use only one" in SYSTEM_INSTRUCTION
+    assert "Do not name researchers, studies or training systems" in SYSTEM_INSTRUCTION
+    assert "the first sentence of `line` must have no numbers" in SYSTEM_INSTRUCTION
+    assert "mention at most one" in SYSTEM_INSTRUCTION
+
+
+def test_system_instruction_does_not_give_the_vo2max_period() -> None:
+    """比べる間隔は 28 日以上で、測定が空くともっと長い。期間の長さは言わせない。"""
+    assert "four weeks" not in SYSTEM_INSTRUCTION
+    assert "never say how long the period was" in SYSTEM_INSTRUCTION
+
+
 def test_prompt_passes_the_previous_choice() -> None:
     choice = ReviewOption("Keep it steady", "Train the same way as last week.")
 
@@ -238,6 +267,28 @@ def test_check_review_counts_words_of_the_line(count: int, ok: bool) -> None:
             check_review(content)
 
 
+@pytest.mark.parametrize(
+    "script",
+    [
+        "You had a heavy week of 416 minutes, mostly at a moderate pace.",
+        "4 sessions this week!",
+    ],
+)
+def test_check_review_rejects_numbers_in_the_first_sentence(script: str) -> None:
+    """数字の読み上げで始めさせない。最初の文に数字があれば書き直させる。"""
+    line = f"{script} " + " ".join(["word"] * 24)
+    with pytest.raises(InvalidReviewError, match="first sentence") as error:
+        check_review(ReviewContent(script=line, options=OPTIONS))
+    # 書き直しのたびに警告ログに出るので、セリフの文言は入れない
+    assert script not in str(error.value)
+
+
+def test_check_review_allows_numbers_after_the_first_sentence() -> None:
+    line = "That was a heavy week. You rode 416 minutes, " + " ".join(["word"] * 26)
+
+    assert check_review(ReviewContent(script=line, options=OPTIONS)).script == line
+
+
 @pytest.mark.parametrize("count", [0, 1, 4])
 def test_check_review_needs_two_or_three_options(count: int) -> None:
     options = tuple(ReviewOption(f"Option {i}", "One short sentence.") for i in range(count))
@@ -256,5 +307,9 @@ def test_check_review_needs_two_or_three_options(count: int) -> None:
     ],
 )
 def test_check_review_fits_options_into_the_columns(option: ReviewOption) -> None:
-    with pytest.raises(InvalidReviewError):
+    with pytest.raises(InvalidReviewError) as error:
         check_review(ReviewContent(script=LINE, options=(OPTIONS[0], option)))
+    # 書き直しのたびに警告ログに出るので、選択肢の文言は入れない
+    for text in (option.label.strip(), option.description.strip()):
+        if text:
+            assert text not in str(error.value)

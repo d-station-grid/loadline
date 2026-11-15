@@ -2,6 +2,7 @@ import json
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -16,6 +17,7 @@ from app.domain.line_check import LineCheck
 from app.domain.note_check import NoteCheck
 from app.domain.review_prompt import NoteForReview
 from app.domain.situation import Situation
+from app.domain.vo2max import Vo2maxTrend
 from app.models import User, WeeklyReview, WeeklyReviewOption, Workout
 from app.services.dashboard import build_dashboard
 from app.services.reviews import (
@@ -32,6 +34,7 @@ from app.services.reviews import (
 from tests.factories import (
     NoteFactory,
     UserFactory,
+    Vo2maxReadingFactory,
     WeeklyReviewFactory,
     WeeklyReviewOptionFactory,
     WorkoutFactory,
@@ -475,6 +478,52 @@ async def test_heavy_week_keeps_the_writer_from_offering_more(session: AsyncSess
 
     assert writer.data()["effort"]["volume_vs_usual"] == "heavy"
     assert writer.data()["may_offer_more"] is False
+
+
+async def test_material_classifies_the_vo2max_change_on_the_card(session: AsyncSession) -> None:
+    """カードと同じ差（最新 − 28 日前かそれより前の最後の測定）を区分する。30 日平均どうしを
+    比べると 9/17=50・10/15=46.5 で差が小さく横ばいになり、カードの −3.5 と食い違っていた。
+    9 週より前の 8/1 の測定も、カードと同じく比べる相手になる。週の後の測定は使わない。"""
+    user = await _user()
+    await _weekly_rides(user, MONDAY - timedelta(weeks=5), 5)
+    for day, value in (
+        ("2026-08-01", "44.0"),
+        ("2026-09-17", "50.0"),
+        ("2026-10-15", "46.5"),
+        ("2026-10-19", "55.0"),
+    ):
+        await Vo2maxReadingFactory.create_async(
+            user_id=user.id,
+            measured_at=datetime.fromisoformat(f"{day}T08:00").replace(tzinfo=JST),
+            value=Decimal(value),
+        )
+
+    material = await review_material(session, user, MONDAY, TODAY)
+
+    assert material.vo2max is Vo2maxTrend.DOWN
+
+
+async def test_material_compares_vo2max_with_a_reading_before_the_nine_weeks(
+    session: AsyncSession,
+) -> None:
+    """比べる相手が 8/1 しかなくても、カードと同じく +2.0 で「上がった」。"""
+    user = await _user()
+    await _weekly_rides(user, MONDAY - timedelta(weeks=5), 5)
+    for day, value in (("2026-08-01", "44.0"), ("2026-10-15", "46.0")):
+        await Vo2maxReadingFactory.create_async(
+            user_id=user.id,
+            measured_at=datetime.fromisoformat(f"{day}T08:00").replace(tzinfo=JST),
+            value=Decimal(value),
+        )
+
+    assert (await review_material(session, user, MONDAY, TODAY)).vo2max is Vo2maxTrend.UP
+
+
+async def test_material_has_no_vo2max_trend_without_readings(session: AsyncSession) -> None:
+    user = await _user()
+    await _ride(user, "2026-10-13T07:00")
+
+    assert (await review_material(session, user, MONDAY, TODAY)).vo2max is None
 
 
 async def test_material_has_the_choice_of_the_week_before(session: AsyncSession) -> None:
