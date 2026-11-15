@@ -469,6 +469,16 @@ export default function Review({ user, onOpenSettings }: Props) {
                     </span>
                   ))}
                 </p>
+                {/* 画面で読む長めの文。話さないので、開いたときだけ見せる。段落は空行で分かれて
+                    届く。別の週次レビューになったら閉じた状態から始める */}
+                {review.detail && (
+                  <details key={review.id} className="review-detail">
+                    <summary>{r.readMore}</summary>
+                    {review.detail.split("\n\n").map((paragraph, i) => (
+                      <p key={i}>{paragraph}</p>
+                    ))}
+                  </details>
+                )}
                 <h4 id="review-plan-heading">{r.question}</h4>
                 <div
                   className="review-options"

@@ -300,6 +300,7 @@ export const en = {
     guestCannotCreate: "Guests can't create reviews.",
     weekReviewed: (from: string, to: string) =>
       `Week reviewed: ${from} – ${to}`,
+    readMore: "Read more",
     question: "How will you spend the week ahead?",
     guestCannotChoose:
       "Guests can't choose an option. Sign in to plan your week.",
@@ -602,6 +603,7 @@ export const ja: Messages = {
       "週次レビューを作成するには、最大心拍数と安静時心拍数を設定してください。",
     guestCannotCreate: "ゲストは週次レビューを作成できません。",
     weekReviewed: (from, to) => `対象の週: ${from} – ${to}`,
+    readMore: "詳しく読む",
     question: "次の 1 週間を、どう過ごしますか？",
     guestCannotChoose:
       "ゲストは選択肢を選べません。ログインすると、1 週間の過ごし方を選べます。",
