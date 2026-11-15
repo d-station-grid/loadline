@@ -20,6 +20,7 @@ from app.domain.review_prompt import NoteForReview
 from app.domain.situation import Situation
 from app.domain.vo2max import Vo2maxTrend
 from app.models import User, WeeklyReview, WeeklyReviewOption, Workout
+from app.services.audio import MP3, WAV, Speech
 from app.services.dashboard import build_dashboard
 from app.services.reviews import (
     HeartRateSettingsMissingError,
@@ -1165,28 +1166,35 @@ async def test_offering_more_is_stopped_in_a_fatigued_week_without_the_health_fl
 
 
 class FakeVoice:
-    """tts の代わり。読んだセリフを控える。fail なら読めなかったことにする。"""
+    """言語ごとの声の代わり。読んだセリフと言語を控える。fail なら読めなかったことにする。
+    英語は WAV、日本語は MP3 を返す（本物と同じ）。"""
 
     def __init__(self, fail: bool = False) -> None:
         self.spoken: list[str] = []
+        self.languages: list[Language] = []
         self.fail = fail
 
-    async def speak(self, text: str) -> bytes | None:
+    async def speak(self, text: str, language: Language) -> Speech | None:
         self.spoken.append(text)
-        return None if self.fail else b"RIFF" + text.encode()
+        self.languages.append(language)
+        if self.fail:
+            return None
+        return Speech(b"RIFF" + text.encode(), WAV if language is Language.EN else MP3)
 
 
 class FakeAudioStore:
-    """Cloud Storage の代わり。置いたファイルを名前で持つ。"""
+    """Cloud Storage の代わり。置いたファイルと Content-Type を名前で持つ。"""
 
     def __init__(self, fail_put: bool = False) -> None:
         self.files: dict[str, bytes] = {}
+        self.content_types: dict[str, str] = {}
         self.fail_put = fail_put
 
-    async def put(self, path: str, wav: bytes) -> bool:
+    async def put(self, path: str, data: bytes, content_type: str) -> bool:
         if self.fail_put:
             return False
-        self.files[path] = wav
+        self.files[path] = data
+        self.content_types[path] = content_type
         return True
 
     async def url(self, path: str) -> str | None:
@@ -1353,13 +1361,24 @@ async def test_writer_is_asked_in_the_users_language(session: AsyncSession) -> N
     assert writer.languages == [Language.JA]
 
 
-async def test_japanese_review_is_not_voiced_yet(session: AsyncSession) -> None:
-    """日本語の声を入れるまでは、日本語のセリフを英語の声で読ませない。文字だけで作る。"""
+async def test_japanese_review_is_voiced_in_japanese(session: AsyncSession) -> None:
+    """日本語のセリフは日本語の声で読み、その形式（MP3）で置く。"""
     user = await _user(language="ja")
     voice, audio = FakeVoice(), FakeAudioStore()
 
     review, _ = await create_review(session, user, today=TODAY, voice=voice, audio=audio)
 
-    assert voice.spoken == []
-    assert audio.files == {}
-    assert review.audio_url is None
+    path = f"users/{user.id}/reviews/{review.id}.mp3"
+    assert voice.spoken == [review.script]
+    assert voice.languages == [Language.JA]
+    assert audio.content_types == {path: "audio/mpeg"}
+    assert review.audio_url == f"https://storage.example/{path}?signed"
+
+
+async def test_english_review_is_saved_as_wav(session: AsyncSession) -> None:
+    user = await _user()
+    audio = FakeAudioStore()
+
+    review, _ = await create_review(session, user, today=TODAY, voice=FakeVoice(), audio=audio)
+
+    assert audio.content_types == {f"users/{user.id}/reviews/{review.id}.wav": "audio/wav"}

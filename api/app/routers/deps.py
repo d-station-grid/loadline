@@ -8,6 +8,7 @@ from app.adapters.audio_storage import audio_store
 from app.adapters.cloud_tasks import review_queue
 from app.adapters.firebase_accounts import account_deleter
 from app.adapters.gemini import gemini_writer
+from app.adapters.google_tts import google_voice
 from app.adapters.jev import jev_checker
 from app.adapters.tts import kokoro_voice
 from app.core.auth import Identity, get_identity
@@ -15,7 +16,7 @@ from app.core.config import get_settings
 from app.core.db import get_session
 from app.models import User
 from app.services.accounts import AccountDeleter
-from app.services.audio import AudioStore, Voice
+from app.services.audio import AudioStore, Voice, voices
 from app.services.auto_reviews import ReviewQueue
 from app.services.reviews import LineChecker, ReviewWriter
 from app.services.users import AccountDeletedError, DemoUnavailableError, get_or_create_user
@@ -92,8 +93,10 @@ LineCheckerDep = Annotated[LineChecker | None, Depends(get_line_checker)]
 
 @lru_cache
 def get_voice() -> Voice | None:
-    """セリフを読み上げる tts。プロセスで 1 つ。TTS_URL が空なら None（声にしない）。"""
-    return kokoro_voice(get_settings())
+    """セリフを読み上げる声。プロセスで 1 つ。英語は tts（TTS_URL）、日本語は Google の
+    Text-to-Speech（GOOGLE_TTS_MODEL）。どちらも空なら None（声にしない）。"""
+    settings = get_settings()
+    return voices(kokoro_voice(settings), google_voice(settings))
 
 
 VoiceDep = Annotated[Voice | None, Depends(get_voice)]

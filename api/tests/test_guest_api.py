@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 import scripts.seed_demo as seed_module
 from app.core.auth import Identity, InvalidTokenError, get_token_verifier, identity_from_claims
+from app.domain.language import Language
 from app.main import app
 from app.models import (
     IngestToken,
@@ -25,6 +26,7 @@ from app.models import (
     WorkoutHeartRate,
 )
 from app.routers.deps import get_account_deleter
+from app.services.audio import WAV, Speech
 from app.services.reviews import select_option
 from scripts.seed_demo import (
     FIRST_DAY,
@@ -336,9 +338,9 @@ async def test_a_failed_seed_deletes_its_new_audio_and_keeps_the_previous(
 async def test_seed_counts_the_voiced_reviews(committed: AsyncEngine) -> None:
     # tts に断られても seed は通る。声が付いた数を出して、字幕だけの週に気づけるようにする
     class RefusesTheFirst(FakeVoice):
-        async def speak(self, text: str) -> bytes | None:
+        async def speak(self, text: str, language: Language) -> Speech | None:
             self.spoken.append(text)
-            return None if len(self.spoken) == 1 else b"RIFF"
+            return None if len(self.spoken) == 1 else Speech(b"RIFF", WAV)
 
     voiced = await seed_demo_atomically(committed, voice=FakeVoice(), audio=FakeAudioStore())
     assert await voiced_reviews(committed, voiced) == REVIEWS

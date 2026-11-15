@@ -130,14 +130,14 @@ class GcsAudioStore:
             "retry": DEFAULT_RETRY.with_timeout(STORAGE_RETRY_SEC),
         }
 
-    def _put(self, path: str, wav: bytes) -> None:
+    def _put(self, path: str, data: bytes, content_type: str) -> None:
         self._bucket().blob(path).upload_from_string(
-            wav, content_type="audio/wav", **self._limits()
+            data, content_type=content_type, **self._limits()
         )
 
-    async def put(self, path: str, wav: bytes) -> bool:
+    async def put(self, path: str, data: bytes, content_type: str) -> bool:
         try:
-            await asyncio.to_thread(self._put, path, wav)
+            await asyncio.to_thread(self._put, path, data, content_type)
         except (GoogleAPIError, GoogleAuthError):
             logger.exception("audio: could not upload %s", path)
             return False

@@ -24,6 +24,44 @@ test("数字の小数点や、引用符の内側では切らない", () => {
   ]);
 });
 
+test("日本語は「。」「！」「？」で分け、つなぐと元に戻る", () => {
+  // 日本語の定型のように、文の間に空白がない
+  const script =
+    "今週は安定した週でした。体力と疲労のバランスもとれています！このまま続けましょう。";
+  const sentences = splitSentences(script);
+
+  expect(sentences).toEqual([
+    "今週は安定した週でした。",
+    "体力と疲労のバランスもとれています！",
+    "このまま続けましょう。",
+  ]);
+  expect(sentences.join("")).toBe(script);
+});
+
+test("日本語でも「。」のあとの空白は前の文に残す", () => {
+  // Gemini の文は「。」のあとに空白が入ることがある
+  const script = "よく頑張りましたね。 今週は軽めにしましょう。";
+  const sentences = splitSentences(script);
+
+  expect(sentences).toEqual([
+    "よく頑張りましたね。 ",
+    "今週は軽めにしましょう。",
+  ]);
+  expect(sentences.join("")).toBe(script);
+});
+
+test("日本語の記号や閉じかっこが続くときは、途中で切らない", () => {
+  expect(splitSentences("本当？！すごいですね。")).toEqual([
+    "本当？！",
+    "すごいですね。",
+  ]);
+  // かっこの中の「。」のあとも、文は続く
+  expect(splitSentences("「休もう。」と言いました。次へ。")).toEqual([
+    "「休もう。」と言いました。",
+    "次へ。",
+  ]);
+});
+
 test("区切りがなければ、全体で 1 つの文", () => {
   expect(splitSentences("Keep going")).toEqual(["Keep going"]);
   expect(splitSentences("")).toEqual([]);
