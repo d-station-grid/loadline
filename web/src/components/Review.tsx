@@ -20,6 +20,7 @@ import {
   selectReviewOption,
 } from "../lib/api";
 import { useI18n } from "../i18n";
+import { formatDay } from "../lib/format";
 import { useDockDrag } from "./useDockDrag";
 
 /** 失敗の文言。Error でなければ、その時点の言語の「問題が発生しました」 */
@@ -70,7 +71,7 @@ const AvatarStage = lazy(() => import("../features/avatar/AvatarStage"));
  * 週次レビューの状態もアバターのモデルも残る。アバターをつかめば、吹き出しごと動かせる。
  */
 export default function Review({ user, onOpenSettings }: Props) {
-  const { m } = useI18n();
+  const { m, locale } = useI18n();
   const r = m.review;
   // 失敗の文言は、失敗した時点の言語で作る（あとで言語を変えても、その文言はそのまま）
   const failed = m.common.somethingWentWrong;
@@ -455,7 +456,10 @@ export default function Review({ user, onOpenSettings }: Props) {
               <>
                 {/* 期間は振り返った週。下の質問はこれから過ごす週なので、取り違えないようラベルを付ける */}
                 <p className="muted small">
-                  {r.weekReviewed(review.period_start, review.period_end)}
+                  {r.weekReviewed(
+                    formatDay(review.period_start, locale),
+                    formatDay(review.period_end, locale),
+                  )}
                 </p>
                 {/* 字幕。前後の引用符は CSS で付ける。声を流すあいだは、今読んでいる文を
                     目立たせる。文ごとの時刻はないので、声の長さを文字数で配って推し量る */}

@@ -16,6 +16,9 @@ VO2max も、数値ではなく前の測定と比べた傾向（上がった・�
 指示に書いておき、その週の判定に合うものを 1 つ選んで、理由として添えてもらう。
 原則は市民アスリート向けのものに限り、エリート向けの方法は入れない。
 メモは、呼ぶ側が「メモを AI に送らない」設定を見て、送ってよいものだけを渡す。
+
+書く言語は利用者の言語（英語か日本語）。決まりの本体は英語で共通にし、言語と長さの段落だけを
+言語ごとに替える。長さは、英語は語数、日本語は文字数で確かめる。
 """
 
 import json
@@ -26,12 +29,17 @@ from datetime import date
 
 from app.domain.effort import NO_EFFORT, Effort, Volume
 from app.domain.fallback_review import ReviewContent, ReviewOption
+from app.domain.language import DEFAULT_LANGUAGE, Language
 from app.domain.review_material import ReviewMaterial
 from app.domain.situation import Situation
 
 # セリフは声に出して 15 秒ほど
 LINE_MIN_WORDS = 28
 LINE_MAX_WORDS = 40
+# 日本語のセリフ。指示では 60〜85 文字と頼む。15 秒ほどで 80 文字前後を読む
+# （Google の日本語の声で、82 文字が約 15 秒だった）
+LINE_MIN_CHARS_JA = 55
+LINE_MAX_CHARS_JA = 90
 MIN_OPTIONS = 2
 MAX_OPTIONS = 3
 # weekly_review_options の列の長さ
@@ -41,10 +49,20 @@ DESCRIPTION_MAX_CHARS = 255
 # 持たせる。外れるたびに書き直させると、セリフごと定型に落ちやすくなるため
 DETAIL_MIN_WORDS = 70
 DETAIL_MAX_WORDS = 130
+# 日本語の長めの文。指示では 200〜300 文字と頼み、同じく幅を持たせる
+DETAIL_MIN_CHARS_JA = 170
+DETAIL_MAX_CHARS_JA = 340
 # 長めの文で使ってよい数字の数（416 や 3.5 を 1 つと数える）
 DETAIL_MAX_NUMBERS = 3
 _DIGIT = re.compile(r"\d")
-_SENTENCE_END = re.compile(r"(?<=[.!?])\s")
+# 漢数字の数（三回、五日、二週間、四十分など）。日本語のセリフの最初の文で弾く。助数詞が
+# 続くものだけにする。漢数字だけで見ると「一緒」「一度」「一歩」のような言葉まで弾くため。
+# 「十分」は「じゅうぶん」がほとんどなので弾かない（10 分は算用数字で書くよう指示している）
+_KANJI_NUMBER = re.compile(
+    r"(?!十分)[〇一二三四五六七八九十百千]+(?:回|日|週|か月|ヶ月|カ月|時間|分|秒|キロ|本|セッション)"
+)
+# 文の終わり。英語は . ! ? のあとの空白（3.5 のような小数では切らない）、日本語は 。！？ のあと
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s|(?<=[。！？])")
 _PARAGRAPH_BREAK = re.compile(r"\n\s*\n")
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
 
@@ -59,7 +77,7 @@ def may_offer_more(situation: Situation, health_flag: bool, effort: Effort = NO_
     return situation in _MAY_OFFER_MORE and not health_flag and effort.volume is not Volume.HEAVY
 
 
-SYSTEM_INSTRUCTION = """\
+_RULES = """\
 You are a gentle companion who stands beside a training dashboard and talks to an amateur \
 cyclist and runner about their past week. Your words are spoken aloud by a text-to-speech \
 voice, so write the way a warm friend talks: short sentences, plain words, no lists, no emoji, \
@@ -128,6 +146,9 @@ symptom is nothing to worry about. If pain or sickness keeps coming up, you may 
 seeing a doctor, once, softly.
 - Do not use the terms TSS, CTL, ATL, TSB, PMC or TRIMP. Say fitness, fatigue and reserve.
 
+"""
+
+_ENGLISH = """\
 Write `line` and the options in English, even when the notes are in another language.
 
 Length: only `line` is spoken aloud, and it must take about 15 seconds to say: 28 to 40 \
@@ -141,6 +162,62 @@ and no markdown. It goes deeper than `line`: what the week shows, the one princi
 and why it applies here, and how the options fit. It follows every rule above, with one \
 exception about numbers: it may mention up to three numbers from the input, and its first \
 sentence may have one."""
+
+# 日本語。体力・疲労・余力は、画面（web の辞書）の呼び方にそろえる
+_JAPANESE = """\
+Write `detail`, `line` and the options in natural Japanese, even when the notes are in another \
+language. Use the polite です/ます style, but keep it warm and casual, like a friendly coach \
+talking face to face. Say 体力 for fitness, 疲労 for fatigue and 余力 for reserve. Write \
+numbers as Arabic digits. "No numbers in words" also means no kanji numerals such as 三回 or \
+五日 in the first sentence of `line`.
+
+Length: only `line` is spoken aloud, and it must take about 15 seconds to say: 60 to 85 \
+Japanese characters. Do not end `line` with a question that hands the choice back; the buttons \
+already do that. The options are shown as buttons and are not spoken: `label` is at most 10 \
+characters, and `description` is one short sentence of at most 25 characters.
+
+`detail` is read on the screen and is not spoken. Write it first, then `line` as its short \
+spoken version. It is 200 to 300 Japanese characters of plain text in one or two short \
+paragraphs, no lists and no markdown. It goes deeper than `line`: what the week shows, the one \
+principle you chose and why it applies here, and how the options fit. It follows every rule \
+above, with one exception about numbers: it may mention up to three numbers from the input, \
+and its first sentence may have one."""
+
+SYSTEM_INSTRUCTION = _RULES + _ENGLISH
+"""英語の指示。日本語は system_instruction(Language.JA)。"""
+
+_SYSTEM_INSTRUCTIONS = {Language.EN: SYSTEM_INSTRUCTION, Language.JA: _RULES + _JAPANESE}
+
+
+def system_instruction(language: Language = DEFAULT_LANGUAGE) -> str:
+    """その言語で書いてもらう指示。決まりの本体は共通で、言語と長さの段落だけが違う。"""
+    return _SYSTEM_INSTRUCTIONS[language]
+
+
+@dataclass(frozen=True)
+class _Lengths:
+    """セリフと長めの文の長さの範囲。英語は語数、日本語は文字数（空白を除く）で数える。"""
+
+    unit: str
+    line_min: int
+    line_max: int
+    detail_min: int
+    detail_max: int
+
+    def count(self, text: str) -> int:
+        if self.unit == "words":
+            return len(text.split())
+        return len("".join(text.split()))
+
+
+_LENGTHS = {
+    Language.EN: _Lengths(
+        "words", LINE_MIN_WORDS, LINE_MAX_WORDS, DETAIL_MIN_WORDS, DETAIL_MAX_WORDS
+    ),
+    Language.JA: _Lengths(
+        "chars", LINE_MIN_CHARS_JA, LINE_MAX_CHARS_JA, DETAIL_MIN_CHARS_JA, DETAIL_MAX_CHARS_JA
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -205,19 +282,24 @@ def review_prompt(
     )
 
 
-def check_review(content: ReviewContent) -> ReviewContent:
+def check_review(content: ReviewContent, language: Language = DEFAULT_LANGUAGE) -> ReviewContent:
     """セリフと選択肢の長さと数を確かめ、前後の空白を落として返す。合わなければ
     InvalidReviewError。画面で読む長めの文（detail）は返さない。check_detail で別に確かめる。
+    セリフの長さは、英語は語数、日本語は文字数で数える。
 
     中身が安全かどうかは、ここでは見ない（別の確認に任せる）。
     例外のメッセージには理由と長さだけを入れ、文言は入れない。書き直しのたびに警告ログに
     出るので、メモから来た体調の話などを残さないため。
     """
+    lengths = _LENGTHS[language]
     script = " ".join(content.script.split())
-    words = len(script.split())
-    if not LINE_MIN_WORDS <= words <= LINE_MAX_WORDS:
-        raise InvalidReviewError(f"line must be {LINE_MIN_WORDS}-{LINE_MAX_WORDS} words: {words}")
-    if _DIGIT.search(_first_sentence(script)):
+    size = lengths.count(script)
+    if not lengths.line_min <= size <= lengths.line_max:
+        raise InvalidReviewError(
+            f"line must be {lengths.line_min}-{lengths.line_max} {lengths.unit}: {size}"
+        )
+    first = _first_sentence(script)
+    if _DIGIT.search(first) or (language is Language.JA and _KANJI_NUMBER.search(first)):
         raise InvalidReviewError("the first sentence of line must have no numbers")
     if not MIN_OPTIONS <= len(content.options) <= MAX_OPTIONS:
         raise InvalidReviewError(
@@ -234,9 +316,9 @@ def check_review(content: ReviewContent) -> ReviewContent:
     return ReviewContent(script=script, options=options)
 
 
-def check_detail(detail: str) -> str:
-    """画面で読む長めの文の、段落の区切り（空行）を残して空白を整え、語数と数字の数を確かめる。
-    合わなければ InvalidReviewError。
+def check_detail(detail: str, language: Language = DEFAULT_LANGUAGE) -> str:
+    """画面で読む長めの文の、段落の区切り（空行）を残して空白を整え、長さと数字の数を確かめる。
+    合わなければ InvalidReviewError。長さは、英語は語数、日本語は文字数で数える。
 
     check_review とは分ける。長めの文が決まりに合わなくても、セリフと選択肢は話せるので、
     呼ぶ側は長めの文だけを落とす。入力にある数字かどうかまでは見ない（指示に任せる）。
@@ -244,10 +326,11 @@ def check_detail(detail: str) -> str:
     """
     paragraphs = [" ".join(p.split()) for p in _PARAGRAPH_BREAK.split(detail)]
     text = "\n\n".join(p for p in paragraphs if p)
-    words = len(text.split())
-    if not DETAIL_MIN_WORDS <= words <= DETAIL_MAX_WORDS:
+    lengths = _LENGTHS[language]
+    size = lengths.count(text)
+    if not lengths.detail_min <= size <= lengths.detail_max:
         raise InvalidReviewError(
-            f"detail must be {DETAIL_MIN_WORDS}-{DETAIL_MAX_WORDS} words: {words}"
+            f"detail must be {lengths.detail_min}-{lengths.detail_max} {lengths.unit}: {size}"
         )
     numbers = len(_NUMBER.findall(text))
     if numbers > DETAIL_MAX_NUMBERS:
@@ -258,7 +341,8 @@ def check_detail(detail: str) -> str:
 
 
 def _first_sentence(script: str) -> str:
-    """最初の文。. ! ? のあとに空白が続くところで切る（3.5 のような小数では切らない）。"""
+    """最初の文。. ! ? のあとに空白が続くところか、。！？ のあとで切る（3.5 のような小数では
+    切らない）。"""
     return _SENTENCE_END.split(script, maxsplit=1)[0]
 
 

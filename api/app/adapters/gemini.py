@@ -21,11 +21,12 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.core.config import Settings
 from app.domain.fallback_review import ReviewContent, ReviewOption
+from app.domain.language import DEFAULT_LANGUAGE, Language
 from app.domain.review_prompt import (
-    SYSTEM_INSTRUCTION,
     InvalidReviewError,
     check_detail,
     check_review,
+    system_instruction,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,14 +53,44 @@ class _Review(BaseModel):
     options: list[_Option] = Field(description="Two or three options. One must be the gentle one.")
 
 
-_CONFIG = types.GenerateContentConfig(
-    system_instruction=SYSTEM_INSTRUCTION,
-    response_mime_type="application/json",
-    response_schema=_Review,
-    temperature=0.8,
-    # 考える過程のトークンも含まれる。小さいと JSON が途中で切れる
-    max_output_tokens=8000,
-)
+# 日本語。形は英語と同じで、長さの説明だけを文字数にする
+class _OptionJa(BaseModel):
+    label: str = Field(description="Button text in Japanese, at most 10 characters.")
+    description: str = Field(
+        description="One short Japanese sentence shown under the button, at most 25 characters. "
+        "Not spoken."
+    )
+
+
+class _ReviewJa(BaseModel):
+    detail: str = Field(
+        description="Read on the screen, not spoken. 200 to 300 Japanese characters. "
+        "Write this first."
+    )
+    line: str = Field(description="What you say aloud, 60 to 85 Japanese characters.")
+    options: list[_OptionJa] = Field(
+        description="Two or three options. One must be the gentle one."
+    )
+
+
+_SCHEMAS: dict[Language, type[_Review] | type[_ReviewJa]] = {
+    Language.EN: _Review,
+    Language.JA: _ReviewJa,
+}
+
+
+def _config(language: Language) -> types.GenerateContentConfig:
+    return types.GenerateContentConfig(
+        system_instruction=system_instruction(language),
+        response_mime_type="application/json",
+        response_schema=_SCHEMAS[language],
+        temperature=0.8,
+        # 考える過程のトークンも含まれる。小さいと JSON が途中で切れる
+        max_output_tokens=8000,
+    )
+
+
+_CONFIGS = {language: _config(language) for language in Language}
 
 
 class GenerateContent(Protocol):
@@ -87,20 +118,24 @@ class GeminiReviewWriter:
         self._models = tuple(models)
         self._timeout_sec = timeout_sec
 
-    async def write(self, contents: str) -> ReviewContent | None:
-        """contents（domain の review_prompt）から週次レビューを書く。書けなければ None。"""
+    async def write(
+        self, contents: str, language: Language = DEFAULT_LANGUAGE
+    ) -> ReviewContent | None:
+        """contents（domain の review_prompt）から、language で週次レビューを書く。
+        書けなければ None。"""
         try:
             async with asyncio.timeout(self._timeout_sec):
-                return await self._try_models(contents)
+                return await self._try_models(contents, language)
         except TimeoutError:
             logger.warning("gemini: gave up after %s seconds", self._timeout_sec)
             return None
 
-    async def _try_models(self, contents: str) -> ReviewContent | None:
+    async def _try_models(self, contents: str, language: Language) -> ReviewContent | None:
+        config = _CONFIGS[language]
         for model in self._models:
             for attempt in range(1, ATTEMPTS_PER_MODEL + 1):
                 try:
-                    response = await self._generate(model=model, contents=contents, config=_CONFIG)
+                    response = await self._generate(model=model, contents=contents, config=config)
                 except errors.APIError as error:
                     if error.code in _NEXT_MODEL_CODES or error.code >= 500:
                         logger.warning("gemini: %s failed: %r", model, error)
@@ -116,28 +151,30 @@ class GeminiReviewWriter:
                     logger.error("gemini: authentication failed: %r", error)
                     return None
                 try:
-                    return _parse(response)
+                    return _parse(response, language)
                 except (ValidationError, InvalidReviewError) as error:
                     logger.warning("gemini: %s attempt %d invalid: %s", model, attempt, error)
         return None
 
 
-def _parse(response: types.GenerateContentResponse) -> ReviewContent:
-    """応答の JSON を読み、決まりに合うか確かめる。途中で切れた JSON は ValidationError。"""
+def _parse(response: types.GenerateContentResponse, language: Language) -> ReviewContent:
+    """応答の JSON を読み、その言語の決まりに合うか確かめる。途中で切れた JSON は
+    ValidationError。"""
     text = response.text
     if not text:
         # 安全のための打ち切りなどで、本文が空のことがある
         raise InvalidReviewError("empty response")
-    review = _Review.model_validate_json(text)
+    review = _SCHEMAS[language].model_validate_json(text)
     content = check_review(
         ReviewContent(
             script=review.line,
             options=tuple(ReviewOption(o.label, o.description) for o in review.options),
-        )
+        ),
+        language,
     )
     # 長めの文が決まりに合わなくても、セリフと選択肢は話せる。書き直させず、長めの文だけ落とす
     try:
-        detail = check_detail(review.detail)
+        detail = check_detail(review.detail, language)
     except InvalidReviewError as error:
         logger.warning("gemini: leaving out the detail: %s", error)
         return content

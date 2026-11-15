@@ -16,6 +16,7 @@ import {
   getCurrentReview,
   selectReviewOption,
 } from "../lib/api";
+import { I18nProvider } from "../i18n";
 import Review from "./Review";
 
 vi.mock("../lib/api", async (importOriginal) => ({
@@ -138,7 +139,7 @@ test("今の週の週次レビューがあれば、期間とセリフと選択�
   expect(script).not.toHaveAttribute("aria-label");
   // 期間は振り返った週、質問はこれから過ごす週。どちらもラベルで分かる
   expect(
-    screen.getByText("Week reviewed: 2026-10-19 – 2026-10-25"),
+    screen.getByText("Week reviewed: Oct 19 – Oct 25"),
   ).toBeInTheDocument();
   expect(
     screen.getByRole("heading", { name: "How will you spend the week ahead?" }),
@@ -283,9 +284,7 @@ test("過ぎた週の週次レビューを選ぼうとしたら、その場で�
   );
 
   expect(await screen.findByText(/A steady week/)).toBeInTheDocument();
-  expect(
-    screen.getByText("Week reviewed: 2026-10-26 – 2026-11-01"),
-  ).toBeInTheDocument();
+  expect(screen.getByText("Week reviewed: Oct 26 – Nov 1")).toBeInTheDocument();
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   expect(getCurrentReview).toHaveBeenCalledTimes(2);
 });
@@ -1396,4 +1395,17 @@ test("動かしたあとにスマートフォンの幅になったら、左右�
 
   expect(dock().style.transform).toBe("translate(0px, -100px)");
   vi.unstubAllGlobals();
+});
+
+test("対象の週の日付は、画面の言語で書く", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue(review());
+  render(
+    <I18nProvider language="ja" setLanguage={() => {}}>
+      <Review user={user} onOpenSettings={vi.fn()} />
+    </I18nProvider>,
+  );
+
+  expect(
+    await screen.findByText("対象の週: 10月19日〜10月25日"),
+  ).toBeInTheDocument();
 });

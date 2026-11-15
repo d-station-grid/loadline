@@ -19,6 +19,7 @@ from app.domain.calendar import start_of_day, today_for
 from app.domain.effort import HISTORY_WEEKS, Effort, PastWeek, judge_effort
 from app.domain.expression import DEFAULT_EXPRESSION, Expression, expression_for
 from app.domain.fallback_review import ReviewContent, ReviewOption, fallback_review
+from app.domain.language import Language
 from app.domain.line_check import LineCheck, flagged
 from app.domain.load import FitnessPoint, ZoneTimes
 from app.domain.note_check import NoteCheck, health_flag
@@ -44,11 +45,11 @@ logger = logging.getLogger(__name__)
 
 
 class ReviewWriter(Protocol):
-    """LLM で週次レビューを書く。書けなければ None（定型に切り替える）。
+    """LLM で週次レビューを language で書く。書けなければ None（定型に切り替える）。
     adapter の Gemini が実体。
     """
 
-    async def write(self, contents: str) -> ReviewContent | None: ...
+    async def write(self, contents: str, language: Language) -> ReviewContent | None: ...
 
 
 class LineChecker(Protocol):
@@ -314,7 +315,9 @@ async def _write(
             )
     if writer is None:
         return _Written(None, flag)
-    content = await writer.write(review_prompt(material, notes, health_flag=flag))
+    content = await writer.write(
+        review_prompt(material, notes, health_flag=flag), Language(user.language)
+    )
     if content is None:
         logger.warning(
             "review: the writer could not write; falling back to the fixed script for user %s",
@@ -410,8 +413,12 @@ async def _speak(
     audio: AudioStore | None,
 ) -> bytes | None:
     """セリフを声にする。voice と audio のどちらかがない（設定で切っている）、または
-    読めなければ None（音声なしで作る）。"""
-    if voice is None or audio is None:
+    読めなければ None（音声なしで作る）。
+
+    日本語のセリフは、日本語の声を入れるまで声にしない（今の声は英語だけで、日本語を
+    読ませると聞き取れない）。音声なしで作り、文字だけで見せる。
+    """
+    if voice is None or audio is None or Language(user.language) is not Language.EN:
         return None
     # 読み上げを待つ 10〜45 秒のあいだ、DB の接続を手放す
     await session.commit()
@@ -461,7 +468,7 @@ async def create_review(
     # 定型は前の週の選択とメモを読まない。メモを Jev で確かめたフラグだけを使う。
     # 定型のときの表情は relaxed（_Written の既定）
     content = written.content or fallback_review(
-        material.week, written.health_flag, material.effort
+        material.week, written.health_flag, material.effort, Language(user.language)
     )
     wav = await _speak(session, user, content.script, voice, audio)
     review = await session.scalar(
