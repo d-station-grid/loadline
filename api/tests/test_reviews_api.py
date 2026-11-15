@@ -280,6 +280,8 @@ async def test_post_writes_with_gemini_and_falls_back_to_the_fixed_script(
     assert body["is_fallback"] is is_fallback
     expected = json.loads(recorded("steady").text or "")
     assert (body["script"] == expected["line"]) is not is_fallback
+    # 画面で読む長めの文は、Gemini の文で作ったときだけ返る。定型は null
+    assert body["detail"] == (None if is_fallback else expected["detail"])
 
 
 async def test_post_voices_the_review_and_get_returns_the_audio_url(client: AsyncClient) -> None:

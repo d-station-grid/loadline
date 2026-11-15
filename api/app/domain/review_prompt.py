@@ -37,8 +37,16 @@ MAX_OPTIONS = 3
 # weekly_review_options の列の長さ
 LABEL_MAX_CHARS = 64
 DESCRIPTION_MAX_CHARS = 255
+# 画面で読む長めの文（detail）の長さ。指示では 80〜120 語と頼み、確かめるときは少し幅を
+# 持たせる。外れるたびに書き直させると、セリフごと定型に落ちやすくなるため
+DETAIL_MIN_WORDS = 70
+DETAIL_MAX_WORDS = 130
+# 長めの文で使ってよい数字の数（416 や 3.5 を 1 つと数える）
+DETAIL_MAX_NUMBERS = 3
 _DIGIT = re.compile(r"\d")
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s")
+_PARAGRAPH_BREAK = re.compile(r"\n\s*\n")
+_NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
 
 # 量や強度を上げる選択肢を出してよい状況。定型と同じ。判定は「疲労」より先に
 # 「記録が足りない」「走れなかった週」「中断明け」を当てるので、この 3 つも疲労が高いことがある
@@ -114,7 +122,7 @@ but do not judge whether they followed it.
 - You never give orders and never hand out a fixed plan. You offer two or three options and \
 let the person choose. One option must always be the gentle one (rest or easy). When \
 `may_offer_more` is false, or the notes mention pain or sickness, do not suggest raising \
-intensity, volume or the number of sessions, either in `line` or in any option.
+intensity, volume or the number of sessions, in `line`, in `detail` or in any option.
 - You are not a doctor. Do not diagnose, do not name medicines or treatments, do not say a \
 symptom is nothing to worry about. If pain or sickness keeps coming up, you may suggest \
 seeing a doctor, once, softly.
@@ -125,7 +133,14 @@ Write `line` and the options in English, even when the notes are in another lang
 Length: only `line` is spoken aloud, and it must take about 15 seconds to say: 28 to 40 \
 words. Do not end `line` with a question that hands the choice back (no "How would you like \
 to...?"); the buttons already do that. The options are shown as buttons and are not spoken: \
-`label` is 2 to 4 words, and `description` is one short sentence of at most 14 words."""
+`label` is 2 to 4 words, and `description` is one short sentence of at most 14 words.
+
+`detail` is read on the screen and is not spoken. Write it first, then `line` as its short \
+spoken version. It is 80 to 120 words of plain text in one or two short paragraphs, no lists \
+and no markdown. It goes deeper than `line`: what the week shows, the one principle you chose \
+and why it applies here, and how the options fit. It follows every rule above, with one \
+exception about numbers: it may mention up to three numbers from the input, and its first \
+sentence may have one."""
 
 
 @dataclass(frozen=True)
@@ -185,13 +200,14 @@ def review_prompt(
     }
     return (
         "Here is this person's past week as JSON. Numbers were counted and compared by our own "
-        "code; trust them. Write what you say today, and the options.\n\n"
+        "code; trust them. Write the detail, what you say today, and the options.\n\n"
         + json.dumps(data, ensure_ascii=False, indent=1)
     )
 
 
 def check_review(content: ReviewContent) -> ReviewContent:
-    """長さと数を確かめ、前後の空白を落として返す。合わなければ InvalidReviewError。
+    """セリフと選択肢の長さと数を確かめ、前後の空白を落として返す。合わなければ
+    InvalidReviewError。画面で読む長めの文（detail）は返さない。check_detail で別に確かめる。
 
     中身が安全かどうかは、ここでは見ない（別の確認に任せる）。
     例外のメッセージには理由と長さだけを入れ、文言は入れない。書き直しのたびに警告ログに
@@ -216,6 +232,29 @@ def check_review(content: ReviewContent) -> ReviewContent:
                 f"description must be 1-{DESCRIPTION_MAX_CHARS} chars: {len(o.description)}"
             )
     return ReviewContent(script=script, options=options)
+
+
+def check_detail(detail: str) -> str:
+    """画面で読む長めの文の、段落の区切り（空行）を残して空白を整え、語数と数字の数を確かめる。
+    合わなければ InvalidReviewError。
+
+    check_review とは分ける。長めの文が決まりに合わなくても、セリフと選択肢は話せるので、
+    呼ぶ側は長めの文だけを落とす。入力にある数字かどうかまでは見ない（指示に任せる）。
+    例外のメッセージには数だけを入れ、文言は入れない。
+    """
+    paragraphs = [" ".join(p.split()) for p in _PARAGRAPH_BREAK.split(detail)]
+    text = "\n\n".join(p for p in paragraphs if p)
+    words = len(text.split())
+    if not DETAIL_MIN_WORDS <= words <= DETAIL_MAX_WORDS:
+        raise InvalidReviewError(
+            f"detail must be {DETAIL_MIN_WORDS}-{DETAIL_MAX_WORDS} words: {words}"
+        )
+    numbers = len(_NUMBER.findall(text))
+    if numbers > DETAIL_MAX_NUMBERS:
+        raise InvalidReviewError(
+            f"detail must have at most {DETAIL_MAX_NUMBERS} numbers: {numbers}"
+        )
+    return text
 
 
 def _first_sentence(script: str) -> str:

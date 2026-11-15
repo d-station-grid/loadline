@@ -1963,6 +1963,17 @@
             "type": "string",
             "title": "Script"
           },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
           "status": {
             "$ref": "#/components/schemas/ReviewStatus"
           },
@@ -2004,6 +2015,7 @@
           "period_end",
           "situation",
           "script",
+          "detail",
           "status",
           "is_fallback",
           "expression",
@@ -2012,7 +2024,7 @@
           "options"
         ],
         "title": "WeeklyReviewOut",
-        "description": "週次レビュー。期間は利用者のタイムゾーンでの日付で、両端を含む。\n\nscript はアバターのセリフで、字幕にも使う。is_fallback が true なら人が書いた定型。\nexpression はセリフを話すときのアバターの表情。定型なら relaxed。\naudio_url はセリフの音声を期限つきで再生できる URL。null なら文字だけで見せる。\nnull は、声を作れなかった、声にしない設定、今は署名できなかった、のどれか。最後の\n場合は、次に読むと URL が出ることがある。options は position の順。"
+        "description": "週次レビュー。期間は利用者のタイムゾーンでの日付で、両端を含む。\n\nscript はアバターのセリフで、字幕にも使う。is_fallback が true なら人が書いた定型。\ndetail は画面で読む長めの文で、話さない。定型のとき、Jev で確かめられなかったとき、\ndetail を足す前に作った週次レビューは null。\nexpression はセリフを話すときのアバターの表情。定型なら relaxed。\naudio_url はセリフの音声を期限つきで再生できる URL。null なら文字だけで見せる。\nnull は、声を作れなかった、声にしない設定、今は署名できなかった、のどれか。最後の\n場合は、次に読むと URL が出ることがある。options は position の順。"
       },
       "WorkoutDetail": {
         "properties": {

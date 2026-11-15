@@ -152,6 +152,7 @@ class WeeklyReviewFactory(BaseFactory[WeeklyReview]):
     period_end = PostGenerated(lambda _name, values: values["period_start"] + timedelta(days=6))
     situation = "steady"
     script = "A steady week. Keeping this rhythm is how fitness builds over time."
+    detail = None
     audio_path = None
     status = ReviewStatus.COMPLETED.value
     is_fallback = True

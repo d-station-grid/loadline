@@ -12,6 +12,7 @@ from app.domain.review_prompt import (
     SYSTEM_INSTRUCTION,
     InvalidReviewError,
     NoteForReview,
+    check_detail,
     check_review,
     review_prompt,
 )
@@ -254,6 +255,67 @@ def test_check_review_accepts_and_trims() -> None:
 
     assert checked.script == LINE
     assert checked.options[0] == ReviewOption("Rest fully", "Take a few days off.")
+
+
+def test_check_detail_keeps_the_paragraphs() -> None:
+    """段落の区切り（空行）は残し、段落の中の空白と改行は 1 つの空白にする。"""
+    first = " ".join(["one"] * 40)
+    second = " ".join(["two"] * 40)
+
+    checked = check_detail(f"  {first}\n continues\n\n\n{second}  \n")
+
+    assert checked == f"{first} continues\n\n{second}"
+
+
+@pytest.mark.parametrize(("count", "ok"), [(69, False), (70, True), (130, True), (131, False)])
+def test_check_detail_counts_words(count: int, ok: bool) -> None:
+    """長めの文は 80〜120 語と頼み、70〜130 語なら受け取る。"""
+    detail = " ".join(["ride"] * count)
+    if ok:
+        assert check_detail(detail) == detail
+    else:
+        with pytest.raises(InvalidReviewError, match="words") as error:
+            check_detail(detail)
+        # 書き直しのたびに警告ログに出るので、文言は入れない
+        assert "ride" not in str(error.value)
+
+
+@pytest.mark.parametrize(
+    ("numbers", "ok"),
+    [
+        pytest.param("416 minutes, 4 sessions and 3.5 hours", True, id="three"),
+        pytest.param("416 minutes, 4 sessions, 3.5 hours and 1,200 calories", False, id="four"),
+    ],
+)
+def test_check_detail_allows_up_to_three_numbers(numbers: str, ok: bool) -> None:
+    """数字は 3 つまで。416 や 3.5、1,200 は 1 つと数える。"""
+    detail = f"You did {numbers}. " + " ".join(["ride"] * 75)
+    if ok:
+        assert check_detail(detail) == detail
+    else:
+        with pytest.raises(InvalidReviewError, match="at most 3 numbers"):
+            check_detail(detail)
+
+
+def test_check_review_does_not_return_the_detail() -> None:
+    """長めの文は check_detail で別に確かめる。check_review はセリフと選択肢だけを返す。"""
+    content = ReviewContent(script=LINE, options=OPTIONS, detail=" ".join(["ride"] * 80))
+
+    assert check_review(content).detail is None
+
+
+def test_system_instruction_keeps_more_load_out_of_the_detail() -> None:
+    """量を増やしてはいけない週は、長めの文でも勧めさせない。"""
+    assert "in `line`, in `detail` or in any option" in SYSTEM_INSTRUCTION
+
+
+def test_system_instruction_asks_for_the_detail_first() -> None:
+    """長めの文を先に書かせ、セリフをその短い話し言葉にする。長めの文も同じ決まりに従う。"""
+    assert "`detail` is read on the screen and is not spoken" in SYSTEM_INSTRUCTION
+    assert "Write it first, then `line` as its short" in SYSTEM_INSTRUCTION
+    assert "80 to 120 words" in SYSTEM_INSTRUCTION
+    assert "It follows every rule above, with one" in SYSTEM_INSTRUCTION
+    assert "up to three numbers from the input" in SYSTEM_INSTRUCTION
 
 
 @pytest.mark.parametrize(("count", "ok"), [(27, False), (28, True), (40, True), (41, False)])

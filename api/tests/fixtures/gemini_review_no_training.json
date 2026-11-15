@@ -4,7 +4,7 @@
    "content": {
     "parts": [
      {
-      "text": "{\n  \"line\": \"It looks like you had a completely quiet week with zero sessions. Life gets busy, and taking time away from training happens to everyone. Your body got a full rest, and we can ease back into things.\",\n  \"options\": [\n    {\n      \"label\": \"Take more rest\",\n      \"description\": \"Enjoy another quiet week away from training to stay refreshed.\"\n    },\n    {\n      \"label\": \"Short easy walk\",\n      \"description\": \"A gentle stroll to get moving again without any pressure.\"\n    }\n  ]\n}"
+      "text": "{\n  \"detail\": \"Travel and busy work trips can easily take over your schedule, and being away in Osaka made it sensible to set training aside. A few missed days barely touch your fitness, and coming back gently is the best way to keep what you have built. Rather than trying to make up for lost time, you can ease back in with a couple of short, relaxed outings. You could take an easy spin or run just to wake up the legs, or simply take a couple more quiet days if you are still settling back in.\",\n  \"line\": \"Traveling for work takes a lot out of you, so it makes total sense that training took a back seat. A few missed days barely touch your fitness, so ease back in with a gentle spin or run.\",\n  \"options\": [\n    {\n      \"label\": \"Rest and recover\",\n      \"description\": \"Take another quiet day or two to settle back in.\"\n    },\n    {\n      \"label\": \"Short easy shakeout\",\n      \"description\": \"Spin or jog gently just to get your legs moving again.\"\n    }\n  ]\n}"
      }
     ],
     "role": "model"
@@ -12,39 +12,40 @@
    "finish_reason": "STOP"
   }
  ],
- "create_time": "2026-11-01T03:41:14.506682Z",
+ "create_time": "2026-11-15T00:54:29.842637Z",
  "model_version": "gemini-3.8-flash",
- "response_id": "2rTmarr2HqqMx9gPopiT2QE",
+ "response_id": "xQL5ao23M7WLx9gPnaiEsQM",
  "usage_metadata": {
-  "candidates_token_count": 126,
+  "candidates_token_count": 238,
   "candidates_tokens_details": [
    {
     "modality": "TEXT",
-    "token_count": 126
+    "token_count": 238
    }
   ],
-  "prompt_token_count": 981,
+  "prompt_token_count": 1936,
   "prompt_tokens_details": [
    {
     "modality": "TEXT",
-    "token_count": 981
+    "token_count": 1936
    }
   ],
-  "thoughts_token_count": 1614,
-  "total_token_count": 2721,
+  "thoughts_token_count": 1788,
+  "total_token_count": 3962,
   "traffic_type": "ON_DEMAND"
  },
  "automatic_function_calling_history": [],
  "parsed": {
-  "line": "It looks like you had a completely quiet week with zero sessions. Life gets busy, and taking time away from training happens to everyone. Your body got a full rest, and we can ease back into things.",
+  "detail": "Travel and busy work trips can easily take over your schedule, and being away in Osaka made it sensible to set training aside. A few missed days barely touch your fitness, and coming back gently is the best way to keep what you have built. Rather than trying to make up for lost time, you can ease back in with a couple of short, relaxed outings. You could take an easy spin or run just to wake up the legs, or simply take a couple more quiet days if you are still settling back in.",
+  "line": "Traveling for work takes a lot out of you, so it makes total sense that training took a back seat. A few missed days barely touch your fitness, so ease back in with a gentle spin or run.",
   "options": [
    {
-    "label": "Take more rest",
-    "description": "Enjoy another quiet week away from training to stay refreshed."
+    "label": "Rest and recover",
+    "description": "Take another quiet day or two to settle back in."
    },
    {
-    "label": "Short easy walk",
-    "description": "A gentle stroll to get moving again without any pressure."
+    "label": "Short easy shakeout",
+    "description": "Spin or jog gently just to get your legs moving again."
    }
   ]
  }

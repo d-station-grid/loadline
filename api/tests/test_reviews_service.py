@@ -615,16 +615,25 @@ class FakeChecker:
     """受け取ったセリフとメモを控え、決めた結果を返す。"""
 
     def __init__(
-        self, result: LineCheck | None, notes_result: NoteCheck | None = NO_HEALTH_NOTE
+        self,
+        result: LineCheck | None,
+        notes_result: NoteCheck | None = NO_HEALTH_NOTE,
+        detail_result: LineCheck | None = SAFE,
     ) -> None:
         self.result = result
         self.notes_result = notes_result
+        self.detail_result = detail_result
         self.contents: list[ReviewContent] = []
         self.notes: list[list[NoteForReview]] = []
+        self.details: list[str] = []
 
     async def check(self, content: ReviewContent) -> LineCheck | None:
         self.contents.append(content)
         return self.result
+
+    async def check_detail(self, detail: str) -> LineCheck | None:
+        self.details.append(detail)
+        return self.detail_result
 
     async def check_notes(self, notes: Sequence[NoteForReview]) -> NoteCheck | None:
         self.notes.append(list(notes))
@@ -650,6 +659,84 @@ async def test_create_review_saves_what_the_writer_wrote(session: AsyncSession) 
     ]
     # 判定はコードで決めたものを渡し、保存する
     assert writer.data()["situation"] == review.situation.value
+
+
+DETAIL = "This week shows a steady rhythm. " + " ".join(["word"] * 80)
+WRITTEN_WITH_DETAIL = replace(WRITTEN, detail=DETAIL)
+
+
+async def test_create_review_saves_the_detail_checked_by_jev(session: AsyncSession) -> None:
+    """画面で読む長めの文も Jev で確かめ、話してよければ保存して返す。"""
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+    checker = FakeChecker(SAFE)
+
+    review, _ = await create_review(
+        session, user, FakeWriter(WRITTEN_WITH_DETAIL), checker, today=TODAY
+    )
+
+    assert checker.details == [DETAIL]
+    assert review.detail == DETAIL
+    assert (await session.scalar(select(WeeklyReview.detail))) == DETAIL
+
+
+@pytest.mark.parametrize(
+    "detail_result",
+    [
+        pytest.param(None, id="could_not_check"),
+        pytest.param(replace(SAFE, medical_advice=0.9), id="flagged"),
+    ],
+)
+async def test_detail_is_left_out_when_jev_does_not_pass_it(
+    session: AsyncSession, detail_result: LineCheck | None
+) -> None:
+    """長めの文を確かめられない、または引っかかったら、その文だけ出さない。セリフと選択肢、
+    表情は確かめ済みなので、Gemini の文のまま話す。"""
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+    checker = FakeChecker(SAFE, detail_result=detail_result)
+
+    review, _ = await create_review(
+        session, user, FakeWriter(WRITTEN_WITH_DETAIL), checker, today=TODAY
+    )
+
+    assert review.detail is None
+    assert not review.is_fallback
+    assert review.script == WRITTEN.script
+    assert review.expression.value == "happy"
+
+
+async def test_detail_offering_more_is_left_out_when_more_is_not_allowed(
+    session: AsyncSession,
+) -> None:
+    """増やす選択肢を出してはいけない週は、長めの文が増やすことを勧めていても出さない。"""
+    user = await _user()
+    await _weekly_rides(user, MONDAY - timedelta(weeks=5), 5)
+    await _ride(user, "2026-10-13T07:00")
+    await _ride(user, "2026-10-15T07:00")
+    checker = FakeChecker(SAFE, detail_result=replace(SAFE, offers_more=0.9))
+
+    review, _ = await create_review(
+        session, user, FakeWriter(WRITTEN_WITH_DETAIL), checker, today=TODAY
+    )
+
+    assert review.detail is None
+    assert not review.is_fallback
+
+
+async def test_fallback_has_no_detail(session: AsyncSession) -> None:
+    """定型には長めの文がない。セリフを Jev が止めたら、長めの文も確かめない。"""
+    user = await _user()
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+    checker = FakeChecker(replace(SAFE, pushes_harder=0.9))
+
+    review, _ = await create_review(
+        session, user, FakeWriter(WRITTEN_WITH_DETAIL), checker, today=TODAY
+    )
+
+    assert review.is_fallback
+    assert review.detail is None
+    assert checker.details == []
 
 
 async def test_create_review_falls_back_when_the_writer_cannot_write(

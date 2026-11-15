@@ -4,7 +4,7 @@
    "content": {
     "parts": [
      {
-      "text": "{\"line\":\"You aimed to keep it steady, and you did just that across four sessions. It sounds like those hills with friends felt wonderful on the legs. Your fitness and fatigue are in a great balance right now.\",\"options\":[{\"label\":\"Take it easy\",\"description\":\"Give yourself extra rest and focus on gentle movement.\"},{\"label\":\"Keep it steady\",\"description\":\"Stay with the same balanced rhythm for another week.\"},{\"label\":\"Build a little\",\"description\":\"Add a small bit of extra time to your training.\"}]}"
+      "text": "{\n  \"detail\": \"You held your usual routine nicely this week, balancing four sessions without letting tiredness take over. It is wonderful that your legs felt great on that hill ride with friends. Your watch shows your fitness trend ticking up, which suggests that your steady work may be starting to show. Weeks of steady training add up to more than one big week. You are in a good rhythm where fatigue and fitness are well balanced. From here, you can hold this steady course, gently build a little more time, or take an easier week if you feel like stepping back.\",\n  \"line\": \"You had a really smooth week, and it is great that your hill ride felt so good. Steady training adds up to much more than a big push, and that regular rhythm may be starting to show.\",\n  \"options\": [\n    {\n      \"label\": \"Keep this rhythm\",\n      \"description\": \"Stay with the same steady volume and mix of sessions next week.\"\n    },\n    {\n      \"label\": \"Add a little time\",\n      \"description\": \"Gently nudge your training time up while keeping the effort comfortable.\"\n    },\n    {\n      \"label\": \"Take an easy week\",\n      \"description\": \"Dial back the sessions to rest and let the work sink in.\"\n    }\n  ]\n}"
      }
     ],
     "role": "model"
@@ -12,43 +12,44 @@
    "finish_reason": "STOP"
   }
  ],
- "create_time": "2026-11-01T03:40:47.495571Z",
+ "create_time": "2026-11-15T00:53:51.615218Z",
  "model_version": "gemini-3.8-flash",
- "response_id": "v7TmatOfHu6Nx9gPlOKYgQM",
+ "response_id": "nwL5arLGJfacx9gPpoXm4Q4",
  "usage_metadata": {
-  "candidates_token_count": 105,
+  "candidates_token_count": 282,
   "candidates_tokens_details": [
    {
     "modality": "TEXT",
-    "token_count": 105
+    "token_count": 282
    }
   ],
-  "prompt_token_count": 1058,
+  "prompt_token_count": 1939,
   "prompt_tokens_details": [
    {
     "modality": "TEXT",
-    "token_count": 1058
+    "token_count": 1939
    }
   ],
-  "thoughts_token_count": 1536,
-  "total_token_count": 2699,
+  "thoughts_token_count": 3264,
+  "total_token_count": 5485,
   "traffic_type": "ON_DEMAND"
  },
  "automatic_function_calling_history": [],
  "parsed": {
-  "line": "You aimed to keep it steady, and you did just that across four sessions. It sounds like those hills with friends felt wonderful on the legs. Your fitness and fatigue are in a great balance right now.",
+  "detail": "You held your usual routine nicely this week, balancing four sessions without letting tiredness take over. It is wonderful that your legs felt great on that hill ride with friends. Your watch shows your fitness trend ticking up, which suggests that your steady work may be starting to show. Weeks of steady training add up to more than one big week. You are in a good rhythm where fatigue and fitness are well balanced. From here, you can hold this steady course, gently build a little more time, or take an easier week if you feel like stepping back.",
+  "line": "You had a really smooth week, and it is great that your hill ride felt so good. Steady training adds up to much more than a big push, and that regular rhythm may be starting to show.",
   "options": [
    {
-    "label": "Take it easy",
-    "description": "Give yourself extra rest and focus on gentle movement."
+    "label": "Keep this rhythm",
+    "description": "Stay with the same steady volume and mix of sessions next week."
    },
    {
-    "label": "Keep it steady",
-    "description": "Stay with the same balanced rhythm for another week."
+    "label": "Add a little time",
+    "description": "Gently nudge your training time up while keeping the effort comfortable."
    },
    {
-    "label": "Build a little",
-    "description": "Add a small bit of extra time to your training."
+    "label": "Take an easy week",
+    "description": "Dial back the sessions to rest and let the work sink in."
    }
   ]
  }

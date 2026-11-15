@@ -154,6 +154,11 @@ class JevLineChecker:
             logger.warning("jev: unexpected answer: %s", error)
             return None
 
+    async def check_detail(self, detail: str) -> LineCheck | None:
+        """画面で読む長めの文（detail）を、セリフと同じ問いで確かめた答え。確かめられなければ
+        None。表情の答えも返るが、表情はセリフの答えで決めるので、呼ぶ側は使わない。"""
+        return await self.check(ReviewContent(script=detail, options=()))
+
     async def check_notes(self, notes: Sequence[NoteForReview]) -> NoteCheck | None:
         """その週のメモを確かめた答え。確かめられなければ None。メモが空なら、呼ぶ側が呼ばない。"""
         response = await self._ask({"notes": notes_to_check(notes)}, NOTE_QUESTIONS)

@@ -1,4 +1,4 @@
-"""Vertex AI の Gemini に、週次レビューのセリフと選択肢を書いてもらう。
+"""Vertex AI の Gemini に、週次レビューのセリフと選択肢、画面で読む長めの文を書いてもらう。
 
 構造化出力で JSON を受け取り、domain の決まり（長さと数）で確かめる。モデルは先頭から
 順に試す。混雑や障害で呼べなければ次のモデルへ、壊れた JSON や決まりに合わない応答なら
@@ -10,6 +10,7 @@
 import asyncio
 import logging
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Protocol
 
 import httpx
@@ -20,7 +21,12 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.core.config import Settings
 from app.domain.fallback_review import ReviewContent, ReviewOption
-from app.domain.review_prompt import SYSTEM_INSTRUCTION, InvalidReviewError, check_review
+from app.domain.review_prompt import (
+    SYSTEM_INSTRUCTION,
+    InvalidReviewError,
+    check_detail,
+    check_review,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +44,10 @@ class _Option(BaseModel):
 
 
 class _Review(BaseModel):
+    # detail を先に書かせ、line をその短い話し言葉にする。項目の順に書かれるため
+    detail: str = Field(
+        description="Read on the screen, not spoken. 80 to 120 words. Write this first."
+    )
     line: str = Field(description="What you say aloud, 28 to 40 words.")
     options: list[_Option] = Field(description="Two or three options. One must be the gentle one.")
 
@@ -119,12 +129,19 @@ def _parse(response: types.GenerateContentResponse) -> ReviewContent:
         # 安全のための打ち切りなどで、本文が空のことがある
         raise InvalidReviewError("empty response")
     review = _Review.model_validate_json(text)
-    return check_review(
+    content = check_review(
         ReviewContent(
             script=review.line,
             options=tuple(ReviewOption(o.label, o.description) for o in review.options),
         )
     )
+    # 長めの文が決まりに合わなくても、セリフと選択肢は話せる。書き直させず、長めの文だけ落とす
+    try:
+        detail = check_detail(review.detail)
+    except InvalidReviewError as error:
+        logger.warning("gemini: leaving out the detail: %s", error)
+        return content
+    return replace(content, detail=detail)
 
 
 def gemini_writer(settings: Settings) -> GeminiReviewWriter | None:

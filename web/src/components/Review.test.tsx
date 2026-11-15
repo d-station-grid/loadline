@@ -76,6 +76,7 @@ function review(chosen: number | null = null): WeeklyReviewOut {
     period_end: "2026-10-25",
     situation: "fatigued",
     script: "A heavy week. Your fatigue is well above your fitness.",
+    detail: null,
     status: "completed",
     is_fallback: true,
     expression: "relaxed",

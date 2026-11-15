@@ -6,7 +6,7 @@
 
 import logging
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import Protocol
 from zoneinfo import ZoneInfo
@@ -56,6 +56,8 @@ class LineChecker(Protocol):
     確かめられなければ None。adapter の Jev が実体。"""
 
     async def check(self, content: ReviewContent) -> LineCheck | None: ...
+
+    async def check_detail(self, detail: str) -> LineCheck | None: ...
 
     async def check_notes(self, notes: Sequence[NoteForReview]) -> NoteCheck | None: ...
 
@@ -334,7 +336,32 @@ async def _write(
             user.id,
         )
         return _Written(None, flag)
-    return _Written(content, flag, expression_for(check.expression))
+    detail = await _checked_detail(
+        checker, content.detail, may_offer_more(week.situation, flag, material.effort), user
+    )
+    return _Written(replace(content, detail=detail), flag, expression_for(check.expression))
+
+
+async def _checked_detail(
+    checker: LineChecker, detail: str | None, may_offer_more: bool, user: User
+) -> str | None:
+    """画面で読む長めの文を、セリフと同じ決まりで Jev に確かめる。確かめられない、または
+    引っかかったら None（その文だけ出さない）。セリフと選択肢は確かめ済みなので、そのまま話す。"""
+    if detail is None:
+        return None
+    check = await checker.check_detail(detail)
+    if check is None:
+        logger.warning("review: could not check the detail; leaving it out for user %s", user.id)
+        return None
+    if risks := flagged(check, may_offer_more):
+        logger.warning(
+            "review: the detail was flagged (%s); leaving it out for user %s",
+            # 文は残さない
+            ", ".join(f"{name}={yes:.2f}" for name, yes in risks.items()),
+            user.id,
+        )
+        return None
+    return detail
 
 
 async def _options(session: AsyncSession, review_id: int) -> list[WeeklyReviewOption]:
@@ -365,6 +392,7 @@ async def _out(
         period_end=review.period_end,
         situation=Situation(review.situation),
         script=review.script,
+        detail=review.detail,
         status=ReviewStatus(review.status),
         is_fallback=review.is_fallback,
         expression=Expression(review.expression),
@@ -444,6 +472,7 @@ async def create_review(
             period_end=end,
             situation=material.week.situation.value,
             script=content.script,
+            detail=content.detail,
             status=ReviewStatus.COMPLETED.value,
             is_fallback=written.content is None,
             expression=written.expression.value,
