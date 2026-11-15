@@ -33,7 +33,7 @@ from app.domain.situation import (
     WeekSituation,
     judge_week,
 )
-from app.domain.vo2max import Vo2maxPoint, Vo2maxTrend, vo2max_trend_until
+from app.domain.vo2max import Vo2maxTrend, vo2max_trend_of
 from app.models import Note, ReviewStatus, User, WeeklyReview, WeeklyReviewOption, Workout
 from app.schemas.dashboard import DayPoint
 from app.schemas.reviews import ReviewOptionOut, WeeklyReviewOut
@@ -197,10 +197,8 @@ async def _judge(
         ),
         history=history,
     )
-    # VO2max の 30 日平均は、ダッシュボードが期間の前の測定も含めて計算済み
-    vo2max = vo2max_trend_until(
-        [Vo2maxPoint(day=p.day, value=p.value, average=p.average) for p in dashboard.vo2max], end
-    )
+    # VO2max の差は、ダッシュボードのカードが週の最終日までで出したものをそのまま区分する
+    vo2max = vo2max_trend_of(dashboard.changes.vo2max)
     return week, effort, vo2max
 
 

@@ -6,7 +6,11 @@
 負荷の比の数値は渡さない（「1.6 倍」のように話させない）。区分だけを渡す。
 渡す数字は、定型と同じく回数、分、休んだ日数とその差だけ。体力と疲労の値は渡さない。
 今の計算の単位では体力が 20 前後になり、一般的な目安の数字と比べると誤解を招くため。
-VO2max も、数値ではなく 4 週前と比べた傾向（上がった・横ばい・下がった）だけを渡す。
+VO2max も、数値ではなく前の測定と比べた傾向（上がった・横ばい・下がった）だけを渡す。
+比べる間隔は 28 日以上で、測定が空くともっと長いので、期間の長さは言わせない。
+
+数字の読み上げを防ぐため、line の最初の文に数字（0〜9）があれば決まりに合わないとして
+書き直させる。英単語で書いた数（five など）はコードでは拾えないので、指示に任せる。
 
 数字だけを渡すと、セリフが入力の言い直しになる。そこで、一般に知られた練習の原則を
 指示に書いておき、その週の判定に合うものを 1 つ選んで、理由として添えてもらう。
@@ -15,6 +19,7 @@ VO2max も、数値ではなく 4 週前と比べた傾向（上がった・横�
 """
 
 import json
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -32,6 +37,8 @@ MAX_OPTIONS = 3
 # weekly_review_options の列の長さ
 LABEL_MAX_CHARS = 64
 DESCRIPTION_MAX_CHARS = 255
+_DIGIT = re.compile(r"\d")
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s")
 
 # 量や強度を上げる選択肢を出してよい状況。定型と同じ。判定は「疲労」より先に
 # 「記録が足りない」「走れなかった週」「中断明け」を当てるので、この 3 つも疲労が高いことがある
@@ -64,9 +71,9 @@ fitness and fatigue cannot be read yet.
   - fatigued: fatigue is well above fitness.
   - fresh: fatigue is below fitness, so there is room to train.
   - steady: fitness and fatigue are in balance.
-- Use only numbers that appear in the input, and mention at most two. Numbers are optional; \
-do not open `line` with them. Never calculate new numbers and never give fitness or fatigue \
-as a number.
+- Use only numbers that appear in the input, and mention at most one. Numbers are optional, \
+and the first sentence of `line` must have no numbers at all, in digits or in words. Never \
+calculate new numbers and never give fitness or fatigue as a number.
 - If the notes explain the week, connect them to it. The notes are the person's own words; \
 refer to them naturally instead of quoting them.
 - Never invent events, feelings or places that are not in the notes or the numbers.
@@ -83,8 +90,9 @@ time for this.
   - `hard_effort_time_went_up`: true means the load was clearly above usual and time at hard \
 effort also went up. It does not tell how much of the extra load came from hard efforts, so \
 never say the increase came mainly from them. Suggest going easy on hard sessions for now.
-- `vo2max_trend` is how the watch's VO2max estimate moved over the last four weeks: up, flat \
-or down. null means there are not enough readings; then do not mention VO2max. It is an \
+- `vo2max_trend` is how the watch's VO2max estimate moved compared with an earlier reading: \
+up, flat or down. The gap between the readings varies, so never say how long the period was. \
+null means there are not enough readings; then do not mention VO2max. It is an \
 estimate from the watch and it wobbles, so never say this week or any one session caused it. \
 If it is up, you may say, without certainty, that their steady work may be starting to show. \
 If it is flat or down, mention it only if it helps, and never as a failure: a short dip is \
@@ -191,6 +199,8 @@ def check_review(content: ReviewContent) -> ReviewContent:
     words = len(script.split())
     if not LINE_MIN_WORDS <= words <= LINE_MAX_WORDS:
         raise InvalidReviewError(f"line must be {LINE_MIN_WORDS}-{LINE_MAX_WORDS} words: {words}")
+    if _DIGIT.search(_first_sentence(script)):
+        raise InvalidReviewError(f"the first sentence of line must have no numbers: {script!r}")
     if not MIN_OPTIONS <= len(content.options) <= MAX_OPTIONS:
         raise InvalidReviewError(
             f"options must be {MIN_OPTIONS}-{MAX_OPTIONS}: {len(content.options)}"
@@ -204,6 +214,11 @@ def check_review(content: ReviewContent) -> ReviewContent:
                 f"description must be 1-{DESCRIPTION_MAX_CHARS} chars: {o.description!r}"
             )
     return ReviewContent(script=script, options=options)
+
+
+def _first_sentence(script: str) -> str:
+    """最初の文。. ! ? のあとに空白が続くところで切る（3.5 のような小数では切らない）。"""
+    return _SENTENCE_END.split(script, maxsplit=1)[0]
 
 
 def _minutes(sec: int) -> int:

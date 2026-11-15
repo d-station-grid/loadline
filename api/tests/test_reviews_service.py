@@ -480,13 +480,18 @@ async def test_heavy_week_keeps_the_writer_from_offering_more(session: AsyncSess
     assert writer.data()["may_offer_more"] is False
 
 
-async def test_material_has_the_vo2max_trend_until_the_end_of_the_week(
-    session: AsyncSession,
-) -> None:
-    """週の最終日までの 30 日平均を、4 週前の 30 日平均と比べる。週の後の測定は使わない。"""
+async def test_material_classifies_the_vo2max_change_on_the_card(session: AsyncSession) -> None:
+    """カードと同じ差（最新 − 28 日前かそれより前の最後の測定）を区分する。30 日平均どうしを
+    比べると 9/17=50・10/15=46.5 で差が小さく横ばいになり、カードの −3.5 と食い違っていた。
+    9 週より前の 8/1 の測定も、カードと同じく比べる相手になる。週の後の測定は使わない。"""
     user = await _user()
     await _weekly_rides(user, MONDAY - timedelta(weeks=5), 5)
-    for day, value in (("2026-09-15", "45.0"), ("2026-10-15", "46.0"), ("2026-10-19", "40.0")):
+    for day, value in (
+        ("2026-08-01", "44.0"),
+        ("2026-09-17", "50.0"),
+        ("2026-10-15", "46.5"),
+        ("2026-10-19", "55.0"),
+    ):
         await Vo2maxReadingFactory.create_async(
             user_id=user.id,
             measured_at=datetime.fromisoformat(f"{day}T08:00").replace(tzinfo=JST),
@@ -495,8 +500,23 @@ async def test_material_has_the_vo2max_trend_until_the_end_of_the_week(
 
     material = await review_material(session, user, MONDAY, TODAY)
 
-    # 10/15 の 30 日平均は 9/16〜10/15 で 46.0 だけ。9/15 の平均は 45.0。差は 1.0
-    assert material.vo2max is Vo2maxTrend.UP
+    assert material.vo2max is Vo2maxTrend.DOWN
+
+
+async def test_material_compares_vo2max_with_a_reading_before_the_nine_weeks(
+    session: AsyncSession,
+) -> None:
+    """比べる相手が 8/1 しかなくても、カードと同じく +2.0 で「上がった」。"""
+    user = await _user()
+    await _weekly_rides(user, MONDAY - timedelta(weeks=5), 5)
+    for day, value in (("2026-08-01", "44.0"), ("2026-10-15", "46.0")):
+        await Vo2maxReadingFactory.create_async(
+            user_id=user.id,
+            measured_at=datetime.fromisoformat(f"{day}T08:00").replace(tzinfo=JST),
+            value=Decimal(value),
+        )
+
+    assert (await review_material(session, user, MONDAY, TODAY)).vo2max is Vo2maxTrend.UP
 
 
 async def test_material_has_no_vo2max_trend_without_readings(session: AsyncSession) -> None:
