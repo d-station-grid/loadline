@@ -238,12 +238,12 @@ async def japanese_demo(session: AsyncSession, demo: User) -> User:
 
 
 @pytest.mark.parametrize(
-    ("accept_language", "language"),
+    ("guest_language", "language"),
     [
-        pytest.param("ja,en-US;q=0.9", "ja", id="japanese"),
-        pytest.param("en-US,en;q=0.9", "en", id="english"),
+        pytest.param("ja", "ja", id="japanese"),
+        pytest.param("en", "en", id="english"),
         pytest.param(None, "en", id="no_header"),
-        pytest.param("fr-FR", "en", id="unknown"),
+        pytest.param("fr", "en", id="unknown"),
     ],
 )
 async def test_guest_sees_the_demo_in_the_browsers_language(
@@ -251,13 +251,13 @@ async def test_guest_sees_the_demo_in_the_browsers_language(
     session: AsyncSession,
     demo: User,
     japanese_demo: User,
-    accept_language: str | None,
+    guest_language: str | None,
     language: str,
 ) -> None:
-    """ゲストは、ブラウザの Accept-Language で英語と日本語のデモを選ぶ。画面の言語とそろえる。"""
+    """ゲストは、web が送る画面の言語（X-Guest-Language）で英語と日本語のデモを選ぶ。"""
     headers = dict(GUEST)
-    if accept_language is not None:
-        headers["Accept-Language"] = accept_language
+    if guest_language is not None:
+        headers["X-Guest-Language"] = guest_language
     expected = japanese_demo if language == "ja" else demo
 
     review = await client.get("/reviews/current", headers=headers)
@@ -278,12 +278,31 @@ async def test_japanese_guest_sees_the_english_demo_before_it_is_seeded(
     client: AsyncClient, demo: User
 ) -> None:
     """日本語のデモを seed で入れる前は、日本語のゲストにも英語のデモを見せる。"""
-    res = await client.post(
-        "/auth/login", headers={**GUEST, "Accept-Language": "ja"}, json={"language": "ja-JP"}
-    )
+    headers = {**GUEST, "X-Guest-Language": "ja"}
 
-    assert res.status_code == 200
-    assert res.json()["id"] == demo.id
+    login = await client.post("/auth/login", headers=headers)
+    review = await client.get("/reviews/current", headers=headers)
+
+    assert login.status_code == review.status_code == 200
+    assert login.json()["id"] == demo.id
+    assert review.json() is not None
+
+
+async def test_guest_login_and_the_other_apis_pick_the_same_demo(
+    client: AsyncClient, session: AsyncSession, demo: User, japanese_demo: User
+) -> None:
+    """ログインもほかの窓口も、X-Guest-Language だけでデモの利用者を選ぶ。ログインの本文の
+    language（ブラウザの言語タグ）や Accept-Language が食い違っても、同じデモになる。"""
+    headers = {**GUEST, "X-Guest-Language": "en", "Accept-Language": "ja,en;q=0.9"}
+
+    login = await client.post("/auth/login", headers=headers, json={"language": "ja-JP"})
+    review = await client.get("/reviews/current", headers=headers)
+
+    assert login.json()["id"] == demo.id
+    english_reviews = set(
+        await session.scalars(select(WeeklyReview.id).where(WeeklyReview.user_id == demo.id))
+    )
+    assert review.json()["id"] in english_reviews
 
 
 async def test_japanese_demo_has_japanese_notes_and_reviews(
@@ -354,7 +373,9 @@ async def test_a_failed_seed_keeps_the_previous_demo_data(
         await seed_demo_atomically(committed)
 
     # 英語と日本語のデモが、どちらも前のまま残る
-    assert await _demo_state(committed) == (first, 2 * REVIEWS, 2 * (REVIEWS - 1))
+    ids, reviews, selected = await _demo_state(committed)
+    assert set(ids) == set(first)
+    assert (reviews, selected) == (2 * REVIEWS, 2 * (REVIEWS - 1))
 
 
 async def test_seeding_twice_at_once_leaves_one_demo_user_per_language(
@@ -417,7 +438,7 @@ async def test_a_failed_seed_deletes_its_new_audio_and_keeps_the_previous(
         await seed_demo_atomically(committed, voice=FakeVoice(), audio=audio)
 
     # 前のデモは行も音声もそのまま。途中まで置いた新しい音声は消える
-    assert (await _demo_state(committed))[0] == first
+    assert set((await _demo_state(committed))[0]) == set(first)
     assert audio.files == before
 
 

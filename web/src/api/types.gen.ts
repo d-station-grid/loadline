@@ -942,6 +942,12 @@ export type LoginAuthLoginPostData = {
    * Body
    */
   body?: LoginIn | null;
+  headers?: {
+    /**
+     * X-Guest-Language
+     */
+    "X-Guest-Language"?: string | null;
+  };
   path?: never;
   query?: never;
   url: "/auth/login";
@@ -973,6 +979,12 @@ export type LoginAuthLoginPostResponse =
 
 export type ReadDashboardDashboardGetData = {
   body?: never;
+  headers?: {
+    /**
+     * X-Guest-Language
+     */
+    "X-Guest-Language"?: string | null;
+  };
   path?: never;
   query?: {
     /**
@@ -1040,6 +1052,12 @@ export type ReceiveIngestPostResponse =
 
 export type DeleteMeMeDeleteData = {
   body?: never;
+  headers?: {
+    /**
+     * X-Guest-Language
+     */
+    "X-Guest-Language"?: string | null;
+  };
   path?: never;
   query?: never;
   url: "/me";
@@ -1051,10 +1069,17 @@ export type DeleteMeMeDeleteErrors = {
    */
   403: unknown;
   /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+  /**
    * 音声か Firebase の利用者を消せなかった。記録とログインは残るので、やり直せる
    */
   502: unknown;
 };
+
+export type DeleteMeMeDeleteError =
+  DeleteMeMeDeleteErrors[keyof DeleteMeMeDeleteErrors];
 
 export type DeleteMeMeDeleteResponses = {
   /**
@@ -1068,6 +1093,12 @@ export type DeleteMeMeDeleteResponse =
 
 export type ReadNotesNotesGetData = {
   body?: never;
+  headers?: {
+    /**
+     * X-Guest-Language
+     */
+    "X-Guest-Language"?: string | null;
+  };
   path?: never;
   query?: {
     /**
@@ -1104,6 +1135,12 @@ export type ReadNotesNotesGetResponse =
 
 export type AddNoteNotesPostData = {
   body: NoteIn;
+  headers?: {
+    /**
+     * X-Guest-Language
+     */
+    "X-Guest-Language"?: string | null;
+  };
   path?: never;
   query?: never;
   url: "/notes";
@@ -1143,6 +1180,12 @@ export type AddNoteNotesPostResponse =
 
 export type RemoveNoteNotesNoteIdDeleteData = {
   body?: never;
+  headers?: {
+    /**
+     * X-Guest-Language
+     */
+    "X-Guest-Language"?: string | null;
+  };
   path: {
     /**
      * Note Id
@@ -1183,6 +1226,12 @@ export type RemoveNoteNotesNoteIdDeleteResponse =
 
 export type EditNoteNotesNoteIdPatchData = {
   body: NoteUpdate;
+  headers?: {
+    /**
+     * X-Guest-Language
+     */
+    "X-Guest-Language"?: string | null;
+  };
   path: {
     /**
      * Note Id
@@ -1223,6 +1272,12 @@ export type EditNoteNotesNoteIdPatchResponse =
 
 export type AddReviewReviewsPostData = {
   body?: never;
+  headers?: {
+    /**
+     * X-Guest-Language
+     */
+    "X-Guest-Language"?: string | null;
+  };
   path?: never;
   query?: never;
   url: "/reviews";
@@ -1237,7 +1292,14 @@ export type AddReviewReviewsPostErrors = {
    * 最大心拍か安静時心拍が未設定
    */
   409: unknown;
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
 };
+
+export type AddReviewReviewsPostError =
+  AddReviewReviewsPostErrors[keyof AddReviewReviewsPostErrors];
 
 export type AddReviewReviewsPostResponses = {
   /**
@@ -1255,6 +1317,12 @@ export type AddReviewReviewsPostResponse =
 
 export type ReadCurrentReviewReviewsCurrentGetData = {
   body?: never;
+  headers?: {
+    /**
+     * X-Guest-Language
+     */
+    "X-Guest-Language"?: string | null;
+  };
   path?: never;
   query?: never;
   url: "/reviews/current";
@@ -1265,7 +1333,14 @@ export type ReadCurrentReviewReviewsCurrentGetErrors = {
    * 今の週の週次レビューはまだない（ゲストは、デモの週次レビューがひとつもない）
    */
   404: unknown;
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
 };
+
+export type ReadCurrentReviewReviewsCurrentGetError =
+  ReadCurrentReviewReviewsCurrentGetErrors[keyof ReadCurrentReviewReviewsCurrentGetErrors];
 
 export type ReadCurrentReviewReviewsCurrentGetResponses = {
   /**
@@ -1279,6 +1354,12 @@ export type ReadCurrentReviewReviewsCurrentGetResponse =
 
 export type PutSelectionReviewsReviewIdSelectionPutData = {
   body: SelectionIn;
+  headers?: {
+    /**
+     * X-Guest-Language
+     */
+    "X-Guest-Language"?: string | null;
+  };
   path: {
     /**
      * Review Id
@@ -1323,10 +1404,26 @@ export type PutSelectionReviewsReviewIdSelectionPutResponse =
 
 export type ReadSettingsSettingsGetData = {
   body?: never;
+  headers?: {
+    /**
+     * X-Guest-Language
+     */
+    "X-Guest-Language"?: string | null;
+  };
   path?: never;
   query?: never;
   url: "/settings";
 };
+
+export type ReadSettingsSettingsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type ReadSettingsSettingsGetError =
+  ReadSettingsSettingsGetErrors[keyof ReadSettingsSettingsGetErrors];
 
 export type ReadSettingsSettingsGetResponses = {
   /**
@@ -1340,6 +1437,12 @@ export type ReadSettingsSettingsGetResponse =
 
 export type UpdateSettingsSettingsPutData = {
   body: SettingsIn;
+  headers?: {
+    /**
+     * X-Guest-Language
+     */
+    "X-Guest-Language"?: string | null;
+  };
   path?: never;
   query?: never;
   url: "/settings";
@@ -1371,6 +1474,12 @@ export type UpdateSettingsSettingsPutResponse =
 
 export type ReissueIngestTokenSettingsIngestTokenPostData = {
   body?: never;
+  headers?: {
+    /**
+     * X-Guest-Language
+     */
+    "X-Guest-Language"?: string | null;
+  };
   path?: never;
   query?: never;
   url: "/settings/ingest-token";
@@ -1381,7 +1490,14 @@ export type ReissueIngestTokenSettingsIngestTokenPostErrors = {
    * ゲスト（デモの利用者）は見るだけで、書き込めない
    */
   403: unknown;
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
 };
+
+export type ReissueIngestTokenSettingsIngestTokenPostError =
+  ReissueIngestTokenSettingsIngestTokenPostErrors[keyof ReissueIngestTokenSettingsIngestTokenPostErrors];
 
 export type ReissueIngestTokenSettingsIngestTokenPostResponses = {
   /**
@@ -1395,6 +1511,12 @@ export type ReissueIngestTokenSettingsIngestTokenPostResponse =
 
 export type ReadWorkoutsWorkoutsGetData = {
   body?: never;
+  headers?: {
+    /**
+     * X-Guest-Language
+     */
+    "X-Guest-Language"?: string | null;
+  };
   path?: never;
   query?: {
     /**
@@ -1443,6 +1565,12 @@ export type ReadWorkoutsWorkoutsGetResponse =
 
 export type ReadWorkoutWorkoutsWorkoutIdGetData = {
   body?: never;
+  headers?: {
+    /**
+     * X-Guest-Language
+     */
+    "X-Guest-Language"?: string | null;
+  };
   path: {
     /**
      * Workout Id

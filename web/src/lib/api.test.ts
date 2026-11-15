@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 
-import { login } from "./api";
+import { getCurrentReview, login } from "./api";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -54,3 +54,30 @@ test("タイムゾーンと言語が取れなければ、省いて送る", async
   const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
   expect(JSON.parse(init.body as string)).toEqual({});
 });
+
+test.each([
+  ["ja-JP", "ja"],
+  ["en-US", "en"],
+  // 先頭が日本語でなければ、画面と同じく英語
+  ["fr-FR", "en"],
+])(
+  "どのリクエストにも、ゲストの画面の言語を付ける（ブラウザが %s なら %s）",
+  async (browser, guest) => {
+    // 応答の本文は 1 回しか読めないので、呼ばれるたびに作る
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(
+        async () => new Response(JSON.stringify(null), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(navigator, "language", "get").mockReturnValue(browser);
+
+    await login("token");
+    await getCurrentReview("token");
+
+    for (const [, init] of fetchMock.mock.calls as [string, RequestInit][]) {
+      expect(init.headers).toMatchObject({ "X-Guest-Language": guest });
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  },
+);

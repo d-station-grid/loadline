@@ -55,6 +55,7 @@ async def get_or_create_user(
     identity: Identity,
     timezone: str | None = None,
     language: str | None = None,
+    guest_language: str | None = None,
 ) -> User:
     """firebase_uid で探し、なければ作る。初回ログインで行ができる。
 
@@ -64,11 +65,11 @@ async def get_or_create_user(
     アカウントを消した人の uid なら作らずに AccountDeletedError を上げる。行がある人は
     消していないので、見るのは行がないときだけ。
 
-    匿名ログイン（ゲスト）は、language（ブラウザの言語）のデモの利用者を返す。いなければ
-    DemoUnavailableError。
+    匿名ログイン（ゲスト）は、guest_language（ゲストの画面の言語。"en" か "ja"）のデモの
+    利用者を返す。いなければ DemoUnavailableError。
     """
     if identity.is_anonymous:
-        return await get_demo_user(session, language_from_browser(language))
+        return await get_demo_user(session, language_from_browser(guest_language))
     user = await session.scalar(select(User).where(User.firebase_uid == identity.uid))
     if user is not None:
         return user

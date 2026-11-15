@@ -15,6 +15,7 @@ import type {
   WorkoutDetail,
   WorkoutList,
 } from "../api";
+import { browserLanguage as screenLanguageOfGuests } from "../i18n";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "";
 
@@ -27,6 +28,13 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * どのリクエストにも付ける、ゲストの画面の言語（"en" か "ja"）。ゲストは設定を変えられず、
+ * 画面はブラウザの言語で決まるので、その同じ決め方の結果を送る。api はゲストのとき、
+ * この言語のデモの利用者を返す（ログインも、ほかの窓口も）。ログインした人には使わない
+ */
+export const GUEST_LANGUAGE_HEADER = "X-Guest-Language";
+
 async function request<T>(
   path: string,
   init: RequestInit,
@@ -34,7 +42,11 @@ async function request<T>(
 ): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
-    headers: { ...init.headers, Authorization: `Bearer ${idToken}` },
+    headers: {
+      ...init.headers,
+      Authorization: `Bearer ${idToken}`,
+      [GUEST_LANGUAGE_HEADER]: screenLanguageOfGuests(),
+    },
   });
   if (!res.ok) {
     throw new ApiError(res.status);

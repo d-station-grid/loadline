@@ -14,7 +14,6 @@ from app.adapters.tts import kokoro_voice
 from app.core.auth import Identity, get_identity
 from app.core.config import get_settings
 from app.core.db import get_session
-from app.domain.language import language_from_accept_language
 from app.models import User
 from app.services.accounts import AccountDeleter
 from app.services.audio import AudioStore, Voice, voices
@@ -22,20 +21,26 @@ from app.services.auto_reviews import ReviewQueue
 from app.services.reviews import LineChecker, ReviewWriter
 from app.services.users import AccountDeletedError, DemoUnavailableError, get_or_create_user
 
+# ゲストの画面の言語（"en" か "ja"）。web がどのリクエストにも付ける。画面はブラウザの言語で
+# 決まるので、web が同じ決め方の結果を送り、api はそれでデモの利用者を選ぶ。ログインも、
+# ほかの窓口も同じヘッダーを見るので、画面とデモの言語がずれない
+GuestLanguage = Annotated[str | None, Header(alias="X-Guest-Language")]
+
 
 async def resolve_user(
     session: AsyncSession,
     identity: Identity,
     timezone: str | None = None,
     language: str | None = None,
+    guest_language: str | None = None,
 ) -> User:
     """本人の行。なければ作る。timezone と language は行を作るときだけ使う。
 
     アカウントを消した人のトークンは、期限の前でも 401 にする。ゲスト（匿名ログイン）は
-    デモの利用者になる。デモの利用者がまだいなければ 503。
+    guest_language（ゲストの画面の言語）のデモの利用者になる。デモの利用者がまだいなければ 503。
     """
     try:
-        return await get_or_create_user(session, identity, timezone, language)
+        return await get_or_create_user(session, identity, timezone, language, guest_language)
     except AccountDeletedError:
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED, headers={"WWW-Authenticate": "Bearer"}
@@ -49,17 +54,10 @@ async def resolve_user(
 async def get_current_user(
     identity: Annotated[Identity, Depends(get_identity)],
     session: Annotated[AsyncSession, Depends(get_session)],
-    accept_language: Annotated[str | None, Header()] = None,
+    guest_language: GuestLanguage = None,
 ) -> User:
-    """ログイン済みの本人の行。ID トークンの検証は get_identity に任せる。
-
-    ゲストは、ブラウザが付ける Accept-Language で英語と日本語のデモの利用者を選ぶ。
-    画面の言語（ブラウザの言語）とそろえるため。
-    """
-    language = language_from_accept_language(accept_language)
-    return await resolve_user(
-        session, identity, language=None if language is None else language.value
-    )
+    """ログイン済みの本人の行。ID トークンの検証は get_identity に任せる。"""
+    return await resolve_user(session, identity, guest_language=guest_language)
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
