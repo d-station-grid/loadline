@@ -19,8 +19,9 @@ from app.models.base import Base
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
-        # デモの利用者は 1 人だけ。ゲストは全員この 1 人として扱うので、2 人いると決まらない
-        Index("uq_users_demo", "is_demo", unique=True, postgresql_where=text("is_demo")),
+        # デモの利用者は言語ごとに 1 人だけ。ゲストは言語ごとにこの 1 人として扱うので、
+        # 同じ言語に 2 人いると決まらない
+        Index("uq_users_demo_language", "language", unique=True, postgresql_where=text("is_demo")),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)

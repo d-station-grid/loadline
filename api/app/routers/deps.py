@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Annotated, Any
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.audio_storage import audio_store
@@ -14,6 +14,7 @@ from app.adapters.tts import kokoro_voice
 from app.core.auth import Identity, get_identity
 from app.core.config import get_settings
 from app.core.db import get_session
+from app.domain.language import language_from_accept_language
 from app.models import User
 from app.services.accounts import AccountDeleter
 from app.services.audio import AudioStore, Voice, voices
@@ -48,9 +49,17 @@ async def resolve_user(
 async def get_current_user(
     identity: Annotated[Identity, Depends(get_identity)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    accept_language: Annotated[str | None, Header()] = None,
 ) -> User:
-    """ログイン済みの本人の行。ID トークンの検証は get_identity に任せる。"""
-    return await resolve_user(session, identity)
+    """ログイン済みの本人の行。ID トークンの検証は get_identity に任せる。
+
+    ゲストは、ブラウザが付ける Accept-Language で英語と日本語のデモの利用者を選ぶ。
+    画面の言語（ブラウザの言語）とそろえるため。
+    """
+    language = language_from_accept_language(accept_language)
+    return await resolve_user(
+        session, identity, language=None if language is None else language.value
+    )
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]

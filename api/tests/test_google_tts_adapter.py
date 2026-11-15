@@ -154,3 +154,17 @@ def test_no_model_means_no_japanese_voice() -> None:
     """手元とテストではモデルを空にして、費用のかかる呼び出しをしない。"""
     assert google_voice(Settings(google_tts_model="")) is None
     assert google_voice(Settings(google_tts_model="gemini-2.5-pro-tts")) is not None
+
+
+async def test_quota_project_is_sent_only_when_set() -> None:
+    """手元の Google アカウントの資格情報で呼ぶときだけ、割り当てのプロジェクトを付ける。"""
+    plain, local = FakeGoogle(200), FakeGoogle(200)
+    await _voice(plain, Sleeps()).speak(LINE)
+    client = httpx.AsyncClient(transport=httpx.MockTransport(local))
+    voice = GoogleVoice(
+        "gemini-2.5-pro-tts", "Leda", _token, 45.0, client=client, quota_project="loadline-app"
+    )
+    await voice.speak(LINE)
+
+    assert "x-goog-user-project" not in plain.requests[0].headers
+    assert local.requests[0].headers["x-goog-user-project"] == "loadline-app"

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import Identity
 from app.domain.calendar import is_known_timezone, today_in
-from app.domain.language import language_from_browser
+from app.domain.language import DEFAULT_LANGUAGE, Language, language_from_browser
 from app.models import DeletedAccount, User, Workout
 
 
@@ -19,9 +19,16 @@ class DemoUnavailableError(Exception):
     """ゲストが入ったが、デモの利用者がまだいない。seed で入れる前の環境。"""
 
 
-async def get_demo_user(session: AsyncSession) -> User:
-    """ゲストに見せるデモの利用者。匿名ログインの人は全員この 1 人として扱い、行を作らない。"""
-    user = await session.scalar(select(User).where(User.is_demo.is_(True)))
+async def get_demo_user(session: AsyncSession, language: Language | None = None) -> User:
+    """ゲストに見せるデモの利用者。匿名ログインの人は全員、言語ごとのデモの利用者として扱い、
+    行を作らない。デモの利用者は言語ごとに 1 人（英語と日本語）。
+
+    その言語のデモがなければ英語のデモにする（日本語のデモを seed で入れる前の環境）。
+    英語のデモもなければ DemoUnavailableError。
+    """
+    rows = await session.scalars(select(User).where(User.is_demo.is_(True)))
+    demos = {u.language: u for u in rows}
+    user = demos.get((language or DEFAULT_LANGUAGE).value) or demos.get(DEFAULT_LANGUAGE.value)
     if user is None:
         raise DemoUnavailableError
     return user
@@ -57,10 +64,11 @@ async def get_or_create_user(
     アカウントを消した人の uid なら作らずに AccountDeletedError を上げる。行がある人は
     消していないので、見るのは行がないときだけ。
 
-    匿名ログイン（ゲスト）はデモの利用者を返す。いなければ DemoUnavailableError。
+    匿名ログイン（ゲスト）は、language（ブラウザの言語）のデモの利用者を返す。いなければ
+    DemoUnavailableError。
     """
     if identity.is_anonymous:
-        return await get_demo_user(session)
+        return await get_demo_user(session, language_from_browser(language))
     user = await session.scalar(select(User).where(User.firebase_uid == identity.uid))
     if user is not None:
         return user

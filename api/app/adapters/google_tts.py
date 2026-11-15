@@ -71,9 +71,13 @@ class GoogleVoice:
         timeout_sec: float,
         client: httpx.AsyncClient | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        quota_project: str = "",
     ) -> None:
         """model は gemini-2.5-pro-tts など、voice_name は Leda など。token は付ける
-        アクセストークンを返す。client と sleep は、テストで差し替える。"""
+        アクセストークンを返す。client と sleep は、テストで差し替える。
+
+        quota_project は、手元の Google アカウントの資格情報で呼ぶときの割り当ての
+        プロジェクト。本番のサービスアカウントでは空にする。"""
         self._request = {
             "voice": {"languageCode": LANGUAGE_CODE, "name": voice_name, "modelName": model},
             "audioConfig": {"audioEncoding": "MP3"},
@@ -82,6 +86,7 @@ class GoogleVoice:
         self._timeout_sec = timeout_sec
         self._client = client or httpx.AsyncClient(timeout=timeout_sec)
         self._sleep = sleep
+        self._quota_headers = {"x-goog-user-project": quota_project} if quota_project else {}
 
     async def speak(self, text: str) -> bytes | None:
         """text を読み上げた MP3。読めなければ None。"""
@@ -104,7 +109,9 @@ class GoogleVoice:
                 return None
             try:
                 response = await self._client.post(
-                    SYNTHESIZE_URL, json=body, headers={"Authorization": f"Bearer {token}"}
+                    SYNTHESIZE_URL,
+                    json=body,
+                    headers={"Authorization": f"Bearer {token}", **self._quota_headers},
                 )
             except httpx.HTTPError as error:
                 logger.warning("google tts: attempt %d failed: %r", attempt, error)
@@ -146,4 +153,5 @@ def google_voice(
         settings.google_tts_voice,
         token or AccessTokens(),
         settings.google_tts_timeout_sec,
+        quota_project=settings.google_tts_quota_project,
     )
