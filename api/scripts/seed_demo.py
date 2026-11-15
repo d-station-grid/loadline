@@ -45,7 +45,7 @@ from app.adapters.tts import kokoro_voice
 from app.core.config import get_settings
 from app.core.db import get_engine
 from app.models import Note, User, Vo2maxReading, WeeklyReview, Workout, WorkoutHeartRate
-from app.services.audio import AudioStore, Voice, user_audio_prefix
+from app.services.audio import AudioStore, Voice, user_audio_prefix, voices
 from app.services.reviews import LineChecker, ReviewWriter, create_review, select_option
 
 logger = logging.getLogger(__name__)
@@ -301,8 +301,8 @@ class _Tracked:
         self._store = store
         self.put_paths: list[str] = []
 
-    async def put(self, path: str, wav: bytes) -> bool:
-        saved = await self._store.put(path, wav)
+    async def put(self, path: str, data: bytes, content_type: str) -> bool:
+        saved = await self._store.put(path, data, content_type)
         if saved:
             self.put_paths.append(path)
         return saved
@@ -335,8 +335,8 @@ class _UploadOnly:
     def __init__(self, store: AudioStore) -> None:
         self._store = store
 
-    async def put(self, path: str, wav: bytes) -> bool:
-        return await self._store.put(path, wav)
+    async def put(self, path: str, data: bytes, content_type: str) -> bool:
+        return await self._store.put(path, data, content_type)
 
     async def url(self, path: str) -> str | None:
         return None
@@ -352,7 +352,8 @@ async def main() -> None:
     async def given_token() -> str:
         return token or ""
 
-    voice = kokoro_voice(settings, given_token if token else None)
+    # デモの利用者は英語なので、英語の声（tts）だけでよい
+    voice = voices(kokoro_voice(settings, given_token if token else None), None)
     store = audio_store(settings)
     engine = get_engine()
     user_id = await seed_demo_atomically(

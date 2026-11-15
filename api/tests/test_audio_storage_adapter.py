@@ -109,11 +109,15 @@ def _assert_limited(limits: dict[str, Any]) -> None:
     assert limits["retry"].timeout == STORAGE_RETRY_SEC == 20.0
 
 
-async def test_put_saves_the_wav() -> None:
+@pytest.mark.parametrize(
+    ("path", "content_type"),
+    [("users/1/reviews/2.wav", "audio/wav"), ("users/1/reviews/3.mp3", "audio/mpeg")],
+)
+async def test_put_saves_the_audio_with_its_type(path: str, content_type: str) -> None:
     bucket = FakeBucket()
 
-    assert await _store(bucket).put("users/1/reviews/2.wav", b"RIFF")
-    assert bucket.files == {"users/1/reviews/2.wav": (b"RIFF", "audio/wav")}
+    assert await _store(bucket).put(path, b"AUDIO", content_type)
+    assert bucket.files == {path: (b"AUDIO", content_type)}
     (limits,) = bucket.limits
     _assert_limited(limits)
 
@@ -127,7 +131,7 @@ async def test_put_failure_is_false(error: Exception) -> None:
     bucket = FakeBucket()
     bucket.fail = error
 
-    assert not await _store(bucket).put("users/1/reviews/2.wav", b"RIFF")
+    assert not await _store(bucket).put("users/1/reviews/2.wav", b"RIFF", "audio/wav")
 
 
 async def test_url_is_signed_with_iam_as_the_service_account() -> None:

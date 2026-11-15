@@ -34,6 +34,8 @@ env:
   TASKS_QUEUE: projects/${{ vars.GCP_PROJECT_ID }}/locations/asia-northeast1/queues/weekly-reviews
   # 週次レビューのセリフを声にする。tts は deploy-tts.yml が出す。音声は非公開のバケットに置き、署名付き URL で渡す
   TTS_URL: https://tts-qbvpsx77dq-an.a.run.app
+  # 日本語の声（Google Cloud Text-to-Speech）のモデル
+  GOOGLE_TTS_MODEL: gemini-2.5-pro-tts
   AUDIO_BUCKET: loadline-app-audio
 
 jobs:
@@ -101,6 +103,6 @@ jobs:
             --image "$IMAGE:${{ github.sha }}" \
             --service-account "$RUNTIME_SA" \
             --allow-unauthenticated \
-            --set-env-vars "APP_ENV=production,FIREBASE_PROJECT_ID=${{ vars.GCP_PROJECT_ID }},INTERNAL_AUDIENCE=$API_URL,INTERNAL_CALLER_EMAIL=$INVOKER_SA,TASKS_QUEUE=$TASKS_QUEUE,GEMINI_PROJECT=${{ vars.GCP_PROJECT_ID }},TTS_URL=$TTS_URL,AUDIO_BUCKET=$AUDIO_BUCKET" \
+            --set-env-vars "APP_ENV=production,FIREBASE_PROJECT_ID=${{ vars.GCP_PROJECT_ID }},INTERNAL_AUDIENCE=$API_URL,INTERNAL_CALLER_EMAIL=$INVOKER_SA,TASKS_QUEUE=$TASKS_QUEUE,GEMINI_PROJECT=${{ vars.GCP_PROJECT_ID }},TTS_URL=$TTS_URL,GOOGLE_TTS_MODEL=$GOOGLE_TTS_MODEL,AUDIO_BUCKET=$AUDIO_BUCKET" \
             --set-secrets DATABASE_URL=database-url:latest,TYPESAFE_API_KEY=typesafe-api-key:latest \
             --quiet

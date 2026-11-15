@@ -38,7 +38,7 @@ from app.domain.vo2max import Vo2maxTrend, vo2max_trend_of
 from app.models import Note, ReviewStatus, User, WeeklyReview, WeeklyReviewOption, Workout
 from app.schemas.dashboard import DayPoint
 from app.schemas.reviews import ReviewOptionOut, WeeklyReviewOut
-from app.services.audio import AudioStore, Voice, review_audio_path
+from app.services.audio import AudioStore, Speech, Voice, review_audio_path
 from app.services.dashboard import build_dashboard
 
 logger = logging.getLogger(__name__)
@@ -411,23 +411,19 @@ async def _speak(
     script: str,
     voice: Voice | None,
     audio: AudioStore | None,
-) -> bytes | None:
-    """セリフを声にする。voice と audio のどちらかがない（設定で切っている）、または
-    読めなければ None（音声なしで作る）。
-
-    日本語のセリフは、日本語の声を入れるまで声にしない（今の声は英語だけで、日本語を
-    読ませると聞き取れない）。音声なしで作り、文字だけで見せる。
-    """
-    if voice is None or audio is None or Language(user.language) is not Language.EN:
+) -> Speech | None:
+    """セリフを利用者の言語の声にする。voice と audio のどちらかがない（設定で切っている）、
+    その言語の声がない、または読めなければ None（音声なしで作る）。"""
+    if voice is None or audio is None:
         return None
     # 読み上げを待つ 10〜45 秒のあいだ、DB の接続を手放す
     await session.commit()
-    wav = await voice.speak(script)
-    if wav is None:
+    speech = await voice.speak(script, Language(user.language))
+    if speech is None:
         logger.warning(
             "review: could not voice the script; saving it without audio for user %s", user.id
         )
-    return wav
+    return speech
 
 
 async def create_review(
@@ -446,7 +442,8 @@ async def create_review(
     ときだけその文で作る。それ以外（どちらかがない、書けない、引っかかった、確かめられ
     なかった）は定型で作る。
 
-    voice と audio の両方があれば、決まったセリフ（LLM の文でも定型でも）を声にして置く。
+    voice と audio の両方があれば、決まったセリフ（LLM の文でも定型でも）を利用者の言語の
+    声にして置く。
     読めない、置けないときは音声なし（audio_url が null）で作り、文字だけで見せる。
 
     週は、今日以前でいちばん近い週次レビューの曜日の前日までの 7 日間（利用者のタイムゾーン）。
@@ -470,7 +467,7 @@ async def create_review(
     content = written.content or fallback_review(
         material.week, written.health_flag, material.effort, Language(user.language)
     )
-    wav = await _speak(session, user, content.script, voice, audio)
+    speech = await _speak(session, user, content.script, voice, audio)
     review = await session.scalar(
         insert(WeeklyReview)
         .values(
@@ -494,11 +491,11 @@ async def create_review(
             raise RuntimeError("weekly review conflicted but was not found")
         return await _out(session, raced, audio), False
 
-    if wav is not None and audio is not None:
+    if speech is not None and audio is not None:
         # 置き場所に週次レビューの id を使うので、行を入れてから置く。置いてから commit に
         # 失敗したときに残るファイルも、利用者ごとの場所にあるので、アカウントを消せば消える
-        path = review_audio_path(user.id, review.id)
-        if await audio.put(path, wav):
+        path = review_audio_path(user.id, review.id, speech.format)
+        if await audio.put(path, speech.data, speech.format.content_type):
             review.audio_path = path
     session.add_all(
         WeeklyReviewOption(

@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     tts_url: str = ""
     # 読み上げ 1 回に待つ上限（429 のやり直しを含む）。超えたら声なし（文字だけ）にする
     tts_timeout_sec: float = 45.0
+    # 日本語のセリフを読み上げる Google Cloud Text-to-Speech のモデル。空なら日本語は声に
+    # しない（手元とテストは空。費用がかかるので、本番だけで呼ぶ）
+    google_tts_model: str = ""
+    google_tts_voice: str = "Leda"
+    # 読み上げ 1 回に待つ上限（やり直しを含む）。超えたら声なし（文字だけ）にする
+    google_tts_timeout_sec: float = 45.0
     # 週次レビューの音声を置くバケット（gs:// は付けない）。空なら声にしない
     audio_bucket: str = ""
     # 音声の署名付き URL の期限

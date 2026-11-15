@@ -1,10 +1,10 @@
 # GCP の設定
 
-loadline が GCP（プロジェクト `loadline-app`）に持っている設定の一覧です。2026-11-08 に、実際の GCP を読み取って書きました。音声のバケットの CORS は、2026-11-11 に入れて書き足しました。
+loadline が GCP（プロジェクト `loadline-app`）に持っている設定の一覧です。2026-11-08 に、実際の GCP を読み取って書きました。音声のバケットの CORS は、2026-11-11 に入れて書き足しました。日本語の声（Cloud Text-to-Speech）は、2026-11-15 に書き足しました。
 
 - リージョンは `asia-northeast1`（東京）にそろえています。例外は Gemini（Vertex AI）で、api は `global` のエンドポイントを呼びます（api の設定 `gemini_location` の既定。`deploy.yml` は `GEMINI_LOCATION` を渡していない）
 - Cloud Run へのデプロイ（`.github/workflows/deploy.yml`、`deploy-tts.yml`）が入れる設定以外は、コンソールやコマンドで手で入れたもので、コードには残りません。変えたら、この文書も直します
-- 週次レビューの音声は、api が tts で声にして音声のバケットに置き、署名付き URL を返します。web はその URL を、ブラウザから直接読んで再生します。CORS つきで読み、声の大きさでアバターの口を動かします
+- 週次レビューの音声は、api が利用者の言語の声で読み上げて音声のバケットに置き、署名付き URL を返します。英語は tts（Kokoro、WAV）、日本語は Cloud Text-to-Speech（Gemini の TTS、MP3）です。web はその URL を、ブラウザから直接読んで再生します。CORS つきで読み、声の大きさでアバターの口を動かします
 - データベースは GCP ではなく Neon（AWS シンガポール）です。接続の URL だけを Secret Manager に置いています
 - 今の設定を確かめるコマンドは、最後の「確かめ方」にあります
 
@@ -17,7 +17,8 @@ flowchart LR
   SCH[Cloud Scheduler<br>1 時間おき] -- OIDC: loadline-invoker --> A
   A -- 積む --> Q[Cloud Tasks<br>weekly-reviews]
   Q -- OIDC: loadline-invoker --> A
-  A -- 呼ぶ（認証あり） --> T[Cloud Run: tts<br>loadline-tts]
+  A -- 英語の声（認証あり） --> T[Cloud Run: tts<br>loadline-tts]
+  A -- 日本語の声 --> GT[Cloud Text-to-Speech<br>gemini-2.5-pro-tts]
   A -- セリフを書く --> V[Vertex AI: Gemini<br>global]
   A -- 置く・署名付き URL・消す --> S[(gs://loadline-app-audio)]
   A -- 読む --> SM[Secret Manager]
@@ -126,7 +127,7 @@ gcloud iam service-accounts add-iam-policy-binding \
 | 1 回のリクエストの上限 | 300 秒（既定） |
 | 起動中の CPU の追加 | あり（手で入れた値） |
 | 呼べる人 | 誰でも |
-| 環境変数 | `APP_ENV`、`FIREBASE_PROJECT_ID`、`INTERNAL_AUDIENCE`（api の URL）、`INTERNAL_CALLER_EMAIL`（`loadline-invoker`）、`TASKS_QUEUE`、`GEMINI_PROJECT`、`TTS_URL`（tts の URL）、`AUDIO_BUCKET`（`loadline-app-audio`） |
+| 環境変数 | `APP_ENV`、`FIREBASE_PROJECT_ID`、`INTERNAL_AUDIENCE`（api の URL）、`INTERNAL_CALLER_EMAIL`（`loadline-invoker`）、`TASKS_QUEUE`、`GEMINI_PROJECT`、`TTS_URL`（tts の URL）、`GOOGLE_TTS_MODEL`（`gemini-2.5-pro-tts`）、`AUDIO_BUCKET`（`loadline-app-audio`） |
 | Secret Manager から | `DATABASE_URL`（`database-url`）、`TYPESAFE_API_KEY`（`typesafe-api-key`） |
 
 台数の上限 5 と起動中の CPU の追加は、`deploy.yml` には書いていません。手で入れた値で、`gcloud run deploy` が指定しなかった設定を前の版から引き継ぐので残っています。
@@ -232,11 +233,11 @@ gcloud artifacts repositories set-cleanup-policies loadline \
 | `gs://loadline-app-audio` | 週次レビューの音声 | なし | 0（残さない） |
 | `gs://loadline-app-models` | Kokoro のモデル（`kokoro-v1.0/` の下に 2 つ、約 350MB） | なし | 7 日（新しいバケットの既定） |
 
-音声に古いものを消す設定を付けないのは、デモの週次レビューの音声まで消えるためです。音声は 1 件で約 1.4MB（30 秒の WAV）で、週に 1 件なので、量は気にしなくてよい大きさです。
+音声に古いものを消す設定を付けないのは、デモの週次レビューの音声まで消えるためです。音声は 1 件で、英語が約 1.4MB（30 秒の WAV）、日本語が約 50KB（15 秒の MP3）です。週に 1 件なので、量は気にしなくてよい大きさです。
 
 音声は、消したらすぐに戻せなくします。アカウントを消したとき（`DELETE /me`）は、本人の音声（`users/{利用者の id}/` の下）も消します。そのとき 7 日のあいだ復元できると、消したという約束とずれるためです。
 
-音声は `users/{利用者の id}/reviews/{週次レビューの id}.wav` に置きます。web には、期限 1 時間の署名付き URL を渡します（api の設定 `audio_url_ttl_sec`）。
+音声は `users/{利用者の id}/reviews/{週次レビューの id}.wav`（英語）か `.mp3`（日本語）に置きます。Content-Type も形式に合わせます（`audio/wav`、`audio/mpeg`）。web には、期限 1 時間の署名付き URL を渡します（api の設定 `audio_url_ttl_sec`）。
 
 api から Cloud Storage と IAM への通信には、上限を付けています（`api/app/adapters/audio_storage.py`）。置く・一覧・消すは 1 回 10 秒、やり直しを含めて 20 秒、署名は 5 秒です。SDK の既定（1 回 60 秒、やり直しを含めて 120 秒）のままだと、週次レビューを作る処理が Tasks の期限を超え、DB の行も長く持つためです。署名が間に合わなければ `audio_url` を null にして文字だけで返し、次に読むときにもう一度署名します。モデルは誤って消したときに戻せるよう、既定の 7 日のままにしています。
 
@@ -298,13 +299,21 @@ gcloud storage cp tts/kokoro-v1.0.onnx tts/voices-v1.0.bin \
 | loadline 上限 Cloud Run | `loadline-app` の Cloud Run | 2,000 円 | 利用額上限（自動で止まる） |
 | loadline 上限 Vertex AI | `loadline-app` の Vertex AI | 1,000 円 | 利用額上限（自動で止まる） |
 
-Cloud Storage、Artifact Registry、Neon は、利用額上限では止まりません。
+Cloud Storage、Artifact Registry、Cloud Text-to-Speech、Neon は、利用額上限では止まりません。
+
+Cloud Text-to-Speech（日本語の声）は、代わりに割り当てを下げています（2026-11-15）。超えた分はお金がかからず、呼び出しが失敗して、その週次レビューは音声なし（文字だけ）になります。
+
+| 割り当て | 既定 | 今の値 | なぜ |
+|---|---|---|---|
+| All requests per minute（`RequestsPerMinutePerProject`） | 1,000 | 30 | 週次レビューは 1 人に週 1 本なので、ふつうは届かない。バグで呼び続けても、被害を 1 分 30 回までにする |
+
+1 日あたりの割り当てや、Gemini の TTS だけの割り当てはありません。同じ 1 分に作る日本語の週次レビューが 30 本を超えるようになったら、この値を上げます。
 
 ## 有効な API
 
 loadline が使っているのは次のものです。
 
-`run`、`artifactregistry`、`iam`、`iamcredentials`、`sts`、`secretmanager`、`aiplatform`、`cloudtasks`、`cloudscheduler`、`storage`、`firebase`、`identitytoolkit`、`securetoken`、`billingbudgets`、`logging`、`monitoring`
+`run`、`artifactregistry`、`iam`、`iamcredentials`、`sts`、`secretmanager`、`aiplatform`、`texttospeech`、`cloudtasks`、`cloudscheduler`、`storage`、`firebase`、`identitytoolkit`、`securetoken`、`billingbudgets`、`logging`、`monitoring`
 
 ほかに、有効だが今は使っていないものがあります。
 
@@ -341,6 +350,9 @@ gcloud storage buckets describe gs://loadline-app-audio --project loadline-app -
 # Workload Identity Federation
 gcloud iam workload-identity-pools providers describe github-oidc \
   --project loadline-app --location global --workload-identity-pool github
+
+# Cloud Text-to-Speech の割り当て（既定から変えたものだけ出る）
+gcloud beta quotas preferences list --project loadline-app
 
 # 予算
 # 請求先アカウントの ID は `gcloud billing projects describe loadline-app --project loadline-app` で分かる
