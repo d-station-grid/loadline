@@ -79,6 +79,8 @@ gcloud iam service-accounts create loadline-deploy --project loadline-app
 
 `loadline-tts` と `loadline-invoker` には、何も付けていません。tts はモデルをイメージに含めていて、外の何も呼ばないためです。`loadline-invoker` は呼ぶときの名札で、api は内部の窓口で呼び出し元のメールがこれかを確かめます。
 
+Cloud Text-to-Speech（日本語の声）のためには、ロールを足していません。`loadline-api` が今のロールのままで呼べることを、2026-11-15 に本番で確かめました。
+
 音声の権限は、オブジェクトの権限の設定まで含む `objectAdmin` ではなく、読み書きと削除だけの `objectUser` にしています。
 
 ```sh
