@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from app.domain.effort import Volume
 from app.domain.expression import ExpressionAnswer
 from app.domain.fallback_review import ReviewContent, ReviewOption, fallback_review
+from app.domain.language import Language
 from app.domain.line_check import LineCheck
 from app.domain.note_check import NoteCheck
 from app.domain.review_prompt import NoteForReview
@@ -591,9 +592,11 @@ class FakeWriter:
     def __init__(self, result: ReviewContent | None) -> None:
         self.result = result
         self.prompts: list[str] = []
+        self.languages: list[Language] = []
 
-    async def write(self, contents: str) -> ReviewContent | None:
+    async def write(self, contents: str, language: Language) -> ReviewContent | None:
         self.prompts.append(contents)
+        self.languages.append(language)
         return self.result
 
     def data(self) -> Any:
@@ -1324,3 +1327,39 @@ async def test_select_option_signs_the_url_after_the_commit(
     assert events == ["commit", "sign"]
     assert out.audio_url is not None
     assert [o.id for o in out.options if o.selected_at is not None] == [option_ids[0]]
+
+
+async def test_japanese_user_gets_the_japanese_fallback(session: AsyncSession) -> None:
+    """日本語の利用者には、定型も日本語で作る。"""
+    user = await _user(language="ja")
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+
+    review, _ = await create_review(session, user, today=TODAY)
+
+    m = await review_material(session, user, MONDAY, TODAY)
+    expected = fallback_review(m.week, False, m.effort, Language.JA)
+    assert review.script == expected.script
+    assert [o.label for o in review.options] == [o.label for o in expected.options]
+    assert review.script != fallback_review(m.week, False, m.effort).script
+
+
+async def test_writer_is_asked_in_the_users_language(session: AsyncSession) -> None:
+    user = await _user(language="ja")
+    await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
+    writer = FakeWriter(WRITTEN)
+
+    await create_review(session, user, writer, FakeChecker(SAFE), today=TODAY)
+
+    assert writer.languages == [Language.JA]
+
+
+async def test_japanese_review_is_not_voiced_yet(session: AsyncSession) -> None:
+    """日本語の声を入れるまでは、日本語のセリフを英語の声で読ませない。文字だけで作る。"""
+    user = await _user(language="ja")
+    voice, audio = FakeVoice(), FakeAudioStore()
+
+    review, _ = await create_review(session, user, today=TODAY, voice=voice, audio=audio)
+
+    assert voice.spoken == []
+    assert audio.files == {}
+    assert review.audio_url is None

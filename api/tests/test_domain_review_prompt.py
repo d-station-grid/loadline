@@ -7,6 +7,7 @@ import pytest
 
 from app.domain.effort import Effort, Volume
 from app.domain.fallback_review import ReviewContent, ReviewOption
+from app.domain.language import Language
 from app.domain.review_material import ReviewMaterial
 from app.domain.review_prompt import (
     SYSTEM_INSTRUCTION,
@@ -15,6 +16,7 @@ from app.domain.review_prompt import (
     check_detail,
     check_review,
     review_prompt,
+    system_instruction,
 )
 from app.domain.situation import Situation, WeekSituation
 from app.domain.vo2max import Vo2maxTrend
@@ -375,3 +377,62 @@ def test_check_review_fits_options_into_the_columns(option: ReviewOption) -> Non
     for text in (option.label.strip(), option.description.strip()):
         if text:
             assert text not in str(error.value)
+
+
+JA_OPTIONS = (
+    ReviewOption("しっかり休む", "数日休んで回復する。"),
+    ReviewOption("軽めにする", "今週は軽い練習だけにする。"),
+)
+
+
+def test_japanese_instruction_keeps_the_same_rules() -> None:
+    """日本語の指示も、決まりの本体は英語と同じ。言語と長さの段落だけが違う。"""
+    ja = system_instruction(Language.JA)
+    rules = SYSTEM_INSTRUCTION[: SYSTEM_INSTRUCTION.index("Write `line` and the options")]
+    assert ja.startswith(rules)
+    assert system_instruction(Language.EN) == SYSTEM_INSTRUCTION
+    for said in (
+        "in natural Japanese",
+        "Say 体力 for fitness, 疲労 for fatigue and 余力 for reserve",
+        "no kanji numerals",
+        "60 to 85",
+        "200 to 300 Japanese characters",
+        "up to three numbers from the input",
+    ):
+        assert said in ja
+    assert "in English" not in ja
+    assert "28 to 40 words" not in ja
+    assert "80 to 120 words" not in ja
+
+
+@pytest.mark.parametrize(("count", "ok"), [(54, False), (55, True), (90, True), (91, False)])
+def test_check_review_counts_characters_of_a_japanese_line(count: int, ok: bool) -> None:
+    """日本語のセリフは文字数で数える。空白は数えない。"""
+    line = "あ" * (count - 1) + " 。"
+    content = ReviewContent(script=line, options=JA_OPTIONS)
+    if ok:
+        assert check_review(content, Language.JA).script == line
+    else:
+        with pytest.raises(InvalidReviewError, match="chars"):
+            check_review(content, Language.JA)
+
+
+def test_check_review_finds_the_first_japanese_sentence() -> None:
+    """日本語の文は 。！？ で区切る。最初の文に数字があれば書き直させ、2 文目からはよい。"""
+    rest = "あ" * 60
+    with pytest.raises(InvalidReviewError, match="first sentence"):
+        check_review(
+            ReviewContent(script=f"今週は5回走りました。{rest}", options=JA_OPTIONS), Language.JA
+        )
+    ok = f"よく頑張りましたね！今週は5回走りました。{rest}"
+    assert check_review(ReviewContent(script=ok, options=JA_OPTIONS), Language.JA).script == ok
+
+
+@pytest.mark.parametrize(("count", "ok"), [(169, False), (170, True), (340, True), (341, False)])
+def test_check_detail_counts_japanese_characters(count: int, ok: bool) -> None:
+    detail = "あ" * count
+    if ok:
+        assert check_detail(detail, Language.JA) == detail
+    else:
+        with pytest.raises(InvalidReviewError, match="chars"):
+            check_detail(detail, Language.JA)

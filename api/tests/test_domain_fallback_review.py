@@ -5,7 +5,9 @@ import pytest
 
 from app.domain.effort import Effort, PastWeek, Volume, judge_effort
 from app.domain.fallback_review import fallback_review
+from app.domain.language import Language
 from app.domain.load import FitnessPoint, ZoneTimes
+from app.domain.review_prompt import LINE_MAX_CHARS_JA
 from app.domain.situation import Situation, WeekInput, WeekSituation, judge_week
 
 MONDAY = date(2026, 9, 28)
@@ -467,3 +469,62 @@ def test_one_minute_of_hard_effort_from_none_is_only_heavy() -> None:
     assert e.hard_went_up is False
     assert "well above your usual load" in script
     assert "hard" not in script
+
+
+ALL_EFFORTS = [
+    Effort(volume=None, load_ratio=None, mostly_moderate=False, hard_went_up=False),
+    Effort(volume=Volume.HEAVY, load_ratio=1.6, mostly_moderate=True, hard_went_up=True),
+    Effort(volume=Volume.HEAVY, load_ratio=1.6, mostly_moderate=False, hard_went_up=False),
+    Effort(volume=None, load_ratio=None, mostly_moderate=True, hard_went_up=False),
+    Effort(volume=Volume.USUAL, load_ratio=1.0, mostly_moderate=False, hard_went_up=False),
+    Effort(volume=Volume.LIGHT, load_ratio=0.5, mostly_moderate=False, hard_went_up=False),
+]
+ALL_WEEKS = [
+    week(Situation.NOT_ENOUGH_DATA, workouts=0),
+    week(Situation.NOT_ENOUGH_DATA, workouts=1, unknown_load_days=1),
+    week(Situation.NOT_ENOUGH_DATA, workouts=2, unknown_load_days=1),
+    week(Situation.NOT_ENOUGH_DATA, workouts=2),
+    week(Situation.NO_TRAINING, workouts=0),
+    week(Situation.RETURNING, rest_days_before=16),
+    week(Situation.FATIGUED),
+    week(Situation.FRESH),
+    week(Situation.STEADY),
+]
+
+
+@pytest.mark.parametrize("w", ALL_WEEKS, ids=lambda w: w.situation.value)
+@pytest.mark.parametrize("health_flag", [False, True])
+@pytest.mark.parametrize("e", ALL_EFFORTS)
+def test_japanese_fallback_matches_the_english_one(
+    w: WeekSituation, health_flag: bool, e: Effort
+) -> None:
+    """日本語の定型は、英語と同じ選択肢を同じ順に出す（文言だけが違う）。セリフは日本語の
+    セリフの上限（90 文字）に収まる。"""
+    en = fallback_review(w, health_flag, e)
+    ja = fallback_review(w, health_flag, e, Language.JA)
+
+    assert len(ja.options) == len(en.options)
+    assert all(o.label and o.description for o in ja.options)
+    assert not any(
+        c.isascii() and c.isalpha() for c in ja.script + "".join(o.label for o in ja.options)
+    )
+    assert len("".join(ja.script.split())) <= LINE_MAX_CHARS_JA
+    # 増やす選択肢は、英語で外れる週には日本語でも外れる
+    assert ("Add a bit more" in {o.label for o in en.options}) == (
+        "少し増やす" in {o.label for o in ja.options}
+    )
+    assert ("Swap in easy days" in {o.label for o in en.options}) == (
+        "軽い日に替える" in {o.label for o in ja.options}
+    )
+
+
+def test_japanese_fallback_fills_in_the_numbers() -> None:
+    steady = fallback_review(
+        week(Situation.STEADY, workouts=3, total_sec=9030), language=Language.JA
+    )
+    returning = fallback_review(
+        week(Situation.RETURNING, rest_days_before=16), language=Language.JA
+    )
+
+    assert "3回、合計151分" in steady.script
+    assert "16日ぶり" in returning.script

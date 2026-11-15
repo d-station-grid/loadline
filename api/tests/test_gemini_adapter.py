@@ -15,9 +15,11 @@ import pytest
 from google.auth.exceptions import DefaultCredentialsError
 from google.genai import errors, types
 
-from app.adapters.gemini import GeminiReviewWriter, _Review, gemini_writer
+from app.adapters.gemini import GeminiReviewWriter, _Review, _ReviewJa, gemini_writer
 from app.core.config import Settings
 from app.domain.fallback_review import ReviewOption
+from app.domain.language import Language
+from app.domain.review_prompt import SYSTEM_INSTRUCTION, system_instruction
 
 FIXTURES = Path(__file__).parent / "fixtures"
 MODELS = ["model-a", "model-b"]
@@ -236,3 +238,37 @@ async def test_writer_keeps_the_client_open() -> None:
     await asyncio.sleep(0.05)  # 片付けのときに積まれる aclose を走らせる
 
     assert not api_client._async_httpx_client.is_closed
+
+
+JAPANESE_REVIEW = {
+    "detail": "今週は安定したリズムで練習できました。" * 12,
+    "line": "いいリズムで練習が続いていますね。体力と疲労のバランスもとれています。"
+    "このまま続けることが、体力を積み上げる近道ですよ。",
+    "options": [
+        {"label": "このリズムで", "description": "先週と同じように練習する。"},
+        {"label": "少し軽めに", "description": "数日は軽めの練習にする。"},
+    ],
+}
+
+
+async def test_writes_in_japanese_with_the_japanese_schema() -> None:
+    """日本語では、日本語の指示と、長さを文字数で書いた形で頼み、文字数で確かめる。"""
+    generate = FakeGenerate(response_with(json.dumps(JAPANESE_REVIEW, ensure_ascii=False)))
+
+    review = await writer(generate).write("prompt", Language.JA)
+
+    config = generate.configs[0]
+    assert config.response_schema is _ReviewJa
+    assert config.system_instruction == system_instruction(Language.JA)
+    assert review is not None
+    assert review.script == JAPANESE_REVIEW["line"]
+    assert review.detail == JAPANESE_REVIEW["detail"]
+    assert review.options[0] == ReviewOption("このリズムで", "先週と同じように練習する。")
+
+
+async def test_english_is_the_default() -> None:
+    generate = FakeGenerate(recorded("steady"))
+
+    await writer(generate).write("prompt")
+
+    assert generate.configs[0].system_instruction == SYSTEM_INSTRUCTION

@@ -602,7 +602,7 @@ export const ja: Messages = {
     needsSettings:
       "週次レビューを作成するには、最大心拍数と安静時心拍数を設定してください。",
     guestCannotCreate: "ゲストは週次レビューを作成できません。",
-    weekReviewed: (from, to) => `対象の週: ${from} – ${to}`,
+    weekReviewed: (from, to) => `対象の週: ${from}〜${to}`,
     readMore: "詳しく読む",
     question: "次の 1 週間を、どう過ごしますか？",
     guestCannotChoose:
