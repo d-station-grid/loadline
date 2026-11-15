@@ -194,13 +194,15 @@ def check_review(content: ReviewContent) -> ReviewContent:
     """長さと数を確かめ、前後の空白を落として返す。合わなければ InvalidReviewError。
 
     中身が安全かどうかは、ここでは見ない（別の確認に任せる）。
+    例外のメッセージには理由と長さだけを入れ、文言は入れない。書き直しのたびに警告ログに
+    出るので、メモから来た体調の話などを残さないため。
     """
     script = " ".join(content.script.split())
     words = len(script.split())
     if not LINE_MIN_WORDS <= words <= LINE_MAX_WORDS:
         raise InvalidReviewError(f"line must be {LINE_MIN_WORDS}-{LINE_MAX_WORDS} words: {words}")
     if _DIGIT.search(_first_sentence(script)):
-        raise InvalidReviewError(f"the first sentence of line must have no numbers: {script!r}")
+        raise InvalidReviewError("the first sentence of line must have no numbers")
     if not MIN_OPTIONS <= len(content.options) <= MAX_OPTIONS:
         raise InvalidReviewError(
             f"options must be {MIN_OPTIONS}-{MAX_OPTIONS}: {len(content.options)}"
@@ -208,10 +210,10 @@ def check_review(content: ReviewContent) -> ReviewContent:
     options = tuple(ReviewOption(o.label.strip(), o.description.strip()) for o in content.options)
     for o in options:
         if not 0 < len(o.label) <= LABEL_MAX_CHARS:
-            raise InvalidReviewError(f"label must be 1-{LABEL_MAX_CHARS} chars: {o.label!r}")
+            raise InvalidReviewError(f"label must be 1-{LABEL_MAX_CHARS} chars: {len(o.label)}")
         if not 0 < len(o.description) <= DESCRIPTION_MAX_CHARS:
             raise InvalidReviewError(
-                f"description must be 1-{DESCRIPTION_MAX_CHARS} chars: {o.description!r}"
+                f"description must be 1-{DESCRIPTION_MAX_CHARS} chars: {len(o.description)}"
             )
     return ReviewContent(script=script, options=options)
 

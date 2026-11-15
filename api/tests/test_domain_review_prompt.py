@@ -277,8 +277,10 @@ def test_check_review_counts_words_of_the_line(count: int, ok: bool) -> None:
 def test_check_review_rejects_numbers_in_the_first_sentence(script: str) -> None:
     """数字の読み上げで始めさせない。最初の文に数字があれば書き直させる。"""
     line = f"{script} " + " ".join(["word"] * 24)
-    with pytest.raises(InvalidReviewError, match="first sentence"):
+    with pytest.raises(InvalidReviewError, match="first sentence") as error:
         check_review(ReviewContent(script=line, options=OPTIONS))
+    # 書き直しのたびに警告ログに出るので、セリフの文言は入れない
+    assert script not in str(error.value)
 
 
 def test_check_review_allows_numbers_after_the_first_sentence() -> None:
@@ -305,5 +307,9 @@ def test_check_review_needs_two_or_three_options(count: int) -> None:
     ],
 )
 def test_check_review_fits_options_into_the_columns(option: ReviewOption) -> None:
-    with pytest.raises(InvalidReviewError):
+    with pytest.raises(InvalidReviewError) as error:
         check_review(ReviewContent(script=LINE, options=(OPTIONS[0], option)))
+    # 書き直しのたびに警告ログに出るので、選択肢の文言は入れない
+    for text in (option.label.strip(), option.description.strip()):
+        if text:
+            assert text not in str(error.value)
