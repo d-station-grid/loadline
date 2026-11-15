@@ -355,7 +355,11 @@ def _script_ja(
     replacement: str | None = None,
     fact: str | None = None,
 ) -> str:
-    """_script の日本語。言うことと、締めの入れ替え方は英語と同じ。数は「3回」「45分」と書く。"""
+    """_script の日本語。言うことと、締めの入れ替え方は英語と同じ。数は「3回」「45分」と書く。
+
+    中断明けの日数は、記録のなかった日数（rest_days_before）なので「N日休んで」と言う。
+    「N日ぶり」は前の練習の日から数えるので、1 日ずれる。
+    """
 
     def closing(default: str) -> str:
         return "".join(part for part in (fact, replacement or default) if part)
@@ -371,7 +375,7 @@ def _script_ja(
             )
         case Situation.RETURNING:
             return (
-                f"おかえりなさい！{_rest_days_before(week)}日ぶりに練習を再開しましたね。"
+                f"おかえりなさい！{_rest_days_before(week)}日休んで、練習を再開しましたね。"
                 "体力が戻るには少し時間がかかるので、焦らなくて大丈夫です。"
                 "軽めに始めて、少しずつ戻していきましょう。"
             )

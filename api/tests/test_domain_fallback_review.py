@@ -527,4 +527,6 @@ def test_japanese_fallback_fills_in_the_numbers() -> None:
     )
 
     assert "3回、合計151分" in steady.script
-    assert "16日ぶり" in returning.script
+    # rest_days_before は記録のなかった日数。「16日ぶり」だと前の練習の日から数えて 1 日ずれる
+    assert "16日休んで" in returning.script
+    assert "日ぶり" not in returning.script

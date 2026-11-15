@@ -55,6 +55,12 @@ DETAIL_MAX_CHARS_JA = 340
 # 長めの文で使ってよい数字の数（416 や 3.5 を 1 つと数える）
 DETAIL_MAX_NUMBERS = 3
 _DIGIT = re.compile(r"\d")
+# 漢数字の数（三回、五日、二週間、四十分など）。日本語のセリフの最初の文で弾く。助数詞が
+# 続くものだけにする。漢数字だけで見ると「一緒」「一度」「一歩」のような言葉まで弾くため。
+# 「十分」は「じゅうぶん」がほとんどなので弾かない（10 分は算用数字で書くよう指示している）
+_KANJI_NUMBER = re.compile(
+    r"(?!十分)[〇一二三四五六七八九十百千]+(?:回|日|週|か月|ヶ月|カ月|時間|分|秒|キロ|本|セッション)"
+)
 # 文の終わり。英語は . ! ? のあとの空白（3.5 のような小数では切らない）、日本語は 。！？ のあと
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s|(?<=[。！？])")
 _PARAGRAPH_BREAK = re.compile(r"\n\s*\n")
@@ -292,7 +298,8 @@ def check_review(content: ReviewContent, language: Language = DEFAULT_LANGUAGE) 
         raise InvalidReviewError(
             f"line must be {lengths.line_min}-{lengths.line_max} {lengths.unit}: {size}"
         )
-    if _DIGIT.search(_first_sentence(script)):
+    first = _first_sentence(script)
+    if _DIGIT.search(first) or (language is Language.JA and _KANJI_NUMBER.search(first)):
         raise InvalidReviewError("the first sentence of line must have no numbers")
     if not MIN_OPTIONS <= len(content.options) <= MAX_OPTIONS:
         raise InvalidReviewError(

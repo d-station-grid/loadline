@@ -436,3 +436,38 @@ def test_check_detail_counts_japanese_characters(count: int, ok: bool) -> None:
     else:
         with pytest.raises(InvalidReviewError, match="chars"):
             check_detail(detail, Language.JA)
+
+
+@pytest.mark.parametrize(
+    "first",
+    [
+        "今週は三回走りました。",
+        "五日休んだあとでしたね。",
+        "二週間ぶりの練習でした。",
+        "合計四十分でした。",
+    ],
+)
+def test_check_review_rejects_kanji_numbers_in_the_first_japanese_sentence(first: str) -> None:
+    """指示では漢数字も最初の文に入れないよう頼んでいる。数に助数詞が続くものは弾く。"""
+    with pytest.raises(InvalidReviewError, match="first sentence"):
+        check_review(ReviewContent(script=first + "あ" * 60, options=JA_OPTIONS), Language.JA)
+
+
+@pytest.mark.parametrize(
+    "first",
+    [
+        "一緒に振り返りましょう。",
+        "一度しっかり休めましたね。",
+        "十分に休めた週でした。",
+        "一歩ずつ進んでいますね。",
+    ],
+)
+def test_check_review_allows_words_with_kanji_numerals(first: str) -> None:
+    """「一緒」「一度」「十分」のような、数ではない言葉は弾かない。"""
+    line = first + "あ" * 60
+    assert check_review(ReviewContent(script=line, options=JA_OPTIONS), Language.JA).script == line
+
+
+def test_kanji_numbers_are_only_checked_in_japanese() -> None:
+    line = "三回 " + " ".join(["word"] * 30)
+    assert check_review(ReviewContent(script=line, options=OPTIONS)).script == line
