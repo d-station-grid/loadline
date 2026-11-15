@@ -10,6 +10,7 @@
 import asyncio
 import logging
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Protocol
 
 import httpx
@@ -20,7 +21,12 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.core.config import Settings
 from app.domain.fallback_review import ReviewContent, ReviewOption
-from app.domain.review_prompt import SYSTEM_INSTRUCTION, InvalidReviewError, check_review
+from app.domain.review_prompt import (
+    SYSTEM_INSTRUCTION,
+    InvalidReviewError,
+    check_detail,
+    check_review,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -123,13 +129,19 @@ def _parse(response: types.GenerateContentResponse) -> ReviewContent:
         # 安全のための打ち切りなどで、本文が空のことがある
         raise InvalidReviewError("empty response")
     review = _Review.model_validate_json(text)
-    return check_review(
+    content = check_review(
         ReviewContent(
             script=review.line,
             options=tuple(ReviewOption(o.label, o.description) for o in review.options),
-            detail=review.detail,
         )
     )
+    # 長めの文が決まりに合わなくても、セリフと選択肢は話せる。書き直させず、長めの文だけ落とす
+    try:
+        detail = check_detail(review.detail)
+    except InvalidReviewError as error:
+        logger.warning("gemini: leaving out the detail: %s", error)
+        return content
+    return replace(content, detail=detail)
 
 
 def gemini_writer(settings: Settings) -> GeminiReviewWriter | None:

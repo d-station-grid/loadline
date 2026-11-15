@@ -149,6 +149,31 @@ async def test_retries_the_same_model_once_when_json_is_broken() -> None:
     assert generate.models == ["model-a", "model-a"]
 
 
+@pytest.mark.parametrize(
+    "detail",
+    [
+        pytest.param("Too short.", id="too_few_words"),
+        pytest.param("1 2 3 4 " + " ".join(["ride"] * 80), id="too_many_numbers"),
+    ],
+)
+async def test_leaves_out_only_the_detail_when_it_breaks_the_rules(
+    detail: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """長めの文が決まりに合わなくても、書き直させずにセリフと選択肢を使い、長めの文だけ落とす。
+    ログには理由だけを残し、文言は残さない。"""
+    data = json.loads(recorded("steady").text or "")
+    generate = FakeGenerate(response_with(json.dumps({**data, "detail": detail})))
+
+    review = await writer(generate).write("prompt")
+
+    assert review is not None
+    assert review.script == data["line"]
+    assert review.detail is None
+    assert generate.models == ["model-a"]
+    assert "leaving out the detail" in caplog.text
+    assert detail not in caplog.text
+
+
 async def test_moves_on_after_two_responses_that_break_the_rules() -> None:
     """長さの決まりに合わない応答が 2 回続いたら、次のモデルへ。"""
     too_short = response_with(json.dumps({"detail": "Rest.", "line": "Rest.", "options": []}))
