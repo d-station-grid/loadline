@@ -149,6 +149,55 @@ test("今の週の週次レビューがあれば、期間とセリフと選択�
   expect(option("Go easy")).toHaveTextContent("Only easy sessions this week.");
 });
 
+const DETAIL =
+  "The body gets stronger while it recovers.\n\nSwapping some moderate days for gentle ones lets the work sink in.";
+
+test("長めの文は、Read more を開いたときだけ段落に分けて見せる", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue({
+    ...review(),
+    detail: DETAIL,
+  });
+  renderReview();
+  await screen.findByText(/A heavy week/);
+
+  const first = screen.getByText("The body gets stronger while it recovers.");
+  const second = screen.getByText(/Swapping some moderate days/);
+  // 段落ごとに分ける
+  expect(first.tagName).toBe("P");
+  expect(second.tagName).toBe("P");
+  expect(first).not.toBeVisible();
+
+  fireEvent.click(screen.getByText("Read more"));
+  expect(first).toBeVisible();
+  expect(second).toBeVisible();
+
+  fireEvent.click(screen.getByText("Read more"));
+  expect(first).not.toBeVisible();
+});
+
+test("長めの文がなければ Read more を出さない", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue(review());
+  renderReview();
+  await screen.findByText(/A heavy week/);
+
+  expect(screen.queryByText("Read more")).not.toBeInTheDocument();
+});
+
+test("Hide text では、開いた長めの文も一緒に隠す", async () => {
+  vi.mocked(getCurrentReview).mockResolvedValue({
+    ...review(),
+    detail: DETAIL,
+  });
+  renderReview();
+  await screen.findByText(/A heavy week/);
+  fireEvent.click(screen.getByText("Read more"));
+  const first = screen.getByText("The body gets stronger while it recovers.");
+
+  fireEvent.click(screen.getByRole("button", { name: "💬 Hide text" }));
+
+  expect(first).not.toBeVisible();
+});
+
 test("選んである選択肢に印を付ける", async () => {
   vi.mocked(getCurrentReview).mockResolvedValue(review(2));
   renderReview();

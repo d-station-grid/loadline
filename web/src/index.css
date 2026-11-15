@@ -575,6 +575,24 @@ fieldset.plain {
   content: "”";
 }
 
+/* 画面で読む長めの文。字幕（セリフ）と見分けられるよう、少し小さく、左に線を引く */
+.review-detail {
+  margin: 0 0 12px;
+}
+
+.review-detail summary {
+  cursor: pointer;
+  color: var(--color-accent);
+  font-size: 0.9em;
+}
+
+.review-detail p {
+  margin: 8px 0 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--color-accent-soft);
+  font-size: 0.9em;
+}
+
 /* 声を流すあいだ、今読んでいる文。文の切り替わりで字が動かないよう、地の色だけ変える */
 .review-spoken {
   background: var(--color-accent-soft);
