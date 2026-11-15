@@ -28,10 +28,15 @@ class ReviewOption:
 
 @dataclass(frozen=True)
 class ReviewContent:
-    """アバターが話すセリフと、2〜3 個の選択肢。定型でも、LLM が書いたものでも同じ形。"""
+    """アバターが話すセリフと、2〜3 個の選択肢。定型でも、LLM が書いたものでも同じ形。
+
+    detail は画面で読む長めの文（話さない）。LLM が書き、Jev で確かめられたときだけ入る。
+    定型にはない。
+    """
 
     script: str
     options: tuple[ReviewOption, ...]
+    detail: str | None = None
 
 
 _OPTIONS: dict[Situation, tuple[ReviewOption, ...]] = {

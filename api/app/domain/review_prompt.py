@@ -37,8 +37,13 @@ MAX_OPTIONS = 3
 # weekly_review_options の列の長さ
 LABEL_MAX_CHARS = 64
 DESCRIPTION_MAX_CHARS = 255
+# 画面で読む長めの文（detail）の長さ。指示では 80〜120 語と頼み、確かめるときは少し幅を
+# 持たせる。外れるたびに書き直させると、セリフごと定型に落ちやすくなるため
+DETAIL_MIN_WORDS = 70
+DETAIL_MAX_WORDS = 130
 _DIGIT = re.compile(r"\d")
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s")
+_PARAGRAPH_BREAK = re.compile(r"\n\s*\n")
 
 # 量や強度を上げる選択肢を出してよい状況。定型と同じ。判定は「疲労」より先に
 # 「記録が足りない」「走れなかった週」「中断明け」を当てるので、この 3 つも疲労が高いことがある
@@ -125,7 +130,13 @@ Write `line` and the options in English, even when the notes are in another lang
 Length: only `line` is spoken aloud, and it must take about 15 seconds to say: 28 to 40 \
 words. Do not end `line` with a question that hands the choice back (no "How would you like \
 to...?"); the buttons already do that. The options are shown as buttons and are not spoken: \
-`label` is 2 to 4 words, and `description` is one short sentence of at most 14 words."""
+`label` is 2 to 4 words, and `description` is one short sentence of at most 14 words.
+
+`detail` is read on the screen and is not spoken. Write it first, then `line` as its short \
+spoken version. It is 80 to 120 words of plain text in one or two short paragraphs, no lists \
+and no markdown. It goes deeper than `line`: what the week shows, the one principle you chose \
+and why it applies here, and how the options fit. It follows every rule above, except that it \
+may mention up to three numbers from the input."""
 
 
 @dataclass(frozen=True)
@@ -185,7 +196,7 @@ def review_prompt(
     }
     return (
         "Here is this person's past week as JSON. Numbers were counted and compared by our own "
-        "code; trust them. Write what you say today, and the options.\n\n"
+        "code; trust them. Write the detail, what you say today, and the options.\n\n"
         + json.dumps(data, ensure_ascii=False, indent=1)
     )
 
@@ -215,7 +226,23 @@ def check_review(content: ReviewContent) -> ReviewContent:
             raise InvalidReviewError(
                 f"description must be 1-{DESCRIPTION_MAX_CHARS} chars: {len(o.description)}"
             )
-    return ReviewContent(script=script, options=options)
+    return ReviewContent(
+        script=script,
+        options=options,
+        detail=None if content.detail is None else _check_detail(content.detail),
+    )
+
+
+def _check_detail(detail: str) -> str:
+    """段落の区切り（空行）を残して空白を整え、語数を確かめる。"""
+    paragraphs = [" ".join(p.split()) for p in _PARAGRAPH_BREAK.split(detail)]
+    text = "\n\n".join(p for p in paragraphs if p)
+    words = len(text.split())
+    if not DETAIL_MIN_WORDS <= words <= DETAIL_MAX_WORDS:
+        raise InvalidReviewError(
+            f"detail must be {DETAIL_MIN_WORDS}-{DETAIL_MAX_WORDS} words: {words}"
+        )
+    return text
 
 
 def _first_sentence(script: str) -> str:

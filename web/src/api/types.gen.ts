@@ -681,6 +681,8 @@ export type Vo2MaxPoint = {
  * 週次レビュー。期間は利用者のタイムゾーンでの日付で、両端を含む。
  *
  * script はアバターのセリフで、字幕にも使う。is_fallback が true なら人が書いた定型。
+ * detail は画面で読む長めの文で、話さない。定型のとき、Jev で確かめられなかったとき、
+ * detail を足す前に作った週次レビューは null。
  * expression はセリフを話すときのアバターの表情。定型なら relaxed。
  * audio_url はセリフの音声を期限つきで再生できる URL。null なら文字だけで見せる。
  * null は、声を作れなかった、声にしない設定、今は署名できなかった、のどれか。最後の
@@ -704,6 +706,10 @@ export type WeeklyReviewOut = {
    * Script
    */
   script: string;
+  /**
+   * Detail
+   */
+  detail: string | null;
   status: ReviewStatus;
   /**
    * Is Fallback

@@ -1,7 +1,8 @@
 """Gemini の adapter の分岐。応答は本物の Gemini から記録したもの（tests/fixtures/）を使う。
 
-記録は gemini-3.8-flash に、順調・疲労・走れなかった週の 3 つを書かせたもの。テストに
-要らない思考の署名と HTTP ヘッダは除いてある。
+記録は gemini-3.8-flash に、順調・疲労・走れなかった週の 3 つを書かせたもの。画面で読む
+長めの文（detail）を足したときに、今の指示と出力の形で記録し直した。テストに要らない思考の
+署名と HTTP ヘッダは除いてある。
 """
 
 import asyncio
@@ -76,6 +77,7 @@ async def test_recorded_responses_become_reviews(name: str) -> None:
     assert review is not None
     expected = json.loads(response.text or "")
     assert review.script == expected["line"]
+    assert review.detail == expected["detail"]
     assert review.options == tuple(
         ReviewOption(o["label"], o["description"]) for o in expected["options"]
     )
@@ -90,7 +92,8 @@ async def test_asks_for_json_in_the_review_schema() -> None:
     config = generate.configs[0]
     assert config.response_mime_type == "application/json"
     assert config.response_schema is _Review
-    assert set(_Review.model_json_schema()["properties"]) == {"line", "options"}
+    # detail を先に書かせ、line をその短い話し言葉にする
+    assert list(_Review.model_json_schema()["properties"]) == ["detail", "line", "options"]
     assert config.system_instruction is not None
 
 
@@ -148,7 +151,7 @@ async def test_retries_the_same_model_once_when_json_is_broken() -> None:
 
 async def test_moves_on_after_two_responses_that_break_the_rules() -> None:
     """長さの決まりに合わない応答が 2 回続いたら、次のモデルへ。"""
-    too_short = response_with(json.dumps({"line": "Rest.", "options": []}))
+    too_short = response_with(json.dumps({"detail": "Rest.", "line": "Rest.", "options": []}))
     generate = FakeGenerate(too_short, response_with(None), recorded("no_training"))
 
     review = await writer(generate).write("prompt")

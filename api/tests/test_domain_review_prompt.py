@@ -256,6 +256,42 @@ def test_check_review_accepts_and_trims() -> None:
     assert checked.options[0] == ReviewOption("Rest fully", "Take a few days off.")
 
 
+def test_check_review_keeps_the_paragraphs_of_the_detail() -> None:
+    """段落の区切り（空行）は残し、段落の中の空白と改行は 1 つの空白にする。"""
+    first = " ".join(["one"] * 40)
+    second = " ".join(["two"] * 40)
+    content = ReviewContent(
+        script=LINE, options=OPTIONS, detail=f"  {first}\n continues\n\n\n{second}  \n"
+    )
+
+    assert check_review(content).detail == f"{first} continues\n\n{second}"
+
+
+@pytest.mark.parametrize(("count", "ok"), [(69, False), (70, True), (130, True), (131, False)])
+def test_check_review_counts_words_of_the_detail(count: int, ok: bool) -> None:
+    """長めの文は 80〜120 語と頼み、70〜130 語なら受け取る。"""
+    content = ReviewContent(script=LINE, options=OPTIONS, detail=" ".join(["ride"] * count))
+    if ok:
+        assert check_review(content).detail is not None
+    else:
+        with pytest.raises(InvalidReviewError, match="detail") as error:
+            check_review(content)
+        # 書き直しのたびに警告ログに出るので、文言は入れない
+        assert "ride" not in str(error.value)
+
+
+def test_check_review_leaves_a_missing_detail_as_none() -> None:
+    assert check_review(ReviewContent(script=LINE, options=OPTIONS)).detail is None
+
+
+def test_system_instruction_asks_for_the_detail_first() -> None:
+    """長めの文を先に書かせ、セリフをその短い話し言葉にする。長めの文も同じ決まりに従う。"""
+    assert "`detail` is read on the screen and is not spoken" in SYSTEM_INSTRUCTION
+    assert "Write it first, then `line` as its short" in SYSTEM_INSTRUCTION
+    assert "80 to 120 words" in SYSTEM_INSTRUCTION
+    assert "It follows every rule above" in SYSTEM_INSTRUCTION
+
+
 @pytest.mark.parametrize(("count", "ok"), [(27, False), (28, True), (40, True), (41, False)])
 def test_check_review_counts_words_of_the_line(count: int, ok: bool) -> None:
     content = ReviewContent(script=" ".join(["word"] * count), options=OPTIONS)

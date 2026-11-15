@@ -140,6 +140,18 @@ async def test_asks_every_question_about_the_line_and_the_options_at_once() -> N
     assert set(QUESTIONS) == {"pushes_harder", "medical_advice", "offers_more", "expression"}
 
 
+async def test_checks_the_detail_with_the_same_questions() -> None:
+    """画面で読む長めの文も、セリフと同じ問いで 1 回聞く。"""
+    system_one = FakeSystemOne(line_answer(0.02, 0.01, 0.03))
+
+    check = await checker(system_one).check_detail("A longer note about the week.")
+
+    assert check is not None
+    assert check.pushes_harder == pytest.approx(0.02)
+    assert system_one.states == [{"line": "A longer note about the week."}]
+    assert system_one.questions == [QUESTIONS]
+
+
 @pytest.mark.parametrize(
     ("pushes", "medical", "risks"),
     [

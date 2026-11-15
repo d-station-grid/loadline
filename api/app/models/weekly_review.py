@@ -47,6 +47,8 @@ class WeeklyReview(Base):
     situation: Mapped[str] = mapped_column(String(32))
     # アバターのセリフ。字幕にも使う
     script: Mapped[str] = mapped_column(Text)
+    # 画面で読む長めの文（話さない）。LLM が書き、Jev で確かめられたときだけ入る。定型は NULL
+    detail: Mapped[str | None] = mapped_column(Text)
     # Cloud Storage 上の音声。声にするまでは NULL
     audio_path: Mapped[str | None] = mapped_column(String(512))
     # ReviewStatus の値

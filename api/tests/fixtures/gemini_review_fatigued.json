@@ -4,7 +4,7 @@
    "content": {
     "parts": [
      {
-      "text": "{\"line\":\"You put in six sessions this week even with that tough work deadline and poor sleep. Your fatigue is running high, and those heavy legs are asking for some well earned kindness and rest.\",\"options\":[{\"label\":\"Take full rest\",\"description\":\"Give your body time to sleep and recover completely.\"},{\"label\":\"Short easy spins\",\"description\":\"Keep sessions brief and gentle without any pressure.\"}]}"
+      "text": "{\n  \"detail\": \"You put in a really heavy week on the road, adding 120 minutes compared to last week across your 4 sessions. That is a lot of good, dedicated work. Most of that time was spent at a moderate effort rather than easy, and your fatigue has climbed well above your fitness. The body gets stronger while it recovers, not during the session itself. After such a demanding week, backing off gives your muscles and nervous system time to adapt. For the coming days, swapping some of those steady efforts for very gentle spins, or simply taking some downtime, will help all that training truly take hold.\",\n  \"line\": \"You put in a really heavy week of training, and that dedication deserves credit. The body gets stronger during recovery, so taking extra rest or swapping moderate efforts for gentle outings will let that work sink in.\",\n  \"options\": [\n    {\n      \"label\": \"Take quiet rest\",\n      \"description\": \"Give your body time off so your fatigue can fade.\"\n    },\n    {\n      \"label\": \"Swap to easy\",\n      \"description\": \"Replace your moderate efforts with very gentle, relaxed movement.\"\n    }\n  ]\n}"
      }
     ],
     "role": "model"
@@ -12,39 +12,40 @@
    "finish_reason": "STOP"
   }
  ],
- "create_time": "2026-11-01T03:41:02.390040Z",
+ "create_time": "2026-11-15T00:54:15.036478Z",
  "model_version": "gemini-3.8-flash",
- "response_id": "zrTmapjnF_iax9gP1YfM0Qw",
+ "response_id": "twL5av6cApWLx9gP7r-JiQk",
  "usage_metadata": {
-  "candidates_token_count": 80,
+  "candidates_token_count": 255,
   "candidates_tokens_details": [
    {
     "modality": "TEXT",
-    "token_count": 80
+    "token_count": 255
    }
   ],
-  "prompt_token_count": 1073,
+  "prompt_token_count": 1895,
   "prompt_tokens_details": [
    {
     "modality": "TEXT",
-    "token_count": 1073
+    "token_count": 1895
    }
   ],
-  "thoughts_token_count": 1208,
-  "total_token_count": 2361,
+  "thoughts_token_count": 2579,
+  "total_token_count": 4729,
   "traffic_type": "ON_DEMAND"
  },
  "automatic_function_calling_history": [],
  "parsed": {
-  "line": "You put in six sessions this week even with that tough work deadline and poor sleep. Your fatigue is running high, and those heavy legs are asking for some well earned kindness and rest.",
+  "detail": "You put in a really heavy week on the road, adding 120 minutes compared to last week across your 4 sessions. That is a lot of good, dedicated work. Most of that time was spent at a moderate effort rather than easy, and your fatigue has climbed well above your fitness. The body gets stronger while it recovers, not during the session itself. After such a demanding week, backing off gives your muscles and nervous system time to adapt. For the coming days, swapping some of those steady efforts for very gentle spins, or simply taking some downtime, will help all that training truly take hold.",
+  "line": "You put in a really heavy week of training, and that dedication deserves credit. The body gets stronger during recovery, so taking extra rest or swapping moderate efforts for gentle outings will let that work sink in.",
   "options": [
    {
-    "label": "Take full rest",
-    "description": "Give your body time to sleep and recover completely."
+    "label": "Take quiet rest",
+    "description": "Give your body time off so your fatigue can fade."
    },
    {
-    "label": "Short easy spins",
-    "description": "Keep sessions brief and gentle without any pressure."
+    "label": "Swap to easy",
+    "description": "Replace your moderate efforts with very gentle, relaxed movement."
    }
   ]
  }

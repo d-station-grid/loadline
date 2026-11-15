@@ -85,6 +85,7 @@ erDiagram
     date period_end
     varchar situation "コードで判定した状況"
     text script "セリフ。字幕にも使う"
+    text detail "画面で読む長めの文。定型は NULL"
     varchar audio_path "Cloud Storage 上の音声"
     varchar status "生成中、完了、失敗"
     boolean is_fallback "定型のセリフか"
