@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from app.domain.vo2max import vo2max_trend
+from app.domain.vo2max import Vo2maxPoint, Vo2maxTrend, vo2max_trend, vo2max_trend_until
 
 
 def test_vo2max_trend_averages_last_30_days() -> None:
@@ -40,3 +40,54 @@ def test_vo2max_trend_window_includes_day_29_back() -> None:
 
 def test_vo2max_trend_empty() -> None:
     assert vo2max_trend([]) == []
+
+
+def _points(*days_and_averages: tuple[date, float]) -> list[Vo2maxPoint]:
+    return [Vo2maxPoint(day=d, value=a, average=a) for d, a in days_and_averages]
+
+
+END = date(2026, 10, 18)
+
+
+@pytest.mark.parametrize(
+    ("before", "now", "trend"),
+    [
+        (45.0, 45.5, Vo2maxTrend.UP),
+        (45.0, 45.4, Vo2maxTrend.FLAT),
+        (45.0, 44.6, Vo2maxTrend.FLAT),
+        (45.0, 44.5, Vo2maxTrend.DOWN),
+    ],
+)
+def test_trend_compares_the_30_day_averages_four_weeks_apart(
+    before: float, now: float, trend: Vo2maxTrend
+) -> None:
+    """最新の平均と、その 28 日前かそれより前の最後の平均を比べる。差が 0.5 未満は横ばい。"""
+    points = _points(
+        (date(2026, 9, 10), 40.0),
+        (date(2026, 9, 15), before),
+        # 28 日前より後なので、比べる相手にはならない
+        (date(2026, 9, 20), 50.0),
+        (date(2026, 10, 13), now),
+    )
+
+    assert vo2max_trend_until(points, END) is trend
+
+
+def test_trend_ignores_readings_after_the_week() -> None:
+    """週の最終日より後の測定は使わない。作る日によって傾向が変わらないため。"""
+    points = _points(
+        (date(2026, 9, 15), 45.0),
+        (date(2026, 10, 13), 45.0),
+        (date(2026, 10, 19), 48.0),
+    )
+
+    assert vo2max_trend_until(points, END) is Vo2maxTrend.FLAT
+
+
+def test_trend_needs_a_recent_reading_and_one_four_weeks_before() -> None:
+    # 比べる相手がない
+    assert vo2max_trend_until(_points((date(2026, 10, 13), 45.0)), END) is None
+    # 最新が週の最終日の 28 日前かそれより前で、古すぎる
+    old = _points((date(2026, 8, 1), 44.0), (date(2026, 9, 20), 45.0))
+    assert vo2max_trend_until(old, END) is None
+    assert vo2max_trend_until([], END) is None

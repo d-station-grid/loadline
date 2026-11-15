@@ -2,6 +2,7 @@ import json
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -16,6 +17,7 @@ from app.domain.line_check import LineCheck
 from app.domain.note_check import NoteCheck
 from app.domain.review_prompt import NoteForReview
 from app.domain.situation import Situation
+from app.domain.vo2max import Vo2maxTrend
 from app.models import User, WeeklyReview, WeeklyReviewOption, Workout
 from app.services.dashboard import build_dashboard
 from app.services.reviews import (
@@ -32,6 +34,7 @@ from app.services.reviews import (
 from tests.factories import (
     NoteFactory,
     UserFactory,
+    Vo2maxReadingFactory,
     WeeklyReviewFactory,
     WeeklyReviewOptionFactory,
     WorkoutFactory,
@@ -475,6 +478,32 @@ async def test_heavy_week_keeps_the_writer_from_offering_more(session: AsyncSess
 
     assert writer.data()["effort"]["volume_vs_usual"] == "heavy"
     assert writer.data()["may_offer_more"] is False
+
+
+async def test_material_has_the_vo2max_trend_until_the_end_of_the_week(
+    session: AsyncSession,
+) -> None:
+    """週の最終日までの 30 日平均を、4 週前の 30 日平均と比べる。週の後の測定は使わない。"""
+    user = await _user()
+    await _weekly_rides(user, MONDAY - timedelta(weeks=5), 5)
+    for day, value in (("2026-09-15", "45.0"), ("2026-10-15", "46.0"), ("2026-10-19", "40.0")):
+        await Vo2maxReadingFactory.create_async(
+            user_id=user.id,
+            measured_at=datetime.fromisoformat(f"{day}T08:00").replace(tzinfo=JST),
+            value=Decimal(value),
+        )
+
+    material = await review_material(session, user, MONDAY, TODAY)
+
+    # 10/15 の 30 日平均は 9/16〜10/15 で 46.0 だけ。9/15 の平均は 45.0。差は 1.0
+    assert material.vo2max is Vo2maxTrend.UP
+
+
+async def test_material_has_no_vo2max_trend_without_readings(session: AsyncSession) -> None:
+    user = await _user()
+    await _ride(user, "2026-10-13T07:00")
+
+    assert (await review_material(session, user, MONDAY, TODAY)).vo2max is None
 
 
 async def test_material_has_the_choice_of_the_week_before(session: AsyncSession) -> None:

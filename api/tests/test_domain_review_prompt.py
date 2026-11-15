@@ -16,6 +16,7 @@ from app.domain.review_prompt import (
     review_prompt,
 )
 from app.domain.situation import Situation, WeekSituation
+from app.domain.vo2max import Vo2maxTrend
 
 MONDAY = date(2026, 10, 19)
 
@@ -174,6 +175,27 @@ def test_system_instruction_replaces_moderate_sessions_instead_of_adding_easy_on
     assert "replaces some moderate sessions with easy ones" in SYSTEM_INSTRUCTION
     assert "Replace, do not add" in SYSTEM_INSTRUCTION
     assert "more easy sessions" not in SYSTEM_INSTRUCTION
+
+
+def test_prompt_passes_the_vo2max_trend_without_the_value() -> None:
+    """VO2max は傾向の区分だけを渡す。測定が足りなければ null。"""
+    assert prompt_data(replace(material(), vo2max=Vo2maxTrend.UP))["vo2max_trend"] == "up"
+    assert prompt_data(material())["vo2max_trend"] is None
+
+
+def test_system_instruction_does_not_let_vo2max_be_explained_by_one_week() -> None:
+    """VO2max は時計の推定でぶれる。この週や 1 回の練習のおかげだとは言わせない。"""
+    assert "`vo2max_trend`" in SYSTEM_INSTRUCTION
+    assert "never say this week or any one session caused it" in SYSTEM_INSTRUCTION
+    assert "then do not mention VO2max" in SYSTEM_INSTRUCTION
+
+
+def test_system_instruction_asks_for_one_insight_grounded_in_one_principle() -> None:
+    """入力の数字の言い直しにせず、原則を 1 つだけ選んで理由として添えてもらう。"""
+    assert "never just read the input back" in SYSTEM_INSTRUCTION
+    assert "use only one" in SYSTEM_INSTRUCTION
+    assert "Do not name researchers, studies or training systems" in SYSTEM_INSTRUCTION
+    assert "do not open `line` with them" in SYSTEM_INSTRUCTION
 
 
 def test_prompt_passes_the_previous_choice() -> None:
