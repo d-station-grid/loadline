@@ -324,7 +324,9 @@ export default function OnboardingPage({ user, onOpenDashboard }: Props) {
               "format",
               "range",
               "cadence",
+              "enabled",
             ])}
+            <p className="small">{t.app.save}</p>
           </li>
 
           <li className="card">

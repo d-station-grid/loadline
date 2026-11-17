@@ -198,6 +198,7 @@ export const en = {
       create:
         "In the app, open Export → Automations → New Automation, and make the two automations below.",
       both: "For both",
+      save: "For each automation, tap Update at the top right to save it. Without this, nothing is sent.",
       workouts: "Workouts",
       vo2max: "VO2max",
       rows: {
@@ -207,6 +208,7 @@ export const en = {
         format: ["Export Format / Version", "JSON / v2"],
         range: ["Date Range", "Since Last Sync"],
         cadence: ["Sync Cadence", "every 3 hours"],
+        enabled: ["Enabled", "on"],
         workoutsType: ["Data Type", "Workouts"],
         metrics: ["Include Workout Metrics", "on (heart rate)"],
         vo2Type: ["Data Type", "Health Metrics"],
@@ -572,6 +574,7 @@ export const ja: Messages = {
       create:
         "アプリで「エクスポート」→「自動化」→「新しいオートメーション」を開き、次の 2 つを作ります。",
       both: "2 つに共通",
+      save: "それぞれの自動化で、右上の「更新」を押して保存します。保存しないと送られません。",
       workouts: "ワークアウト用",
       vo2max: "VO2max 用",
       rows: {
@@ -581,6 +584,7 @@ export const ja: Messages = {
         format: ["エクスポート形式 / バージョン", "JSON / v2"],
         range: ["日付範囲", "最後の同期以降"],
         cadence: ["同期頻度", "毎回 3 時間"],
+        enabled: ["有効化済み", "オン"],
         workoutsType: ["データタイプ", "ワークアウト"],
         metrics: ["ワークアウト指標を含める", "オン（心拍）"],
         vo2Type: ["データタイプ", "ヘルス指標"],

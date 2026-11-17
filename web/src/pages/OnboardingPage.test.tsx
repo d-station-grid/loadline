@@ -241,4 +241,9 @@ test("画面の言語が日本語なら、手順と設定の項目を日本語�
   expect(screen.getByLabelText("最大心拍数")).toBeInTheDocument();
   expect(screen.getByText("「VO2 Max」だけ")).toBeInTheDocument();
   expect(screen.getByText("心肺機能（VO2max）")).toBeInTheDocument();
+  // 自動化は有効にして「更新」で保存しないと送られない
+  expect(screen.getByText("有効化済み")).toBeInTheDocument();
+  expect(
+    screen.getByText(/右上の「更新」を押して保存します/),
+  ).toBeInTheDocument();
 });
