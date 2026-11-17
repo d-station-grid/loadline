@@ -40,6 +40,20 @@ async def test_index_is_revalidated_and_hashed_assets_are_cached(tmp_path: Path)
     assert revalidated.headers["cache-control"] == "no-cache"
 
 
+async def test_missing_asset_with_404_page_is_not_cached(tmp_path: Path) -> None:
+    (tmp_path / "index.html").write_text("<title>loadline</title>")
+    (tmp_path / "404.html").write_text("<title>not found</title>")
+    (tmp_path / "assets").mkdir()
+    app = create_app(static_dir=str(tmp_path))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        missing = await client.get("/assets/missing.js")
+
+    assert missing.status_code == 404
+    assert "not found" in missing.text
+    assert missing.headers["cache-control"] == "no-cache"
+
+
 async def test_api_responses_get_no_static_cache_header(tmp_path: Path) -> None:
     (tmp_path / "index.html").write_text("<title>loadline</title>")
     app = create_app(static_dir=str(tmp_path))

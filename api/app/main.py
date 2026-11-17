@@ -16,11 +16,12 @@ class WebFiles(StaticFiles):
     それ以外（index.html、favicon、アバターのモデル）は名前が変わらないので、毎回確かめさせる。
     index.html が使い回されると、デプロイのあとも古い JS を読み続ける。
     変わっていなければ 304 が返るので、確かめる分の重さはほとんどない。
+    assets/ でも、ファイルがなく 404.html が返るときは使い回させない。
     """
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         response = await super().get_response(path, scope)
-        if path.startswith("assets/"):
+        if path.startswith("assets/") and response.status_code in (200, 304):
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         else:
             response.headers["Cache-Control"] = "no-cache"
