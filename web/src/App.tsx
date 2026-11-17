@@ -14,10 +14,11 @@ import {
   messagesFor,
   type Messages,
 } from "./i18n";
-import { ApiError, login } from "./lib/api";
+import { ApiError, getSettings, login } from "./lib/api";
 import { auth, googleProvider } from "./lib/firebase";
 import Landing from "./components/Landing";
 import DashboardPage from "./pages/DashboardPage";
+import OnboardingPage from "./pages/OnboardingPage";
 import SettingsPage from "./pages/SettingsPage";
 import WorkoutPage from "./pages/WorkoutPage";
 import WorkoutsPage from "./pages/WorkoutsPage";
@@ -38,9 +39,23 @@ function loginErrorMessage(e: unknown, guest: boolean, m: Messages): string {
 // ログイン済みの画面。ルーティングのライブラリは入れず、state で切り替える
 type View =
   | { name: "dashboard" }
+  | { name: "onboarding" }
   | { name: "workouts" }
   | { name: "workout"; id: number }
   | { name: "settings" };
+
+/**
+ * ログインした直後の画面。まだ一度もデータが届いていなければ、導入の案内を出す。
+ * 設定を読めなかったときは、案内で止めずにダッシュボードを出す（案内は設定の画面から開ける）
+ */
+async function firstView(idToken: string): Promise<View> {
+  try {
+    const s = await getSettings(idToken);
+    return { name: s.last_received_at == null ? "onboarding" : "dashboard" };
+  } catch {
+    return { name: "dashboard" };
+  }
+}
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -73,11 +88,15 @@ function App() {
       try {
         // api に行があることを確かめてから、ログイン済みにする
         const me = await login(await next.getIdToken());
+        const first: View = next.isAnonymous
+          ? { name: "dashboard" }
+          : await firstView(await next.getIdToken());
         if (isLatest()) {
           // ゲストは設定を変えられないので、ブラウザの言語を使い続ける。api も同じ決め方の
           // 言語（X-Guest-Language）でデモの利用者を選ぶ。その言語のデモがまだなければ
           // 英語のデモが返るが、画面はブラウザの言語のまま
           setLanguage(next.isAnonymous ? browserLanguage() : me.language);
+          setView(first);
           setUser(next);
         }
       } catch (e) {
@@ -235,8 +254,18 @@ function App() {
             onBack={() => setView({ name: "workouts" })}
           />
         )}
+        {view.name === "onboarding" && (
+          <OnboardingPage
+            user={user}
+            onOpenDashboard={() => setView({ name: "dashboard" })}
+          />
+        )}
         {view.name === "settings" && (
-          <SettingsPage user={user} onDeleted={handleDeleted} />
+          <SettingsPage
+            user={user}
+            onDeleted={handleDeleted}
+            onOpenGuide={() => setView({ name: "onboarding" })}
+          />
         )}
       </main>
     </I18nProvider>
