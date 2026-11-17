@@ -2007,11 +2007,23 @@
               }
             ],
             "title": "Ingest Token Last Four"
+          },
+          "last_received_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Received At"
           }
         },
         "type": "object",
         "title": "SettingsOut",
-        "description": "GET /settings の返事。トークンは末尾 4 文字だけ。未発行なら None。"
+        "description": "GET /settings の返事。トークンは末尾 4 文字だけ。未発行なら None。\n\nlast_received_at は、Health Auto Export からの取り込みが最後に成功した日時。\nまだ一度も届いていなければ None。web の導入の案内が、送信アプリの設定が済んで\n最初の送信が届いたかを確かめるのに使う。記録が 0 件の送信でも、届けば日時は入る。"
       },
       "Situation": {
         "type": "string",

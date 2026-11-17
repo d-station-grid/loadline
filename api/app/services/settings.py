@@ -6,11 +6,13 @@ from app.services.ingest_tokens import current_token
 
 
 async def read_settings(session: AsyncSession, user: User) -> SettingsOut:
-    """設定の列と、いま有効な取り込み用トークンの末尾 4 文字。"""
+    """設定の列と、いま有効な取り込み用トークンの末尾 4 文字と、最後に取り込めた日時。"""
     token = await current_token(session, user.id)
     fields = SettingsFields.model_validate(user)
     return SettingsOut(
-        **fields.model_dump(), ingest_token_last_four=token.last_four if token else None
+        **fields.model_dump(),
+        ingest_token_last_four=token.last_four if token else None,
+        last_received_at=user.last_ingested_at,
     )
 
 

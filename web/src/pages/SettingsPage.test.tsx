@@ -73,6 +73,10 @@ test("保存した値がブラウザの一覧になくても、その値が選�
 });
 
 test("Save で入力した値を送り、Saved と出る", async () => {
+  vi.mocked(getSettings).mockResolvedValue({
+    ...defaults,
+    last_received_at: "2026-11-17T09:00:00Z",
+  });
   vi.mocked(putSettings).mockImplementation(async (body) => ({
     ...body,
     ingest_token_last_four: null,
@@ -90,7 +94,7 @@ test("Save で入力した値を送り、Saved と出る", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
   expect(await screen.findByRole("status")).toHaveTextContent("Saved");
-  // 送るのは設定の項目だけ。トークンの末尾 4 文字は含めない
+  // 送るのは設定の項目だけ。トークンの末尾 4 文字と、最後に届いた日時は含めない
   const { ingest_token_last_four: _, ...fields } = defaults;
   expect(putSettings).toHaveBeenCalledWith(
     {
