@@ -65,8 +65,12 @@ const HEART_RATE_FIELDS: {
   { field: "zone_boundary_2", min: 60, max: 250 },
 ];
 
-/** 入力中のフォーム。心拍の 4 つは空のこともある（必須にする前の利用者、入力の途中） */
-type SettingsForm = Omit<SettingsOut, "ingest_token_last_four">;
+/** 入力中のフォーム。心拍の 4 つは空のこともある（必須にする前の利用者、入力の途中）。
+ * トークンの末尾と最後に届いた日時は読むだけの項目なので、保存の本文に混ぜない */
+type SettingsForm = Omit<
+  SettingsOut,
+  "ingest_token_last_four" | "last_received_at"
+>;
 
 /** 送る前に確かめる、心拍の 4 つがそろっているか、各項目の範囲、項目どうしの大小。api の
  * 検査と同じ決まりで、破っていれば画面に出す文言を返す。送ると 422 としか出ないため。 */
@@ -271,7 +275,11 @@ export default function SettingsPage({ user, onDeleted }: Props) {
   }, [user]);
 
   function applySettings(s: SettingsOut) {
-    const { ingest_token_last_four, ...fields } = s;
+    const {
+      ingest_token_last_four,
+      last_received_at: _lastReceivedAt,
+      ...fields
+    } = s;
     const max = fields.max_heart_rate ?? null;
     const saved = {
       low: fields.zone_boundary_1 ?? null,

@@ -1,11 +1,14 @@
 from collections.abc import Iterator
+from datetime import datetime
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import Identity, InvalidTokenError, get_token_verifier
 from app.main import app
+from app.models import User
 from app.services.ingest_tokens import find_user_id_by_token, issue_token
 from tests.factories import UserFactory
 
@@ -40,6 +43,7 @@ async def test_read_returns_defaults_for_new_user(client: AsyncClient) -> None:
         "send_notes_to_ai": True,
         "language": "en",
         "ingest_token_last_four": None,
+        "last_received_at": None,
     }
 
 
@@ -59,7 +63,7 @@ async def test_update_then_read_back(client: AsyncClient) -> None:
     get = await client.get("/settings", headers=HEADERS)
 
     assert put.status_code == 200
-    assert get.json() == {**body, "ingest_token_last_four": None}
+    assert get.json() == {**body, "ingest_token_last_four": None, "last_received_at": None}
 
 
 # 心拍の 4 つがそろった、保存できる本文。422 のテストはここから 1 か所だけ崩す
@@ -160,3 +164,50 @@ async def test_reissue_does_not_revoke_another_users_token(
     assert settings.json()["ingest_token_last_four"] == second.json()["last_four"]
     assert await find_user_id_by_token(session, first.json()["token"]) is None
     assert await find_user_id_by_token(session, other_token) == other.id
+
+
+async def test_last_received_at_is_set_by_the_first_ingest(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """導入の案内は、これで最初の送信が届いたかを見る。記録が 0 件の送信でも、届けば入る。"""
+    issued = await client.post("/settings/ingest-token", headers=HEADERS)
+    before = await client.get("/settings", headers=HEADERS)
+
+    ingest = await client.post(
+        "/ingest",
+        json={"data": {"workouts": []}},
+        headers={"Authorization": f"Bearer {issued.json()['token']}"},
+    )
+    after = await client.get("/settings", headers=HEADERS)
+
+    assert before.json()["last_received_at"] is None
+    assert ingest.status_code == 200
+    ingested_at = await session.scalar(
+        select(User.last_ingested_at).where(User.firebase_uid == "uid-1")
+    )
+    assert ingested_at is not None
+    assert datetime.fromisoformat(after.json()["last_received_at"]) == ingested_at
+
+
+async def test_last_received_at_ignores_failed_sends_and_other_users(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    """断られた送信（中身の形が違う）と、他人への送信では入らない。"""
+    issued = await client.post("/settings/ingest-token", headers=HEADERS)
+    other = await UserFactory.create_async()
+    other_token, _ = await issue_token(session, other.id)
+
+    rejected = await client.post(
+        "/ingest",
+        json={"workouts": []},
+        headers={"Authorization": f"Bearer {issued.json()['token']}"},
+    )
+    others = await client.post(
+        "/ingest",
+        json={"data": {"workouts": []}},
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    settings = await client.get("/settings", headers=HEADERS)
+
+    assert (rejected.status_code, others.status_code) == (422, 200)
+    assert settings.json()["last_received_at"] is None

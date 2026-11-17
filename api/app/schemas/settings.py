@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.domain.calendar import is_known_timezone
@@ -52,9 +54,15 @@ class SettingsIn(SettingsFields):
 
 
 class SettingsOut(SettingsFields):
-    """GET /settings の返事。トークンは末尾 4 文字だけ。未発行なら None。"""
+    """GET /settings の返事。トークンは末尾 4 文字だけ。未発行なら None。
+
+    last_received_at は、Health Auto Export からの取り込みが最後に成功した日時。
+    まだ一度も届いていなければ None。web の導入の案内が、送信アプリの設定が済んで
+    最初の送信が届いたかを確かめるのに使う。記録が 0 件の送信でも、届けば日時は入る。
+    """
 
     ingest_token_last_four: str | None = None
+    last_received_at: datetime | None = None
 
 
 class IngestTokenOut(BaseModel):

@@ -486,6 +486,10 @@ export type SettingsIn = {
  * SettingsOut
  *
  * GET /settings の返事。トークンは末尾 4 文字だけ。未発行なら None。
+ *
+ * last_received_at は、Health Auto Export からの取り込みが最後に成功した日時。
+ * まだ一度も届いていなければ None。web の導入の案内が、送信アプリの設定が済んで
+ * 最初の送信が届いたかを確かめるのに使う。記録が 0 件の送信でも、届けば日時は入る。
  */
 export type SettingsOut = {
   /**
@@ -521,6 +525,10 @@ export type SettingsOut = {
    * Ingest Token Last Four
    */
   ingest_token_last_four?: string | null;
+  /**
+   * Last Received At
+   */
+  last_received_at?: string | null;
 };
 
 /**
