@@ -2,9 +2,9 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type { User } from "firebase/auth";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import type { UserOut } from "./api";
+import type { SettingsOut, UserOut } from "./api";
 import App from "./App";
-import { ApiError, login } from "./lib/api";
+import { ApiError, getSettings, login } from "./lib/api";
 
 const firebaseAuth = vi.hoisted(() => ({
   onAuthStateChanged: vi.fn(),
@@ -19,12 +19,31 @@ vi.mock("./lib/api", async (importOriginal) => ({
   // ApiError は本物を使う。状態コードで文言を出し分けるため
   ApiError: (await importOriginal<typeof import("./lib/api")>()).ApiError,
   login: vi.fn(),
+  getSettings: vi.fn(),
 }));
 // 設定ページは自分のテストで見る。ここではログインの流れだけ
 vi.mock("./pages/SettingsPage", () => ({
-  default: ({ onDeleted }: { onDeleted: () => void }) => (
-    <button type="button" onClick={onDeleted}>
-      settings
+  default: ({
+    onDeleted,
+    onOpenGuide,
+  }: {
+    onDeleted: () => void;
+    onOpenGuide?: () => void;
+  }) => (
+    <>
+      <button type="button" onClick={onDeleted}>
+        settings
+      </button>
+      <button type="button" onClick={onOpenGuide}>
+        open guide
+      </button>
+    </>
+  ),
+}));
+vi.mock("./pages/OnboardingPage", () => ({
+  default: ({ onOpenDashboard }: { onOpenDashboard: () => void }) => (
+    <button type="button" onClick={onOpenDashboard}>
+      onboarding
     </button>
   ),
 }));
@@ -80,8 +99,27 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** 設定の返事。last_received_at だけ変える。既定は、もうデータが届いている人 */
+function settingsWith(lastReceivedAt: string | null): SettingsOut {
+  return {
+    max_heart_rate: 180,
+    resting_heart_rate: 50,
+    zone_boundary_1: 144,
+    zone_boundary_2: 162,
+    timezone: "Asia/Tokyo",
+    review_weekday: 0,
+    send_notes_to_ai: true,
+    language: "en",
+    ingest_token_last_four: "abcd",
+    last_received_at: lastReceivedAt,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getSettings).mockResolvedValue(
+    settingsWith("2026-11-17T09:00:00Z"),
+  );
   // Google のポップアップが通ると、Firebase はログイン済みの通知を出す
   firebaseAuth.signInWithPopup.mockImplementation(async () => {
     notify(taro);
@@ -501,4 +539,77 @@ test("日本語のブラウザでゲストに入ると、デモの言語（英�
   expect(
     screen.getByRole("button", { name: "ログアウト" }),
   ).toBeInTheDocument();
+});
+
+test("まだデータが届いていなければ、ログイン後に導入の案内を出し、あとでダッシュボードへ移れる", async () => {
+  restoredUser(taro);
+  vi.mocked(login).mockResolvedValue({
+    id: 1,
+    email: "taro@example.com",
+    language: "en",
+  });
+  vi.mocked(getSettings).mockResolvedValue(settingsWith(null));
+  render(<App />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "onboarding" }));
+
+  expect(screen.getByRole("button", { name: "dashboard" })).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "onboarding" }),
+  ).not.toBeInTheDocument();
+});
+
+test("案内を閉じたあとも、設定の画面から開き直せる", async () => {
+  restoredUser(taro);
+  vi.mocked(login).mockResolvedValue({
+    id: 1,
+    email: "taro@example.com",
+    language: "en",
+  });
+  render(<App />);
+
+  await screen.findByRole("button", { name: "dashboard" });
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  fireEvent.click(screen.getByRole("button", { name: "open guide" }));
+
+  expect(
+    screen.getByRole("button", { name: "onboarding" }),
+  ).toBeInTheDocument();
+});
+
+test("設定を読めなければ、案内で止めずにダッシュボードを出す", async () => {
+  restoredUser(taro);
+  vi.mocked(login).mockResolvedValue({
+    id: 1,
+    email: "taro@example.com",
+    language: "en",
+  });
+  vi.mocked(getSettings).mockRejectedValue(new ApiError(500));
+  render(<App />);
+
+  expect(
+    await screen.findByRole("button", { name: "dashboard" }),
+  ).toBeInTheDocument();
+});
+
+test("ゲストには案内を出さず、設定も読まない", async () => {
+  restoredUser(null);
+  firebaseAuth.signInAnonymously.mockImplementation(async () => {
+    notify(guest);
+    return { user: guest };
+  });
+  vi.mocked(login).mockResolvedValue({
+    id: 9,
+    email: "demo@loadline.invalid",
+    language: "en",
+  });
+  vi.mocked(getSettings).mockResolvedValue(settingsWith(null));
+  render(<App />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Try as a guest" }));
+
+  expect(
+    await screen.findByRole("button", { name: "dashboard" }),
+  ).toBeInTheDocument();
+  expect(getSettings).not.toHaveBeenCalled();
 });

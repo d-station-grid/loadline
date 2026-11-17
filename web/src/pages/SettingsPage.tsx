@@ -1,7 +1,7 @@
 import type { User } from "firebase/auth";
 import { type SubmitEvent, useEffect, useRef, useState } from "react";
 
-import type { Language, SettingsIn, SettingsOut } from "../api";
+import type { Language, SettingsOut } from "../api";
 import {
   ApiError,
   deleteAccount,
@@ -10,6 +10,15 @@ import {
   putSettings,
 } from "../lib/api";
 import { type Messages, useI18n } from "../i18n";
+import {
+  formFromSettings,
+  HEART_RATE_FIELDS,
+  type HeartRateField,
+  type SettingsForm,
+  settingsBody,
+  settingsProblem,
+  toInt,
+} from "../lib/settingsForm";
 import { boundariesForMax, isSuggested } from "../lib/zones";
 
 /** 選べる言語。名前は、その言語を読む人に分かるよう、その言語で書く */
@@ -40,86 +49,6 @@ function timezones(current: string | undefined): string[] {
   };
   const list = intl.supportedValuesOf?.("timeZone") ?? ["UTC", "Asia/Tokyo"];
   return !current || list.includes(current) ? list : [current, ...list];
-}
-
-/** 空欄は null、それ以外は整数。 */
-function toInt(value: string): number | null {
-  return value === "" ? null : Number(value);
-}
-
-type HeartRateField =
-  | "max_heart_rate"
-  | "resting_heart_rate"
-  | "zone_boundary_1"
-  | "zone_boundary_2";
-
-/** 心拍の項目と受け付ける範囲。範囲は api の schemas/settings.py と同じにする。名前は辞書 */
-const HEART_RATE_FIELDS: {
-  field: HeartRateField;
-  min: number;
-  max: number;
-}[] = [
-  { field: "max_heart_rate", min: 100, max: 250 },
-  { field: "resting_heart_rate", min: 30, max: 120 },
-  { field: "zone_boundary_1", min: 60, max: 250 },
-  { field: "zone_boundary_2", min: 60, max: 250 },
-];
-
-/** 入力中のフォーム。心拍の 4 つは空のこともある（必須にする前の利用者、入力の途中）。
- * トークンの末尾と最後に届いた日時は読むだけの項目なので、保存の本文に混ぜない */
-type SettingsForm = Omit<
-  SettingsOut,
-  "ingest_token_last_four" | "last_received_at"
->;
-
-/** 送る前に確かめる、心拍の 4 つがそろっているか、各項目の範囲、項目どうしの大小。api の
- * 検査と同じ決まりで、破っていれば画面に出す文言を返す。送ると 422 としか出ないため。 */
-function settingsProblem(
-  form: SettingsForm,
-  t: Messages["settings"],
-): string | null {
-  for (const { field, min, max } of HEART_RATE_FIELDS) {
-    const label = t.fields[field];
-    const value = form[field];
-    if (value == null) return t.required(label);
-    if (!Number.isInteger(value) || value < min || value > max) {
-      return t.outOfRange(label, min, max);
-    }
-  }
-  const { zone_boundary_1: low, zone_boundary_2: high } = form;
-  if (low != null && high != null && !(low < high)) {
-    return t.boundariesOrder;
-  }
-  const { resting_heart_rate: resting, max_heart_rate: max } = form;
-  if (resting != null && max != null && !(resting < max)) {
-    return t.restingBelowMax;
-  }
-  return null;
-}
-
-/** 送る本文。心拍の 4 つが空なら null（settingsProblem が先に止める） */
-function settingsBody(form: SettingsForm): SettingsIn | null {
-  const {
-    max_heart_rate,
-    resting_heart_rate,
-    zone_boundary_1,
-    zone_boundary_2,
-  } = form;
-  if (
-    max_heart_rate == null ||
-    resting_heart_rate == null ||
-    zone_boundary_1 == null ||
-    zone_boundary_2 == null
-  ) {
-    return null;
-  }
-  return {
-    ...form,
-    max_heart_rate,
-    resting_heart_rate,
-    zone_boundary_1,
-    zone_boundary_2,
-  };
 }
 
 function errorMessage(e: unknown, m: Messages): string {
@@ -212,9 +141,11 @@ type Props = {
   user: User;
   /** 消せたあとに呼ぶ。ここから先は api を呼ばない */
   onDeleted: () => void;
+  /** 導入の案内を開く。案内を「あとで」で閉じた人が、ここから戻れる */
+  onOpenGuide?: () => void;
 };
 
-export default function SettingsPage({ user, onDeleted }: Props) {
+export default function SettingsPage({ user, onDeleted, onOpenGuide }: Props) {
   // 保存した言語で、画面全体をその場で切り替える
   const { m, locale, setLanguage } = useI18n();
   const t = m.settings;
@@ -275,11 +206,7 @@ export default function SettingsPage({ user, onDeleted }: Props) {
   }, [user]);
 
   function applySettings(s: SettingsOut) {
-    const {
-      ingest_token_last_four,
-      last_received_at: _lastReceivedAt,
-      ...fields
-    } = s;
+    const fields = formFromSettings(s);
     const max = fields.max_heart_rate ?? null;
     const saved = {
       low: fields.zone_boundary_1 ?? null,
@@ -298,7 +225,7 @@ export default function SettingsPage({ user, onDeleted }: Props) {
       filled.boundaries.low !== saved.low ||
         filled.boundaries.high !== saved.high,
     );
-    setLastFour(ingest_token_last_four ?? null);
+    setLastFour(s.ingest_token_last_four ?? null);
   }
 
   function update<K extends keyof SettingsForm>(
@@ -554,6 +481,11 @@ export default function SettingsPage({ user, onDeleted }: Props) {
             >
               {lastFour ? t.reissueToken : t.issueToken}
             </button>
+            {onOpenGuide && !guest && (
+              <button type="button" className="link" onClick={onOpenGuide}>
+                {t.openGuide}
+              </button>
+            )}
           </section>
         </>
       ) : (

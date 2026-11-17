@@ -1341,3 +1341,47 @@ dl.rows dd {
     height: 168px;
   }
 }
+
+/* ---- 導入の案内 ---- */
+
+/* 手順のカードを番号つきで縦に並べる */
+.onboarding-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding-left: 1.5em;
+}
+
+.onboarding-steps > li::marker {
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+
+.onboarding-steps h4 {
+  margin: var(--space-3) 0 0;
+}
+
+.onboarding-steps dl.rows {
+  grid-template-columns: 14em minmax(0, 1fr);
+}
+
+.onboarding-done {
+  margin-left: var(--space-2);
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+.onboarding-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+@media (max-width: 640px) {
+  /* スマートフォンでは、ほかの dl.rows と同じく名前の下に値を置く */
+  .onboarding-steps dl.rows {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

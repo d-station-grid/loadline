@@ -755,3 +755,33 @@ test("ゲストは設定を見られるが、保存も発行も削除も押せ�
     screen.getByText(/Guests can view the demo settings/),
   ).toBeInTheDocument();
 });
+
+test("接続の欄から導入の案内を開ける。ゲストには出さない", async () => {
+  const onOpenGuide = vi.fn();
+  const { unmount } = render(
+    <SettingsPage
+      user={user}
+      onDeleted={onDeleted}
+      onOpenGuide={onOpenGuide}
+    />,
+  );
+
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Open the setup guide" }),
+  );
+  expect(onOpenGuide).toHaveBeenCalled();
+  unmount();
+
+  const guestUser = { ...user, isAnonymous: true } as unknown as User;
+  render(
+    <SettingsPage
+      user={guestUser}
+      onDeleted={onDeleted}
+      onOpenGuide={onOpenGuide}
+    />,
+  );
+  await screen.findByText("No token yet.");
+  expect(
+    screen.queryByRole("button", { name: "Open the setup guide" }),
+  ).not.toBeInTheDocument();
+});
