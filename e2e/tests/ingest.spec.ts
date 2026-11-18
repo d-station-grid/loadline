@@ -31,7 +31,12 @@ test("a new user saves settings, issues a token, and sees the workouts it sends"
   // 開き直すと、記録が届いたのでダッシュボードから始まる
   await page.reload();
   const recent = page.getByRole("region", { name: "Recent workouts" });
-  await expect(recent.getByRole("cell", { name: "Run" })).toBeVisible();
+  // 平均心拍は、送った心拍（平均 140）がそのまま出る
+  const row = recent.getByRole("row").filter({ hasText: "Run" });
+  await expect(row.getByRole("cell", { name: "Run" })).toBeVisible();
+  await expect(
+    row.getByRole("cell", { name: "140", exact: true }),
+  ).toBeVisible();
   const chart = page.getByRole("region", {
     name: "Fitness, fatigue and VO2max",
   });

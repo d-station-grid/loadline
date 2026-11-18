@@ -24,8 +24,10 @@ test("a guest sees the demo chart, the review and options they can't press", asy
   const options = review.getByRole("group", {
     name: "How will you spend the week ahead?",
   });
+  // 定型の選択肢は、その週の状況で 2 個か 3 個になる
   const buttons = options.getByRole("button");
-  await expect(buttons).toHaveCount(3);
+  await expect(buttons.first()).toBeVisible();
+  expect(await buttons.count()).toBeGreaterThan(1);
   for (const button of await buttons.all()) {
     await expect(button).toBeDisabled();
   }

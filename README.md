@@ -349,7 +349,7 @@ clone したあとに実行します。
 - `web/` で `cp .env.example .env.local` をして、Firebase コンソールの Web アプリの設定（apiKey など 4 つ）を埋める
 - `api/` で `uv sync`（Python の依存を入れる）
 - `web/` で `npm install`（Node の依存を入れる）
-- `e2e/` で `npm install` と `npx playwright install chromium`（通しのテストを流すときだけ。Firebase のエミュレータに Java も要る）
+- `e2e/` で `npm install`（`make check` が e2e の typecheck と format も流すので必要）。通しのテスト（`make e2e`）を流すときだけ、`npx playwright install chromium` でブラウザを入れ、Firebase のエミュレータ用に Java も入れておく
 
 ### 手元で動かす
 
