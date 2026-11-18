@@ -922,6 +922,74 @@
         }
       }
     },
+    "/settings/language": {
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Update Language",
+        "description": "言語だけを書き換える。心拍がそろう前でも画面の言語を変えられるようにするため。",
+        "operationId": "update_language_settings_language_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Guest-Language",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Guest-Language"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LanguageIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ゲスト（デモの利用者）は見るだけで、書き込めない"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/settings/ingest-token": {
       "post": {
         "tags": [
@@ -1578,6 +1646,19 @@
           "ja"
         ],
         "title": "Language"
+      },
+      "LanguageIn": {
+        "properties": {
+          "language": {
+            "$ref": "#/components/schemas/Language"
+          }
+        },
+        "type": "object",
+        "required": [
+          "language"
+        ],
+        "title": "LanguageIn",
+        "description": "PUT /settings/language の本文。言語だけを書き換える。\n\nPUT /settings は心拍の 4 つが必須なので、心拍を入れる前の人は言語を変えられない。\n画面の言語は心拍と関係がないので、別の窓口で先に変えられるようにする。"
       },
       "LoginIn": {
         "properties": {

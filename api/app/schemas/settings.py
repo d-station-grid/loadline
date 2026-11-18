@@ -53,6 +53,16 @@ class SettingsIn(SettingsFields):
     zone_boundary_2: int = Field(ge=60, le=250)  # Mid と High の境目
 
 
+class LanguageIn(BaseModel):
+    """PUT /settings/language の本文。言語だけを書き換える。
+
+    PUT /settings は心拍の 4 つが必須なので、心拍を入れる前の人は言語を変えられない。
+    画面の言語は心拍と関係がないので、別の窓口で先に変えられるようにする。
+    """
+
+    language: Language
+
+
 class SettingsOut(SettingsFields):
     """GET /settings の返事。トークンは末尾 4 文字だけ。未発行なら None。
 

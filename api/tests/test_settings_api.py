@@ -108,6 +108,54 @@ async def test_heart_rate_settings_cannot_be_left_out(client: AsyncClient, field
     assert res.status_code == 422
 
 
+async def test_language_can_be_changed_before_heart_rate_is_set(client: AsyncClient) -> None:
+    """心拍が空のままでも、言語だけは変えられる。ほかの設定はそのまま。"""
+    res = await client.put("/settings/language", json={"language": "ja"}, headers=HEADERS)
+    get = await client.get("/settings", headers=HEADERS)
+
+    assert res.status_code == 200
+    assert res.json()["language"] == "ja"
+    assert get.json() == {
+        "max_heart_rate": None,
+        "resting_heart_rate": None,
+        "zone_boundary_1": None,
+        "zone_boundary_2": None,
+        "timezone": "Asia/Tokyo",
+        "review_weekday": 0,
+        "send_notes_to_ai": True,
+        "language": "ja",
+        "ingest_token_last_four": None,
+        "last_received_at": None,
+    }
+
+
+async def test_language_change_keeps_the_other_settings(client: AsyncClient) -> None:
+    body = {**VALID, "timezone": "Europe/London", "review_weekday": 6, "send_notes_to_ai": False}
+    assert (await client.put("/settings", json=body, headers=HEADERS)).status_code == 200
+
+    res = await client.put("/settings/language", json={"language": "ja"}, headers=HEADERS)
+
+    assert res.json() == {
+        **body,
+        "language": "ja",
+        "ingest_token_last_four": None,
+        "last_received_at": None,
+    }
+
+
+@pytest.mark.parametrize("body", [{"language": "fr"}, {"language": None}, {}])
+async def test_invalid_language_is_422(client: AsyncClient, body: dict[str, object]) -> None:
+    res = await client.put("/settings/language", json=body, headers=HEADERS)
+
+    assert res.status_code == 422
+
+
+async def test_language_change_requires_login(client: AsyncClient) -> None:
+    res = await client.put("/settings/language", json={"language": "ja"})
+
+    assert res.status_code == 401
+
+
 async def test_issue_and_reissue_ingest_token(client: AsyncClient) -> None:
     first = await client.post("/settings/ingest-token", headers=HEADERS)
     second = await client.post("/settings/ingest-token", headers=HEADERS)

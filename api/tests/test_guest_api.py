@@ -158,7 +158,13 @@ async def _snapshot(session: AsyncSession) -> dict[str, object]:
     ).all()
     user = (
         await session.execute(
-            select(User.max_heart_rate, User.timezone, User.review_weekday, User.send_notes_to_ai)
+            select(
+                User.max_heart_rate,
+                User.timezone,
+                User.review_weekday,
+                User.send_notes_to_ai,
+                User.language,
+            )
         )
     ).all()
     return {"counts": counts, "notes": notes, "selected": selected, "user": user}
@@ -190,6 +196,7 @@ async def test_every_write_is_403_and_the_demo_data_does_not_change(
                 "send_notes_to_ai": False,
             },
         ),
+        ("PUT", "/settings/language", {"language": "ja"}),
         ("POST", "/settings/ingest-token", None),
         ("POST", "/reviews", None),
         ("PUT", f"/reviews/{review['id']}/selection", {"option_id": review["options"][0]["id"]}),

@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.language import Language
 from app.models import User
 from app.schemas.settings import SettingsFields, SettingsIn, SettingsOut
 from app.services.ingest_tokens import current_token
@@ -20,5 +21,12 @@ async def update_settings(session: AsyncSession, user: User, body: SettingsIn) -
     """設定をまとめて書き換える。検証は SettingsIn が済ませている。"""
     for name, value in body.model_dump().items():
         setattr(user, name, value)
+    await session.commit()
+    return await read_settings(session, user)
+
+
+async def update_language(session: AsyncSession, user: User, language: Language) -> SettingsOut:
+    """言語だけを書き換える。ほかの設定には触らない。"""
+    user.language = language
     await session.commit()
     return await read_settings(session, user)
