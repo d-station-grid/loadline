@@ -7,12 +7,17 @@ import { expect, type Page } from "@playwright/test";
 export async function signInAsNewUser(page: Page): Promise<string> {
   const email = `runner-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
   await page.goto("/");
-  const popup = await openSignInPopup(page);
+  // 押し直さない。ポップアップが開き始めてから届くまでに押し直すと、Firebase は新しい
+  // ログインの要求として先のポップアップを閉じる
+  const popupOpened = page.waitForEvent("popup");
+  await page.getByRole("button", { name: "Sign in with Google" }).click();
+  const popup = await popupOpened;
 
-  // エミュレータの画面は、JavaScript が動くと見出しの「Provider」を「google.com」に書き換える。
+  // エミュレータの画面は、JavaScript が動くと見出しの「Provider」を「Google.com」に書き換える。
   // 動く前に「Add new account」を押すと、押したことにならず、メールの欄が出ない
   await expect(popup.locator("#title .js-provider-id")).not.toHaveText(
     "Provider",
+    { timeout: 15_000 },
   );
   const emailInput = popup.locator("#email-input");
   // 押しても出なければ押し直す。出るのが遅れただけなら、隠れたボタンを押しに行かない
@@ -31,32 +36,6 @@ export async function signInAsNewUser(page: Page): Promise<string> {
   await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   return email;
-}
-
-/**
- * 「Sign in with Google」を押して、ログインのポップアップを受け取る。アプリの準備ができる前に
- * 押すと、ポップアップが開かないことがある。開くまで「押す → 少し待つ」を繰り返す。
- * 開いたあとは押し直さない（2 つ目のポップアップを開かない）
- */
-async function openSignInPopup(page: Page): Promise<Page> {
-  let popup: Page | undefined;
-  const keepFirst = (opened: Page) => {
-    popup ??= opened;
-  };
-  page.on("popup", keepFirst);
-  try {
-    await expect(async () => {
-      if (!popup) {
-        await page
-          .getByRole("button", { name: "Sign in with Google" })
-          .click({ timeout: 2_000 });
-      }
-      await expect.poll(() => popup, { timeout: 3_000 }).toBeDefined();
-    }).toPass({ timeout: 15_000 });
-  } finally {
-    page.off("popup", keepFirst);
-  }
-  return popup as Page;
 }
 
 /** 設定の画面で最大心拍と安静時心拍を保存する。ゾーンの境目は最大心拍から埋まる */
