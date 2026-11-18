@@ -296,8 +296,10 @@ def _script(
             # round は偶数への丸め（150.5 → 150）なので、30 秒を足して切り捨てる
             minutes = _count((week.total_sec + 30) // 60, "minute")
             return (
+                # 順調の幅は疲労が体力を少し上回るところまで入る。画面の余力がマイナスでも
+                # 食い違わないよう、「釣り合っている」とは言わない
                 f"A steady week. You did {sessions} in {minutes}, "
-                "and your fitness and fatigue are in good balance. "
+                "and your fatigue is near or just above your fitness, which is normal. "
                 + closing("Keeping this rhythm is how fitness builds over time.")
             )
 
@@ -398,7 +400,7 @@ def _script_ja(
             minutes = (week.total_sec + 30) // 60
             return (
                 f"安定した週でした。{week.workouts}回、合計{minutes}分の練習で、"
-                "体力と疲労のバランスもとれています。"
+                "疲労は体力並みか少し上で、普通の範囲です。"
                 + closing("このリズムを続けることが、体力を積み上げる近道です。")
             )
 

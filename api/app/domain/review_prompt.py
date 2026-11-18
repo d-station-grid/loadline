@@ -96,7 +96,8 @@ fitness and fatigue cannot be read yet.
   - returning: they started training again this week after a break.
   - fatigued: fatigue is well above fitness.
   - fresh: fatigue is below fitness, so there is room to train.
-  - steady: fitness and fatigue are in balance.
+  - steady: fatigue is near fitness or slightly above it, which is normal when training \
+regularly. The dashboard may show a negative form, so never say they are in balance.
 - Use only numbers that appear in the input, and mention at most one. Numbers are optional, \
 and the first sentence of `line` must have no numbers at all, in digits or in words. Never \
 calculate new numbers and never give fitness or fatigue as a number.

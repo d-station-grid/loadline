@@ -161,6 +161,17 @@ def test_steady_week_with_one_session_uses_the_singular() -> None:
     assert "You did 1 session in 1 minute," in script
 
 
+@pytest.mark.parametrize("language", [Language.EN, Language.JA])
+def test_steady_week_does_not_say_fitness_and_fatigue_are_balanced(language: Language) -> None:
+    """順調には疲労が体力を少し上回る週も入り、画面の余力はマイナスになる。数字と食い違わない
+    よう、釣り合っているとは言わず、少し上でも普通だと言う。"""
+    script = fallback_review(week(Situation.STEADY), language=language).script
+
+    assert "balance" not in script
+    assert "バランス" not in script
+    assert ("just above your fitness" in script) or ("少し上" in script)
+
+
 def test_returning_week_says_how_many_days_off() -> None:
     script = fallback_review(week(Situation.RETURNING, rest_days_before=16)).script
 
