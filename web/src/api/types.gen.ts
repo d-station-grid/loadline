@@ -259,6 +259,18 @@ export type IngestTokenOut = {
 export type Language = "en" | "ja";
 
 /**
+ * LanguageIn
+ *
+ * PUT /settings/language の本文。言語だけを書き換える。
+ *
+ * PUT /settings は心拍の 4 つが必須なので、心拍を入れる前の人は言語を変えられない。
+ * 画面の言語は心拍と関係がないので、別の窓口で先に変えられるようにする。
+ */
+export type LanguageIn = {
+  language: Language;
+};
+
+/**
  * LoginIn
  *
  * POST /auth/login の本文。省いてもよい。
@@ -449,6 +461,9 @@ export type SelectionIn = {
  * 負荷、強度ごとの時間、週次レビューの判定がすべてこの 4 つから出るので、そろわない設定は
  * 保存させない。境目は、web が最大心拍から初期値を入れる。読むとき（SettingsOut）は、
  * 必須にする前に作った利用者の空の値も返すので、SettingsFields のまま任意にしておく。
+ *
+ * 言語は省略できる。省略したら保存済みの言語のまま。言語は PUT /settings/language でも
+ * 変えられるので、ここで省略した人を英語に戻さないため。null は受け付けない。
  */
 export type SettingsIn = {
   /**
@@ -1479,6 +1494,43 @@ export type UpdateSettingsSettingsPutResponses = {
 
 export type UpdateSettingsSettingsPutResponse =
   UpdateSettingsSettingsPutResponses[keyof UpdateSettingsSettingsPutResponses];
+
+export type UpdateLanguageSettingsLanguagePutData = {
+  body: LanguageIn;
+  headers?: {
+    /**
+     * X-Guest-Language
+     */
+    "X-Guest-Language"?: string | null;
+  };
+  path?: never;
+  query?: never;
+  url: "/settings/language";
+};
+
+export type UpdateLanguageSettingsLanguagePutErrors = {
+  /**
+   * ゲスト（デモの利用者）は見るだけで、書き込めない
+   */
+  403: unknown;
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError;
+};
+
+export type UpdateLanguageSettingsLanguagePutError =
+  UpdateLanguageSettingsLanguagePutErrors[keyof UpdateLanguageSettingsLanguagePutErrors];
+
+export type UpdateLanguageSettingsLanguagePutResponses = {
+  /**
+   * Successful Response
+   */
+  200: SettingsOut;
+};
+
+export type UpdateLanguageSettingsLanguagePutResponse =
+  UpdateLanguageSettingsLanguagePutResponses[keyof UpdateLanguageSettingsLanguagePutResponses];
 
 export type ReissueIngestTokenSettingsIngestTokenPostData = {
   body?: never;

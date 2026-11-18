@@ -922,6 +922,74 @@
         }
       }
     },
+    "/settings/language": {
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Update Language",
+        "description": "言語だけを書き換える。心拍がそろう前でも画面の言語を変えられるようにするため。",
+        "operationId": "update_language_settings_language_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Guest-Language",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Guest-Language"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LanguageIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ゲスト（デモの利用者）は見るだけで、書き込めない"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/settings/ingest-token": {
       "post": {
         "tags": [
@@ -1579,6 +1647,19 @@
         ],
         "title": "Language"
       },
+      "LanguageIn": {
+        "properties": {
+          "language": {
+            "$ref": "#/components/schemas/Language"
+          }
+        },
+        "type": "object",
+        "required": [
+          "language"
+        ],
+        "title": "LanguageIn",
+        "description": "PUT /settings/language の本文。言語だけを書き換える。\n\nPUT /settings は心拍の 4 つが必須なので、心拍を入れる前の人は言語を変えられない。\n画面の言語は心拍と関係がないので、別の窓口で先に変えられるようにする。"
+      },
       "LoginIn": {
         "properties": {
           "timezone": {
@@ -1908,8 +1989,7 @@
             "default": true
           },
           "language": {
-            "$ref": "#/components/schemas/Language",
-            "default": "en"
+            "$ref": "#/components/schemas/Language"
           }
         },
         "type": "object",
@@ -1920,7 +2000,7 @@
           "zone_boundary_2"
         ],
         "title": "SettingsIn",
-        "description": "PUT /settings の本文。心拍の 4 つは必須で、空（null）や省略は 422。\n\n負荷、強度ごとの時間、週次レビューの判定がすべてこの 4 つから出るので、そろわない設定は\n保存させない。境目は、web が最大心拍から初期値を入れる。読むとき（SettingsOut）は、\n必須にする前に作った利用者の空の値も返すので、SettingsFields のまま任意にしておく。"
+        "description": "PUT /settings の本文。心拍の 4 つは必須で、空（null）や省略は 422。\n\n負荷、強度ごとの時間、週次レビューの判定がすべてこの 4 つから出るので、そろわない設定は\n保存させない。境目は、web が最大心拍から初期値を入れる。読むとき（SettingsOut）は、\n必須にする前に作った利用者の空の値も返すので、SettingsFields のまま任意にしておく。\n\n言語は省略できる。省略したら保存済みの言語のまま。言語は PUT /settings/language でも\n変えられるので、ここで省略した人を英語に戻さないため。null は受け付けない。"
       },
       "SettingsOut": {
         "properties": {

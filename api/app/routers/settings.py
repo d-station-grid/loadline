@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.routers.deps import GUEST_FORBIDDEN, CurrentUser, DbSession, WritableUser
-from app.schemas.settings import IngestTokenOut, SettingsIn, SettingsOut
+from app.schemas.settings import IngestTokenOut, LanguageIn, SettingsIn, SettingsOut
 from app.services import settings as settings_service
 from app.services.ingest_tokens import issue_token
 
@@ -17,6 +17,12 @@ async def read_settings(user: CurrentUser, session: DbSession) -> SettingsOut:
 async def update_settings(body: SettingsIn, user: WritableUser, session: DbSession) -> SettingsOut:
     """設定をまとめて書き換える。検証は SettingsIn が済ませている。"""
     return await settings_service.update_settings(session, user, body)
+
+
+@router.put("/language", response_model=SettingsOut, responses=GUEST_FORBIDDEN)
+async def update_language(body: LanguageIn, user: WritableUser, session: DbSession) -> SettingsOut:
+    """言語だけを書き換える。心拍がそろう前でも画面の言語を変えられるようにするため。"""
+    return await settings_service.update_language(session, user, body.language)
 
 
 @router.post("/ingest-token", response_model=IngestTokenOut, responses=GUEST_FORBIDDEN)
