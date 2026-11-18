@@ -73,7 +73,7 @@ gcloud iam service-accounts create loadline-deploy --project loadline-app
 | `loadline-api` | `loadline-api` 自身 | `roles/iam.serviceAccountTokenCreator` | 署名付き URL を作る。Cloud Run には鍵のファイルがないので、IAM の signBlob で署名する |
 | `loadline-api` | `gs://loadline-app-audio` | `roles/storage.objectUser` | 音声を置く、一覧を取る、消す。再生は署名付き URL なので、利用者は権限なしで読める |
 | `loadline-deploy` | `loadline-api`、`loadline-tts` | `roles/iam.serviceAccountUser` | それぞれを実行用に指定してデプロイする（actAs） |
-| `loadline-deploy` | Artifact Registry の `loadline` | `roles/artifactregistry.writer` | イメージを push する |
+| `loadline-deploy` | Artifact Registry の `loadline` | `roles/artifactregistry.writer` | イメージを push し、動いている版に `live` のタグを付ける |
 | `loadline-deploy` | `gs://loadline-app-models` | `roles/storage.objectViewer` | tts のイメージを組み立てる前にモデルをコピーする |
 | GitHub の `d-station-grid/loadline`（Workload Identity のプール経由） | `loadline-deploy` | `roles/iam.workloadIdentityUser` | Actions が鍵なしで `loadline-deploy` になる |
 
@@ -185,11 +185,14 @@ Scheduler が 1 時間おきに api を呼び、api が週次レビューを作�
 
 | リポジトリ | 中身 | 掃除 |
 |---|---|---|
-| `loadline`（東京、Docker） | `api` と `tts` のイメージ | 7 日より古いものを消す。ただし直近 10 個（`api` と `tts` それぞれ）は残す |
+| `loadline`（東京、Docker） | `api` と `tts` のイメージ | 7 日より古いものを消す。ただし `live` のタグが付いたものと、直近 10 個（`api` と `tts` それぞれ）は残す |
 
 「残す」の決まりは「消す」より優先されます。掃除は 1 日に 1 回ほど裏で動きます。
 
-ただし、残るのは各イメージの新しい 10 個で、動いている版とは限りません。workflow は、main と比べる手順やマイグレーションより前にイメージを push するので、出さずに終わった実行や失敗した実行のイメージも 10 個に数えられます。そうした実行が続くと、動いている版が 10 個から外れ、7 日より古ければ消えます。直し方は #71 に書いてあります。
+Cloud Run は、0 台から起き上がるときにイメージを読みます。動いている版のイメージが消えると起き上がれないので、次の 2 つで守っています。
+
+- `live` のタグ: `deploy.yml` と `deploy-tts.yml` は、デプロイが成功したイメージに `live` を付けます。タグは 1 つのイメージにしか付かないので、前の版からは外れます。掃除は `live` の付いたものを残します
+- 直近 10 個: 1 つ前の版などに戻すときのために残します。workflow は main と比べてから組み立てるので、出さずに終わる実行はイメージを push しません。マイグレーションやデプロイで失敗した実行のイメージは、10 個に数えられます
 
 `set-cleanup-policies` は、決まりを足すのではなく、ファイルの中身で全部を置き換えます。変えるときは、残す決まりも同じファイルに入れます。
 
@@ -200,6 +203,11 @@ cat > /tmp/loadline-ar-cleanup.json <<'JSON'
     "name": "delete-older-than-7d",
     "action": {"type": "Delete"},
     "condition": {"tagState": "any", "olderThan": "7d"}
+  },
+  {
+    "name": "keep-live",
+    "action": {"type": "Keep"},
+    "condition": {"tagState": "tagged", "tagPrefixes": ["live"]}
   },
   {
     "name": "keep-recent-10",
