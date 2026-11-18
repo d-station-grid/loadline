@@ -8,9 +8,12 @@
  * 画面を切り替えるのは、最後の選択を保存できたときだけ。最後の選択はアプリ全体で 1 つなので、
  * 閉じた画面で送った分の返事が、開き直した画面で選んだ言語を上書きすることもない。
  *
- * ログインの状態が変わったら（ログアウト、別の人のログイン）、resetLanguageSave で区切る。
- * 前の区切りの保存は、返事が届いても画面と状態に触れない。新しい区切りの選択は前の保存を
- * 待たずに送る。前の人のリクエストは、サーバーではその人の保存として済む。
+ * ログインの状態が変わったら（ログアウト、入り直し、別の人のログイン）、resetLanguageSave で
+ * 区切る。前の区切りの処理は、まだ送っていなければ送らず、送ったあとなら返事が届いても画面と
+ * 状態に触れない。
+ *
+ * 実際に送るリクエストは、区切りをまたいでも一度に 1 本だけにする。同じ人が入り直したとき、
+ * 前の区切りで送った分と並ぶと、後からサーバーに届いたほうが残るため。
  */
 import type { Language } from "../api";
 import { putLanguage } from "./api";
@@ -27,6 +30,8 @@ let generation = 0;
 let wanted: Language | null = null;
 // 最後に選んだ画面から受け取った、トークンの取り方と切り替え方
 let request: Request | null = null;
+// 最後に送ったリクエスト。次を送る前に、これが終わるのを待つ。失敗しても待つだけなので落とさない
+let sending: Promise<unknown> = Promise.resolve();
 const choosingListeners = new Set<() => void>();
 const failureListeners = new Set<() => void>();
 
@@ -74,9 +79,16 @@ async function run() {
   let saved: Language | null = null;
   try {
     for (;;) {
+      await sending;
+      if (!current()) return;
+      const token = await (request as Request).getIdToken();
+      // 確かめてから送るまでに待ちを挟まない。ここで区切りが変わっていれば送らない
+      if (!current()) return;
+      // 待っている間に選び直していれば、最後の選択を送る
       const target = wanted as Language;
-      const { getIdToken } = request as Request;
-      const out = await putLanguage(target, await getIdToken());
+      const send = putLanguage(target, token);
+      sending = send.catch(() => {});
+      const out = await send;
       if (!current()) return;
       saved = out.language ?? target;
       if (wanted === target) {
