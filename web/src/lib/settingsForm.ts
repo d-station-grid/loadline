@@ -28,17 +28,21 @@ export const HEART_RATE_FIELDS: {
 ];
 
 /** 入力中のフォーム。心拍の 4 つは空のこともある（必須にする前の利用者、入力の途中）。
- * トークンの末尾と最後に届いた日時は読むだけの項目なので、保存の本文に混ぜない */
+ * トークンの末尾と最後に届いた日時は読むだけの項目なので、保存の本文に混ぜない。
+ * 言語は選んだ時点で PUT /settings/language に送るので、これも混ぜない（省けば api は
+ * 保存済みの言語を残す） */
 export type SettingsForm = Omit<
   SettingsOut,
-  "ingest_token_last_four" | "last_received_at"
+  "ingest_token_last_four" | "last_received_at" | "language"
 >;
 
-/** 読んだ設定からフォームを作る。読むだけの項目（トークンの末尾、最後に届いた日時）は外す */
+/** 読んだ設定からフォームを作る。読むだけの項目（トークンの末尾、最後に届いた日時）と、
+ * 別に保存する言語は外す */
 export function formFromSettings(s: SettingsOut): SettingsForm {
   const {
     ingest_token_last_four: _lastFour,
     last_received_at: _lastReceivedAt,
+    language: _language,
     ...fields
   } = s;
   return fields;

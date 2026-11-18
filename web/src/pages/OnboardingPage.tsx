@@ -2,6 +2,7 @@ import type { User } from "firebase/auth";
 import { Fragment, type SubmitEvent, useEffect, useRef, useState } from "react";
 
 import type { SettingsOut } from "../api";
+import LanguageSelect from "../components/LanguageSelect";
 import { getSettings, issueIngestToken, putSettings } from "../lib/api";
 import { type Messages, useI18n } from "../i18n";
 import {
@@ -217,6 +218,10 @@ export default function OnboardingPage({ user, onOpenDashboard }: Props) {
         </button>
       </div>
       <p className="muted">{t.lead}</p>
+      {/* 心拍を入れる前でも、案内を読みやすい言語に変えられるよう、手順の前に置く */}
+      <div className="onboarding-language">
+        <LanguageSelect user={user} id="onboarding-language" />
+      </div>
 
       {loadError !== null && <p role="alert">{errorMessage(loadError, m)}</p>}
       {settings === null && loadError === null && (

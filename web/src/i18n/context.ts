@@ -32,7 +32,7 @@ export type I18n = {
   language: Language;
   m: Messages;
   locale: string;
-  /** 設定の画面で言語を保存したとき、画面全体をその場で切り替える */
+  /** 言語を保存したとき（設定の画面、導入の案内）、画面全体をその場で切り替える */
   setLanguage: (language: Language) => void;
 };
 

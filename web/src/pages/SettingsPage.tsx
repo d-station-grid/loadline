@@ -1,7 +1,8 @@
 import type { User } from "firebase/auth";
 import { type SubmitEvent, useEffect, useRef, useState } from "react";
 
-import type { Language, SettingsOut } from "../api";
+import type { SettingsOut } from "../api";
+import LanguageSelect from "../components/LanguageSelect";
 import {
   ApiError,
   deleteAccount,
@@ -20,12 +21,6 @@ import {
   toInt,
 } from "../lib/settingsForm";
 import { boundariesForMax, isSuggested } from "../lib/zones";
-
-/** 選べる言語。名前は、その言語を読む人に分かるよう、その言語で書く */
-const LANGUAGES: { value: Language; label: string }[] = [
-  { value: "en", label: "English" },
-  { value: "ja", label: "日本語" },
-];
 
 /** 曜日の名前。0 が月曜。画面の言語のロケールで書く（2024-01-01 は月曜） */
 function weekdays(locale: string): string[] {
@@ -146,8 +141,7 @@ type Props = {
 };
 
 export default function SettingsPage({ user, onDeleted, onOpenGuide }: Props) {
-  // 保存した言語で、画面全体をその場で切り替える
-  const { m, locale, setLanguage } = useI18n();
+  const { m, locale } = useI18n();
   const t = m.settings;
   const [form, setForm] = useState<SettingsForm | null>(null);
   // 強度の境目が、最大心拍から出した値のままか。そのままなら最大心拍に合わせて出し直す
@@ -160,7 +154,7 @@ export default function SettingsPage({ user, onDeleted, onOpenGuide }: Props) {
   // 発行の連打よけ。disabled は描画のあとにしか効かないので、クリック直後にここで止める。
   // 同時に 2 本走らなければ、先に無効になったトークンの応答が後から届くこともない
   const issuingNow = useRef(false);
-  // 保存できたか。文言は描くときに出す（保存で言語を変えたとき、新しい言語で出すため）
+  // 保存できたか。文言は描くときに出す（そのあと言語を変えたとき、新しい言語で出すため）
   const [saved, setSaved] = useState(false);
   // 設定の読み込みの失敗。文言にするのは描くとき（今の言語で出すため）
   const [loadError, setLoadError] = useState<unknown>(null);
@@ -274,7 +268,6 @@ export default function SettingsPage({ user, onDeleted, onOpenGuide }: Props) {
     try {
       const saved = await putSettings(body, await user.getIdToken());
       applySettings(saved);
-      if (saved.language) setLanguage(saved.language);
       setSaved(true);
     } catch (e) {
       setError(errorMessage(e, m));
@@ -405,22 +398,9 @@ export default function SettingsPage({ user, onDeleted, onOpenGuide }: Props) {
                       ))}
                     </select>
                   </div>
-                  <div className="field">
-                    <label htmlFor="settings-language">{t.language}</label>
-                    <select
-                      id="settings-language"
-                      value={form.language ?? "en"}
-                      onChange={(e) =>
-                        update("language", e.target.value as Language)
-                      }
-                    >
-                      {LANGUAGES.map(({ value, label }) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  {/* 言語は保存ボタンを待たずに、選んだ時点で保存する。心拍がそろって
+                      いなくても変えられるように */}
+                  <LanguageSelect user={user} id="settings-language" />
                 </div>
                 <label className="switch-row">
                   <span>
