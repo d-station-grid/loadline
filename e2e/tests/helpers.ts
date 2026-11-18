@@ -7,11 +7,29 @@ import { expect, type Page } from "@playwright/test";
 export async function signInAsNewUser(page: Page): Promise<string> {
   const email = `runner-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
   await page.goto("/");
+  // 押し直さない。ポップアップが開き始めてから届くまでに押し直すと、Firebase は新しい
+  // ログインの要求として先のポップアップを閉じる
   const popupOpened = page.waitForEvent("popup");
   await page.getByRole("button", { name: "Sign in with Google" }).click();
   const popup = await popupOpened;
-  await popup.getByRole("button", { name: "Add new account" }).click();
-  await popup.locator("#email-input").fill(email);
+
+  // エミュレータの画面は、JavaScript が動くと見出しの「Provider」を「Google.com」に書き換える。
+  // 動く前に「Add new account」を押すと、押したことにならず、メールの欄が出ない
+  await expect(popup.locator("#title .js-provider-id")).not.toHaveText(
+    "Provider",
+    { timeout: 15_000 },
+  );
+  const emailInput = popup.locator("#email-input");
+  // 押しても出なければ押し直す。出るのが遅れただけなら、隠れたボタンを押しに行かない
+  await expect(async () => {
+    if (!(await emailInput.isVisible())) {
+      await popup
+        .getByRole("button", { name: "Add new account" })
+        .click({ timeout: 2_000 });
+    }
+    await expect(emailInput).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 15_000 });
+  await emailInput.fill(email);
   await popup.getByRole("button", { name: "Sign in with Google.com" }).click();
 
   // まだ記録が届いていないので、導入の案内が出る。ここでは飛ばす
