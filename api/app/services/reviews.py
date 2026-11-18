@@ -306,8 +306,9 @@ async def _write(
             return _Written(None, True)
         flag = health_flag(note_check)
         if flag:
-            logger.info(
-                # メモの文は残さない
+            # 体調に触れたことは利用者に結び付けて本番のログに残さない（app.* は info 以上が出る）。
+            # 手元で調べるときだけ debug で見る。メモの文は残さない
+            logger.debug(
                 "review: the notes mention pain or sickness (mentions_health=%.2f); "
                 "not offering more load for user %s",
                 note_check.mentions_health,
