@@ -202,6 +202,19 @@ def test_system_instruction_asks_for_one_insight_grounded_in_one_principle() -> 
     assert "mention at most one" in SYSTEM_INSTRUCTION
 
 
+def test_system_instruction_does_not_let_a_steady_week_sound_balanced() -> None:
+    """順調には疲労が体力を少し上回る週も入り、画面の余力はマイナスになる。釣り合っていると
+    言わせない。日本語で書くときも同じ。余力の符号は渡していないので、マイナスだとも言わせない。"""
+    assert "fatigue is near fitness or may be a little above it" in SYSTEM_INSTRUCTION
+    assert "In any language, never say or imply that fitness and fatigue are balanced" in (
+        SYSTEM_INSTRUCTION
+    )
+    for word in ('"balance"', '"バランス"', '"釣り合っている"'):
+        assert word in SYSTEM_INSTRUCTION
+    assert "fitness and fatigue are in balance" not in SYSTEM_INSTRUCTION
+    assert "negative" not in SYSTEM_INSTRUCTION
+
+
 def test_system_instruction_does_not_give_the_vo2max_period() -> None:
     """比べる間隔は 28 日以上で、測定が空くともっと長い。期間の長さは言わせない。"""
     assert "four weeks" not in SYSTEM_INSTRUCTION

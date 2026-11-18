@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 
 import type { Form } from "../api";
-import { en } from "../i18n/messages";
+import { en, ja } from "../i18n/messages";
 import {
   formatChange,
   formatHours,
@@ -40,9 +40,16 @@ test("Form の一言は 4 つの区分すべてにある", () => {
   expect(forms.map((f) => en.form[f])).toEqual([
     "Tired — ease off",
     "Fresh — fatigue has cleared",
-    "Balanced",
+    "Steady — normal range",
     "Not enough data to judge",
   ]);
+});
+
+test("順調の Form の一言は、釣り合っているとは言わない", () => {
+  // 順調には疲労が体力を少し上回る日も入り、Form の数字はマイナスになる。数字の横で
+  // 「釣り合っている」と言うと食い違って見える
+  expect(en.form.steady).not.toMatch(/balanc/i);
+  expect(ja.form.steady).not.toMatch(/バランス|釣り合/);
 });
 
 test("時間は時間の小数 1 桁、負荷は整数に桁区切り、分からない負荷は –", () => {

@@ -94,7 +94,7 @@ export const en = {
   form: {
     fatigued: "Tired — ease off",
     fresh: "Fresh — fatigue has cleared",
-    steady: "Balanced",
+    steady: "Steady — normal range",
     not_enough_data: "Not enough data to judge",
   } as Record<Form, string>,
   duration: {
@@ -472,7 +472,7 @@ export const ja: Messages = {
   form: {
     fatigued: "疲れ気味 — 控えめに",
     fresh: "疲労が抜けている",
-    steady: "釣り合っている",
+    steady: "普通の範囲",
     not_enough_data: "判断できるだけの記録がない",
   },
   duration: {
