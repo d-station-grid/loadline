@@ -1373,6 +1373,11 @@ dl.rows dd {
   color: var(--color-accent);
 }
 
+/* 言語の選択欄。幅いっぱいに広げず、言語の名前が収まる幅にする */
+.onboarding-language {
+  max-width: 14em;
+}
+
 .onboarding-fields {
   display: flex;
   flex-wrap: wrap;

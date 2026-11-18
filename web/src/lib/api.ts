@@ -1,6 +1,7 @@
 import type {
   Dashboard,
   IngestTokenOut,
+  Language,
   LoginIn,
   NoteIn,
   NoteList,
@@ -108,6 +109,18 @@ export function putSettings(
   idToken: string,
 ): Promise<SettingsOut> {
   return request<SettingsOut>("/settings", sendJson("PUT", body), idToken);
+}
+
+/** 言語だけを保存する。心拍の設定がそろっていなくても変えられる。 */
+export function putLanguage(
+  language: Language,
+  idToken: string,
+): Promise<SettingsOut> {
+  return request<SettingsOut>(
+    "/settings/language",
+    sendJson("PUT", { language }),
+    idToken,
+  );
 }
 
 /** 取り込み用トークンを発行する。平文はこの返事でしか見られない。 */

@@ -1,15 +1,22 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { User } from "firebase/auth";
+import { useState } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import type { SettingsOut } from "../api";
-import { getSettings, issueIngestToken, putSettings } from "../lib/api";
+import type { Language, SettingsOut } from "../api";
+import {
+  getSettings,
+  issueIngestToken,
+  putLanguage,
+  putSettings,
+} from "../lib/api";
 import { I18nProvider } from "../i18n";
 import OnboardingPage, { POLL_MS } from "./OnboardingPage";
 
 vi.mock("../lib/api", async (importOriginal) => ({
   ApiError: (await importOriginal<typeof import("../lib/api")>()).ApiError,
   getSettings: vi.fn(),
+  putLanguage: vi.fn(),
   putSettings: vi.fn(),
   issueIngestToken: vi.fn(),
 }));
@@ -63,7 +70,7 @@ test("心拍を保存すると、境目は最大心拍の 80% と 90% で入り�
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
   expect(await screen.findByRole("status")).toHaveTextContent("Saved");
-  // 読むだけの項目（トークンの末尾、最後に届いた日時）は送らない
+  // 読むだけの項目（トークンの末尾、最後に届いた日時）と、別の窓口で送る言語は送らない
   expect(putSettings).toHaveBeenCalledWith(
     {
       max_heart_rate: 180,
@@ -73,7 +80,6 @@ test("心拍を保存すると、境目は最大心拍の 80% と 90% で入り�
       timezone: "Europe/London",
       review_weekday: 3,
       send_notes_to_ai: false,
-      language: "en",
     },
     "token",
   );
@@ -246,4 +252,31 @@ test("画面の言語が日本語なら、手順と設定の項目を日本語�
   expect(
     screen.getByText(/右上の「更新」を押して保存します/),
   ).toBeInTheDocument();
+});
+
+test("心拍を入れる前でも、案内の言語を変えられる", async () => {
+  vi.mocked(putLanguage).mockImplementation(async (language) => ({
+    ...fresh,
+    language,
+  }));
+  function WithLanguage() {
+    const [language, setLanguage] = useState<Language>("en");
+    return (
+      <I18nProvider language={language} setLanguage={setLanguage}>
+        <OnboardingPage user={user} onOpenDashboard={onOpenDashboard} />
+      </I18nProvider>
+    );
+  }
+  render(<WithLanguage />);
+
+  fireEvent.change(await screen.findByLabelText("Language"), {
+    target: { value: "ja" },
+  });
+
+  expect(
+    await screen.findByRole("heading", { name: "iPhone の設定" }),
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("言語")).toHaveValue("ja");
+  expect(putLanguage).toHaveBeenCalledWith("ja", "token");
+  expect(putSettings).not.toHaveBeenCalled();
 });

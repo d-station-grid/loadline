@@ -132,6 +132,7 @@ export const en = {
     timezone: "Time zone",
     reviewDay: "Review day",
     language: "Language",
+    languageFailed: "Couldn't change the language. Please try again.",
     notesToAi: "Let the AI read my notes",
     notesToAiHelp:
       "Turn this off and your weekly review uses your numbers only, not what you wrote in notes.",
@@ -508,6 +509,7 @@ export const ja: Messages = {
     timezone: "タイムゾーン",
     reviewDay: "週次レビューの曜日",
     language: "言語",
+    languageFailed: "言語を変更できませんでした。もう一度お試しください。",
     notesToAi: "AI にメモを読ませる",
     notesToAiHelp:
       "オフにすると、週次レビューは数字だけで作成し、メモに書いた内容は使いません。",
