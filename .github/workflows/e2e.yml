@@ -1,0 +1,92 @@
+name: e2e
+
+# 通しのテスト（Playwright）。api と web のどちらが変わっても流す。
+# 最初はマージの必須にしない。揺れないことを見てから必須にするかを決める
+on:
+  pull_request:
+    paths:
+      - "api/**"
+      - "web/**"
+      - "e2e/**"
+      - ".github/workflows/e2e.yml"
+  push:
+    branches: [main]
+    paths:
+      - "api/**"
+      - "web/**"
+      - "e2e/**"
+      - ".github/workflows/e2e.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: loadline
+          POSTGRES_PASSWORD: loadline
+          POSTGRES_DB: loadline
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U loadline -d loadline"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            e2e/package-lock.json
+
+      # Firebase の Auth エミュレータは Java で動く
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: install api
+        working-directory: api
+        run: uv sync --locked
+
+      - name: install web
+        working-directory: web
+        run: npm ci
+
+      - name: install e2e
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: check e2e
+        working-directory: e2e
+        run: npm run check
+
+      - name: test
+        working-directory: e2e
+        run: npm test
+
+      - name: report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          retention-days: 7
