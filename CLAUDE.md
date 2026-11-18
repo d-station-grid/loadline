@@ -18,7 +18,8 @@ Apple Watch の記録を取り込み、アバターが声で週次レビュー�
 
 ## 検査コマンド（ルートで）
 
-- `make check`: api（ruff、mypy、pytest）、web（typecheck、lint、format、vitest）、tts（ruff）
+- `make check`: api（ruff、mypy、pytest）、web（typecheck、lint、format、vitest）、tts（ruff）、e2e（typecheck、format）
 - `make fmt`: 整形
 - `make types`: OpenAPI から web の型を生成。api の schema を変えたら必ず実行し、生成物もコミットする
 - `make dev`: api と web を起動
+- `make e2e`: Playwright の通しのテスト（Auth エミュレータ、api に同梱した web、`loadline_e2e` の DB）

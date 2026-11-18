@@ -1,0 +1,19 @@
+{
+  "name": "e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc",
+    "check": "npm run typecheck && npm run format:check"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^26.6.6",
+    "firebase-tools": "^15.36.0",
+    "prettier": "^3.10.1",
+    "typescript": "^7.0.2"
+  }
+}

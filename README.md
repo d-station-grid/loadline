@@ -349,6 +349,7 @@ clone したあとに実行します。
 - `web/` で `cp .env.example .env.local` をして、Firebase コンソールの Web アプリの設定（apiKey など 4 つ）を埋める
 - `api/` で `uv sync`（Python の依存を入れる）
 - `web/` で `npm install`（Node の依存を入れる）
+- `e2e/` で `npm install` と `npx playwright install chromium`（通しのテストを流すときだけ。Firebase のエミュレータに Java も要る）
 
 ### 手元で動かす
 
@@ -382,9 +383,12 @@ iPhone から実際に送るには、設定画面でトークンを発行し、H
 
 ルートで実行します。
 
-- `make check`: api（ruff、mypy、pytest）、web（typecheck、lint、format、vitest）、tts（ruff）
+- `make check`: api（ruff、mypy、pytest）、web（typecheck、lint、format、vitest）、tts（ruff）、e2e（typecheck、format）
 - `make fmt`: 整形
 - `make types`: OpenAPI から web の型を生成する。api の schema を変えたら実行し、生成物もコミットする
+- `make e2e`: 通しのテスト（Playwright）。ゲストで見る、登録して記録を送る、週次レビューの選択肢を選ぶ、の 3 本
+
+通しのテストは、本番と同じく web をビルドして api から配り、ブラウザで操作します。ログインは Firebase の Auth エミュレータで、Gemini、Jev、声の生成は呼ばずに定型の週次レビューにします。DB は開発用とは別の `loadline_e2e` を毎回作り直し、ゲスト用のデモデータを入れます。Postgres は `make e2e` が起動し、エミュレータと api は Playwright が起動します。PR の CI では e2e のジョブで流れます。
 
 api のテストは、`DATABASE_URL` の DB 名に `_test` を付けた DB を自動で作って使います。開発用の DB には触りません。
 

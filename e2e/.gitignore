@@ -1,0 +1,5 @@
+# web をエミュレータ向けにビルドした置き場（serve-api.sh が作る）
+.web/
+test-results/
+playwright-report/
+firebase-debug.log
