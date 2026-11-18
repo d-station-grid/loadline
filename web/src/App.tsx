@@ -15,6 +15,7 @@ import {
   type Messages,
 } from "./i18n";
 import { ApiError, getSettings, login } from "./lib/api";
+import { resetLanguageSave } from "./lib/languageSave";
 import { auth, googleProvider } from "./lib/firebase";
 import Landing from "./components/Landing";
 import DashboardPage from "./pages/DashboardPage";
@@ -77,6 +78,8 @@ function App() {
     const unsubscribe = onAuthStateChanged(auth, async (next) => {
       const seq = ++latest.current;
       const isLatest = () => seq === latest.current;
+      // 前のログインで送った言語の保存の返事を、この先の画面に反映しない
+      resetLanguageSave();
 
       if (next === null) {
         setUser(null);

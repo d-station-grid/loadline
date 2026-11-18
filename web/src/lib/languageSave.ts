@@ -7,6 +7,10 @@
  *
  * 画面を切り替えるのは、最後の選択を保存できたときだけ。最後の選択はアプリ全体で 1 つなので、
  * 閉じた画面で送った分の返事が、開き直した画面で選んだ言語を上書きすることもない。
+ *
+ * ログインの状態が変わったら（ログアウト、別の人のログイン）、resetLanguageSave で区切る。
+ * 前の区切りの保存は、返事が届いても画面と状態に触れない。新しい区切りの選択は前の保存を
+ * 待たずに送る。前の人のリクエストは、サーバーではその人の保存として済む。
  */
 import type { Language } from "../api";
 import { putLanguage } from "./api";
@@ -17,6 +21,8 @@ type Request = {
   apply: (language: Language) => void;
 };
 
+// ログインの区切りの番号。ログインの状態が変わるたびに進める
+let generation = 0;
 // 最後に選んだ言語。保存が終わるまでのあいだだけ値がある
 let wanted: Language | null = null;
 // 最後に選んだ画面から受け取った、トークンの取り方と切り替え方
@@ -45,6 +51,13 @@ export function subscribeFailure(listener: () => void): () => void {
   return () => failureListeners.delete(listener);
 }
 
+/** ログインの状態が変わったときに呼ぶ。保存中の分の返事は、画面にも状態にも反映しない */
+export function resetLanguageSave(): void {
+  generation += 1;
+  request = null;
+  setWanted(null);
+}
+
 /** 言語を選ぶ。保存中なら、終わってから最後に選んだ言語だけを送る */
 export function chooseLanguage(language: Language, next: Request): void {
   request = next;
@@ -54,6 +67,9 @@ export function chooseLanguage(language: Language, next: Request): void {
 }
 
 async function run() {
+  // 始めたときの区切り。ログインの状態が変わったら、ここから先は何も触らない
+  const mine = generation;
+  const current = () => mine === generation;
   // 途中で保存できた言語。最後の選択を保存できなかったら、画面をこれに戻す
   let saved: Language | null = null;
   try {
@@ -61,6 +77,7 @@ async function run() {
       const target = wanted as Language;
       const { getIdToken } = request as Request;
       const out = await putLanguage(target, await getIdToken());
+      if (!current()) return;
       saved = out.language ?? target;
       if (wanted === target) {
         (request as Request).apply(saved);
@@ -68,9 +85,10 @@ async function run() {
       }
     }
   } catch {
+    if (!current()) return;
     if (saved !== null) (request as Request).apply(saved);
     failureListeners.forEach((listener) => listener());
   } finally {
-    setWanted(null);
+    if (current()) setWanted(null);
   }
 }

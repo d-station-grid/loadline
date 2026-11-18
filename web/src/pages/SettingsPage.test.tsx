@@ -13,6 +13,7 @@ import {
   putSettings,
 } from "../lib/api";
 import { I18nProvider } from "../i18n";
+import { resetLanguageSave } from "../lib/languageSave";
 import SettingsPage from "./SettingsPage";
 
 vi.mock("../lib/api", async (importOriginal) => ({
@@ -61,6 +62,8 @@ const complete: SettingsOut = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // 言語の保存の状態はアプリ全体で 1 つなので、テストごとに区切る
+  resetLanguageSave();
   vi.mocked(getSettings).mockResolvedValue(defaults);
 });
 
