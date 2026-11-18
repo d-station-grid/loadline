@@ -320,17 +320,29 @@ test("言語を保存できなければ、元の言語に戻して理由を出�
   expect(setLanguage).not.toHaveBeenCalled();
 });
 
-test("続けて選び直したら、最後に選んだ言語にする", async () => {
-  vi.mocked(getSettings).mockResolvedValue(complete);
-  // 先に送った日本語の返事が、あとから届く
-  let answerJa: () => void = () => {};
-  vi.mocked(putLanguage).mockImplementation((language) =>
-    language === "ja"
-      ? new Promise((resolve) => {
-          answerJa = () => resolve({ ...complete, language: "ja" });
-        })
-      : Promise.resolve({ ...complete, language }),
+/** 言語の保存の返事を、テストの側で 1 つずつ返す。返すまで保存は終わらない */
+function holdLanguageSaves() {
+  const pending: { resolve: () => void; reject: () => void }[] = [];
+  vi.mocked(putLanguage).mockImplementation(
+    (language) =>
+      new Promise((resolve, reject) => {
+        pending.push({
+          resolve: () => resolve({ ...complete, language }),
+          reject: () => reject(new ApiError(500)),
+        });
+      }),
   );
+  return {
+    /** 送った言語。送った順 */
+    sent: () => vi.mocked(putLanguage).mock.calls.map(([language]) => language),
+    answer: (i: number) => act(async () => pending[i].resolve()),
+    fail: (i: number) => act(async () => pending[i].reject()),
+  };
+}
+
+test("保存中に選び直したら、終わるまで送らず、終わってから最後に選んだ言語だけを送る", async () => {
+  vi.mocked(getSettings).mockResolvedValue(complete);
+  const saves = holdLanguageSaves();
   const setLanguage = vi.fn();
   render(
     <I18nProvider language="en" setLanguage={setLanguage}>
@@ -339,12 +351,95 @@ test("続けて選び直したら、最後に選んだ言語にする", async ()
   );
   const language = await screen.findByLabelText("Language");
   fireEvent.change(language, { target: { value: "ja" } });
-  await vi.waitFor(() => expect(putLanguage).toHaveBeenCalledTimes(1));
+  await vi.waitFor(() => expect(saves.sent()).toEqual(["ja"]));
   fireEvent.change(language, { target: { value: "en" } });
-  await vi.waitFor(() => expect(setLanguage).toHaveBeenCalledWith("en"));
-  await act(async () => answerJa());
+  await act(async () => {});
 
+  // 日本語の保存が終わるまで、英語は送らない
+  expect(saves.sent()).toEqual(["ja"]);
+  expect(language).toHaveValue("en");
+  await saves.answer(0);
+  await vi.waitFor(() => expect(saves.sent()).toEqual(["ja", "en"]));
+  // 途中の日本語の返事では、画面を切り替えない
+  expect(setLanguage).not.toHaveBeenCalled();
+  await saves.answer(1);
+
+  await vi.waitFor(() => expect(setLanguage).toHaveBeenCalledWith("en"));
   expect(setLanguage).not.toHaveBeenCalledWith("ja");
+});
+
+test("保存中に選び直して元の言語に戻したら、送り直さない", async () => {
+  vi.mocked(getSettings).mockResolvedValue(complete);
+  const saves = holdLanguageSaves();
+  const setLanguage = vi.fn();
+  render(
+    <I18nProvider language="en" setLanguage={setLanguage}>
+      <SettingsPage user={user} onDeleted={onDeleted} />
+    </I18nProvider>,
+  );
+  const language = await screen.findByLabelText("Language");
+  fireEvent.change(language, { target: { value: "ja" } });
+  await vi.waitFor(() => expect(saves.sent()).toEqual(["ja"]));
+  fireEvent.change(language, { target: { value: "en" } });
+  fireEvent.change(language, { target: { value: "ja" } });
+  await saves.answer(0);
+
+  await vi.waitFor(() => expect(setLanguage).toHaveBeenCalledWith("ja"));
+  expect(saves.sent()).toEqual(["ja"]);
+  expect(setLanguage).toHaveBeenCalledTimes(1);
+});
+
+test("保存中に画面を閉じ、開き直して選んだ言語が、前の画面の返事で上書きされない", async () => {
+  vi.mocked(getSettings).mockResolvedValue(complete);
+  const saves = holdLanguageSaves();
+  const setLanguage = vi.fn();
+  const page = () => (
+    <I18nProvider language="en" setLanguage={setLanguage}>
+      <SettingsPage user={user} onDeleted={onDeleted} />
+    </I18nProvider>
+  );
+  const first = render(page());
+  fireEvent.change(await screen.findByLabelText("Language"), {
+    target: { value: "ja" },
+  });
+  await vi.waitFor(() => expect(saves.sent()).toEqual(["ja"]));
+  first.unmount();
+
+  render(page());
+  fireEvent.change(await screen.findByLabelText("Language"), {
+    target: { value: "en" },
+  });
+  await act(async () => {});
+  expect(saves.sent()).toEqual(["ja"]);
+  await saves.answer(0);
+  await vi.waitFor(() => expect(saves.sent()).toEqual(["ja", "en"]));
+  await saves.answer(1);
+
+  await vi.waitFor(() => expect(setLanguage).toHaveBeenCalledWith("en"));
+  expect(setLanguage).not.toHaveBeenCalledWith("ja");
+});
+
+test("選び直した言語を保存できなければ、その前に保存できた言語にして理由を出す", async () => {
+  vi.mocked(getSettings).mockResolvedValue(complete);
+  const saves = holdLanguageSaves();
+  render(
+    <WithLanguage>
+      <SettingsPage user={user} onDeleted={onDeleted} />
+    </WithLanguage>,
+  );
+  const language = await screen.findByLabelText("Language");
+  fireEvent.change(language, { target: { value: "ja" } });
+  await vi.waitFor(() => expect(saves.sent()).toEqual(["ja"]));
+  fireEvent.change(language, { target: { value: "en" } });
+  await saves.answer(0);
+  await vi.waitFor(() => expect(saves.sent()).toEqual(["ja", "en"]));
+  await saves.fail(1);
+
+  // 保存されているのは日本語なので、画面も日本語にする
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "言語を変更できませんでした。",
+  );
+  expect(screen.getByLabelText("言語")).toHaveValue("ja");
 });
 
 test("画面の言語が日本語なら、項目と曜日と検査の文言を日本語で出す", async () => {
