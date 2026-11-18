@@ -5,6 +5,7 @@ from starlette.responses import Response
 from starlette.types import Scope
 
 from app.core.config import get_settings
+from app.core.log_setup import configure_logging
 from app.routers import auth, dashboard, ingest, internal, me, notes, reviews, workouts
 from app.routers import settings as settings_router
 
@@ -30,6 +31,7 @@ class WebFiles(StaticFiles):
 
 def create_app(static_dir: str | None = None) -> FastAPI:
     """アプリを組み立てる。static_dir はテストで差し替えるための引数。"""
+    configure_logging()
     settings = get_settings()
     app = FastAPI(title="loadline API")
     app.add_middleware(

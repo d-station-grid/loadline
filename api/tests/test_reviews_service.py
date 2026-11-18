@@ -970,8 +970,9 @@ async def test_notes_that_cannot_be_checked_fall_back_without_more(
 async def test_health_flag_log_does_not_keep_the_notes(
     session: AsyncSession, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """フラグが立ったことと確率はログに残し、メモの文は残さない。"""
-    caplog.set_level("INFO")
+    """フラグが立ったことと確率は debug でだけ残す。app.* は本番で info 以上が出るので、
+    体調に触れたことを利用者に結び付けて本番のログに残さない。メモの文はどちらにも残さない。"""
+    caplog.set_level("DEBUG", logger="app")
     user = await _user()
     await _rides_every_other_day(user, date(2026, 8, 1), SUNDAY)
     await NoteFactory.create_async(user_id=user.id, date=MONDAY, body="Knee hurts on stairs")
@@ -984,10 +985,10 @@ async def test_health_flag_log_does_not_keep_the_notes(
         today=TODAY,
     )
 
-    logs = [r.getMessage() for r in caplog.records if "pain or sickness" in r.message]
-    assert len(logs) == 1
-    assert "mentions_health=0.72" in logs[0]
-    assert "Knee" not in logs[0]
+    logs = [r for r in caplog.records if "pain or sickness" in r.getMessage()]
+    assert [r.levelname for r in logs] == ["DEBUG"]
+    assert "mentions_health=0.72" in logs[0].getMessage()
+    assert "Knee" not in caplog.text
 
 
 @pytest.mark.parametrize(
