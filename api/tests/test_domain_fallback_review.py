@@ -172,6 +172,17 @@ def test_steady_week_does_not_say_fitness_and_fatigue_are_balanced(language: Lan
     assert ("just above your fitness" in script) or ("少し上" in script)
 
 
+def test_longest_japanese_steady_week_fits_the_line_limit() -> None:
+    """日本語の順調の週でいちばん長くなるのは、回数 2 桁・1 週間の分すべて（10,080 分）で、
+    ふだんと同じ負荷の一言が付くとき。それでも上限に収まる。"""
+    longest = week(Situation.STEADY, workouts=99, total_sec=7 * 24 * 60 * 60)
+    script = fallback_review(longest, effort=effort(Volume.USUAL), language=Language.JA).script
+
+    assert "99回、合計10080分" in script
+    assert "負荷はふだんの週と同じくらいでした" in script
+    assert len("".join(script.split())) <= LINE_MAX_CHARS_JA
+
+
 def test_returning_week_says_how_many_days_off() -> None:
     script = fallback_review(week(Situation.RETURNING, rest_days_before=16)).script
 

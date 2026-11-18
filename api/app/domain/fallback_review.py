@@ -400,7 +400,7 @@ def _script_ja(
             minutes = (week.total_sec + 30) // 60
             return (
                 f"安定した週でした。{week.workouts}回、合計{minutes}分の練習で、"
-                "疲労は体力並みか少し上で、普通の範囲です。"
+                "疲労は体力並みか少し上で、普通です。"
                 + closing("このリズムを続けることが、体力を積み上げる近道です。")
             )
 
