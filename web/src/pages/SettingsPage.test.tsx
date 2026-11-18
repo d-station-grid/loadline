@@ -891,9 +891,13 @@ test("消せなかったら、消すボタンにフォーカスが戻る", async
   fireEvent.click(screen.getByRole("button", { name: "Delete my account" }));
 
   await screen.findByRole("alert");
-  expect(
-    screen.getByRole("button", { name: "Delete my account" }),
-  ).toHaveFocus();
+  // フォーカスを戻すのは、理由を出した描画のあとに走る effect。遅い環境では理由が出てから
+  // 少し遅れるので、戻るのを待つ
+  await vi.waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Delete my account" }),
+    ).toHaveFocus(),
+  );
 });
 
 test("ゲストは設定を見られるが、保存も発行も削除も押せない", async () => {
