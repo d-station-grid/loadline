@@ -461,6 +461,9 @@ export type SelectionIn = {
  * 負荷、強度ごとの時間、週次レビューの判定がすべてこの 4 つから出るので、そろわない設定は
  * 保存させない。境目は、web が最大心拍から初期値を入れる。読むとき（SettingsOut）は、
  * 必須にする前に作った利用者の空の値も返すので、SettingsFields のまま任意にしておく。
+ *
+ * 言語は省略できる。省略したら保存済みの言語のまま。言語は PUT /settings/language でも
+ * 変えられるので、ここで省略した人を英語に戻さないため。null は受け付けない。
  */
 export type SettingsIn = {
   /**

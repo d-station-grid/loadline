@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -39,18 +40,31 @@ class SettingsFields(BaseModel):
         return self
 
 
+def _drop_default(schema: dict[str, Any]) -> None:
+    schema.pop("default", None)
+
+
 class SettingsIn(SettingsFields):
     """PUT /settings の本文。心拍の 4 つは必須で、空（null）や省略は 422。
 
     負荷、強度ごとの時間、週次レビューの判定がすべてこの 4 つから出るので、そろわない設定は
     保存させない。境目は、web が最大心拍から初期値を入れる。読むとき（SettingsOut）は、
     必須にする前に作った利用者の空の値も返すので、SettingsFields のまま任意にしておく。
+
+    言語は省略できる。省略したら保存済みの言語のまま。言語は PUT /settings/language でも
+    変えられるので、ここで省略した人を英語に戻さないため。null は受け付けない。
     """
 
     max_heart_rate: int = Field(ge=100, le=250)
     resting_heart_rate: int = Field(ge=30, le=120)
     zone_boundary_1: int = Field(ge=60, le=250)  # Low と Mid の境目
     zone_boundary_2: int = Field(ge=60, le=250)  # Mid と High の境目
+    # 省略したかは update_settings が model_fields_set で見分ける。初期値は使わないので、
+    # 省略すると英語になると読めないよう、OpenAPI からは消す
+    language: Language = Field(
+        default=DEFAULT_LANGUAGE,
+        json_schema_extra=_drop_default,
+    )
 
 
 class LanguageIn(BaseModel):

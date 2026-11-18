@@ -18,8 +18,12 @@ async def read_settings(session: AsyncSession, user: User) -> SettingsOut:
 
 
 async def update_settings(session: AsyncSession, user: User, body: SettingsIn) -> SettingsOut:
-    """設定をまとめて書き換える。検証は SettingsIn が済ませている。"""
-    for name, value in body.model_dump().items():
+    """設定をまとめて書き換える。検証は SettingsIn が済ませている。
+
+    言語を省略していたら、保存済みの言語を残す。
+    """
+    exclude = set() if "language" in body.model_fields_set else {"language"}
+    for name, value in body.model_dump(exclude=exclude).items():
         setattr(user, name, value)
     await session.commit()
     return await read_settings(session, user)
