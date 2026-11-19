@@ -4,16 +4,16 @@
 
 ```mermaid
 flowchart TD
-  top["トップ"]
-  google(["Google のログイン（外部）"])
-  guide["導入の案内"]
-  dashboard["ダッシュボード<br>アバターと週次レビュー"]
-  note["メモ（モーダル）"]
-  workouts["ワークアウト一覧"]
-  workout["ワークアウト詳細"]
-  settings["設定"]
-  confirm["アカウント削除の確認"]
-  bye(["トップへ"])
+  top["#nbsp;#nbsp;#nbsp;トップ#nbsp;#nbsp;#nbsp;"]
+  google(["#nbsp;#nbsp;#nbsp;Google のログイン（外部）#nbsp;#nbsp;#nbsp;"])
+  guide["#nbsp;#nbsp;#nbsp;導入の案内#nbsp;#nbsp;#nbsp;"]
+  dashboard["#nbsp;#nbsp;#nbsp;ダッシュボード#nbsp;#nbsp;#nbsp;<br>#nbsp;#nbsp;#nbsp;アバターと週次レビュー#nbsp;#nbsp;#nbsp;"]
+  note["#nbsp;#nbsp;#nbsp;メモ（モーダル）#nbsp;#nbsp;#nbsp;"]
+  workouts["#nbsp;#nbsp;#nbsp;ワークアウト一覧#nbsp;#nbsp;#nbsp;"]
+  workout["#nbsp;#nbsp;#nbsp;ワークアウト詳細#nbsp;#nbsp;#nbsp;"]
+  settings["#nbsp;#nbsp;#nbsp;設定#nbsp;#nbsp;#nbsp;"]
+  confirm["#nbsp;#nbsp;#nbsp;アカウント削除の確認#nbsp;#nbsp;#nbsp;"]
+  bye(["#nbsp;#nbsp;#nbsp;トップへ#nbsp;#nbsp;#nbsp;"])
 
   top -->|"Google でログイン"| google
   top -->|"ゲストで試す"| dashboard
