@@ -3,44 +3,57 @@
 矢印の横の文字は、押すボタンや、画面が切り替わる条件です。
 
 ```mermaid
-flowchart LR
-  subgraph before["ログイン前"]
-    top["トップ"]
-    google(["Google のログイン（外部）"])
-  end
-
-  subgraph setup["設定"]
-    guide["導入の案内"]
-    settings["設定"]
-    confirm["アカウント削除の確認"]
-  end
-
-  subgraph view["閲覧"]
-    dashboard["ダッシュボード<br>アバターと週次レビュー"]
-    note["メモ（モーダル）"]
-    workouts["ワークアウト一覧"]
-    workout["ワークアウト詳細"]
-  end
+flowchart TD
+  top["トップ"]
+  google(["Google のログイン（外部）"])
+  guide["導入の案内"]
+  dashboard["ダッシュボード<br>アバターと週次レビュー"]
+  note["メモ（モーダル）"]
+  workouts["ワークアウト一覧"]
+  workout["ワークアウト詳細"]
+  settings["設定"]
+  confirm["アカウント削除の確認"]
+  bye(["トップへ"])
 
   top -->|"Google でログイン"| google
-  top -->|"ゲストで試す（デモデータ）"| dashboard
-  google -->|"記録がまだ届いていない"| guide
-  google -->|"記録が届いている"| dashboard
+  top -->|"ゲストで試す"| dashboard
+  google -->|"初回"| guide
+  google -->|"2 回目以降"| dashboard
+  guide -->|"あとで設定する"| dashboard
 
-  guide -->|"あとで設定する／ダッシュボードへ"| dashboard
-  settings -->|"設定の案内を開く"| guide
-  settings -->|"アカウントを削除…"| confirm
-  confirm -->|"キャンセル"| settings
-  confirm -->|"アカウントを削除する（ログアウトしてトップへ）"| top
-
-  dashboard -->|"+ メモ／チャートの日付"| note
+  dashboard -->|"+ メモ"| note
   note -->|"閉じる"| dashboard
-  dashboard -->|"すべてのワークアウト ›"| workouts
-  dashboard -->|"最近のワークアウトの行"| workout
-  dashboard -->|"設定を開く（心拍が未設定のとき）"| settings
-  workouts -->|"行を押す"| workout
-  workout -->|"‹ ワークアウト"| workouts
+  dashboard -->|"すべてのワークアウト"| workouts
+  dashboard -->|"最近の行"| workout
+  workouts -->|"行"| workout
+  workout -->|"戻る"| workouts
+
+  dashboard -->|"設定を開く"| settings
+  settings -->|"案内を開く"| guide
+  settings -->|"削除…"| confirm
+  confirm -->|"キャンセル"| settings
+  confirm -->|"削除する"| bye
+
+  classDef before fill:#eef2f4,stroke:#8a9aa3
+  classDef setup fill:#e8f0fb,stroke:#5b7fb5
+  classDef view fill:#e6f4f2,stroke:#2f8a80
+  class top,google,bye before
+  class guide,settings,confirm setup
+  class dashboard,note,workouts,workout view
 ```
+
+色は、灰がログイン前、青が設定、緑が閲覧の画面です。
+
+## 矢印の補足
+
+- **初回**: Google でログインしたとき、記録がまだ一度も届いていなければ、導入の案内を出します。届いていれば、ダッシュボードを出します
+- **ゲストで試す**: デモデータのダッシュボードに入ります
+- **あとで設定する**: 最初の記録が届いたあとは、「ダッシュボードへ」でも移れます
+- **+ メモ**: チャートの日付を押しても開きます
+- **最近の行**: ダッシュボードの「最近のワークアウト」の行です
+- **設定を開く**: 心拍がまだ入っていないとき、ダッシュボードに出ます。ふだんはヘッダーの「設定」から開きます
+- **案内を開く**: 設定の画面の「設定の案内を開く」です
+- **削除する**: アカウントとデータを消し、ログアウトしてトップに戻ります
 
 ## ヘッダー
 
