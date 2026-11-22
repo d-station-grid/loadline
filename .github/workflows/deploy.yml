@@ -98,6 +98,8 @@ jobs:
       # 週次レビューのセリフは Gemini（Vertex AI）で書き、Jev で確かめる。Vertex AI は実行用の
       # サービスアカウントの権限（roles/aiplatform.user）で呼ぶ。Jev のキーは Secret Manager から。
       # Jev のキーがないと、Gemini が書いても話さずに定型にする
+      # 費用を抑えるため、サービス全体で 1 台まで（--max）。前の版から引き継ぐリビジョンごとの上限が
+      # 残っていても、実際の上限は小さいほうになる
       - name: deploy api
         if: steps.main.outputs.current == 'true'
         run: |
@@ -108,6 +110,7 @@ jobs:
             --allow-unauthenticated \
             --set-env-vars "APP_ENV=production,FIREBASE_PROJECT_ID=${{ vars.GCP_PROJECT_ID }},INTERNAL_AUDIENCE=$API_URL,INTERNAL_CALLER_EMAIL=$INVOKER_SA,TASKS_QUEUE=$TASKS_QUEUE,GEMINI_PROJECT=${{ vars.GCP_PROJECT_ID }},TTS_URL=$TTS_URL,GOOGLE_TTS_MODEL=$GOOGLE_TTS_MODEL,AUDIO_BUCKET=$AUDIO_BUCKET" \
             --set-secrets DATABASE_URL=database-url:latest,TYPESAFE_API_KEY=typesafe-api-key:latest \
+            --max 1 \
             --quiet
 
       # 動いている版のイメージに live のタグを付ける（前の版からは外れる）。Cloud Run は取り込んだ
