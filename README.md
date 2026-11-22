@@ -339,7 +339,7 @@ MVP では、このサービスの核となる体験だけを作ります。週�
 - **セリフの確認**: Jev 1.13（TypeSafe AI。typesafe-sdk 0.7）
 - **音声合成**: 英語は Kokoro v1.0（オープンソース。kokoro-onnx 0.6）、日本語は Google Cloud Text-to-Speech（Gemini の TTS、gemini-2.5-pro-tts）
 - **記録の取り込み**: Health Auto Export（iPhone の送信アプリ）
-- **ライセンス**: AGPL-3.0
+- **ライセンス**: AGPL-3.0。ただし、アバターのモデル（`web/public/models/sample.vrm`）は pixiv が公開しているサンプルの VRM1_Constraint_Twist_Sample（[pixiv/three-vrm](https://github.com/pixiv/three-vrm)）で、AGPL ではなく [VRM Public License 1.0](https://vrm.dev/licenses/1.0/) に従う
 
 ---
 

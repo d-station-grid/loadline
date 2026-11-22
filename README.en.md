@@ -47,4 +47,6 @@ The detailed setup is in the Japanese README (section 13). The main commands run
 
 ## License
 
-AGPL-3.0
+AGPL-3.0, except for the avatar model.
+
+The avatar model (`web/public/models/sample.vrm`) is VRM1_Constraint_Twist_Sample, a sample model published by pixiv Inc. in [pixiv/three-vrm](https://github.com/pixiv/three-vrm). It is covered by the [VRM Public License 1.0](https://vrm.dev/licenses/1.0/), not by the AGPL.
