@@ -1,3 +1,5 @@
+[English](README.en.md)
+
 ## 1. サービス概要
 
 **loadline は、Apple Watch で記録したトレーニングを、アバターが週に1回、声で振り返ってくれる Web サービスです。**
