@@ -6,6 +6,7 @@ loadline is a web app that reviews your training week with an avatar. It imports
 
 - App (beta): https://api-qbvpsx77dq-an.a.run.app
 - Click "Try as a guest" on the sign-in screen to see a dashboard and a weekly review with demo data. No sign-up is needed.
+- Article: [How much should an LLM decide?](https://dev.to/iotarduino/how-much-should-an-llm-decide-building-an-avatar-that-reviews-your-training-week-with-fastapi-40fg) explains the design of the weekly review
 
 ## How the weekly review is made
 
