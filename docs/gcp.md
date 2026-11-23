@@ -125,14 +125,16 @@ gcloud iam service-accounts add-iam-policy-binding \
 |---|---|
 | CPU、メモリ | 1 vCPU、512MiB |
 | 1 台で同時に受ける数 | 80（既定） |
-| 台数の上限 | 5（手で入れた値） |
+| 台数の上限（`--max`） | サービス全体で 1 |
 | 1 回のリクエストの上限 | 300 秒（既定） |
 | 起動中の CPU の追加 | あり（手で入れた値） |
 | 呼べる人 | 誰でも |
 | 環境変数 | `APP_ENV`、`FIREBASE_PROJECT_ID`、`INTERNAL_AUDIENCE`（api の URL）、`INTERNAL_CALLER_EMAIL`（`loadline-invoker`）、`TASKS_QUEUE`、`GEMINI_PROJECT`、`TTS_URL`（tts の URL）、`GOOGLE_TTS_MODEL`（`gemini-2.5-pro-tts`）、`AUDIO_BUCKET`（`loadline-app-audio`） |
 | Secret Manager から | `DATABASE_URL`（`database-url`）、`TYPESAFE_API_KEY`（`typesafe-api-key`） |
 
-台数の上限 5 と起動中の CPU の追加は、`deploy.yml` には書いていません。手で入れた値で、`gcloud run deploy` が指定しなかった設定を前の版から引き継ぐので残っています。
+台数の上限は、費用を抑えるために 1 台にしています。リビジョンごとの上限（`--max-instances`）には前の値の 5 が残っていますが、実際の上限は小さいほうの 1 台です。1 台で同時に 80 件まで受け、その台が落ちると、起動し直すまで api は使えません。
+
+起動中の CPU の追加は、`deploy.yml` には書いていません。手で入れた値で、`gcloud run deploy` が指定しなかった設定を前の版から引き継ぐので残っています。
 
 マイグレーションは、同じイメージを Cloud Run の Job `api-migrate` として、デプロイの前に動かします。
 
