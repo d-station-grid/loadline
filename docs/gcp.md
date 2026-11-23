@@ -73,7 +73,8 @@ gcloud iam service-accounts create loadline-deploy --project loadline-app
 | `loadline-api` | `loadline-api` 自身 | `roles/iam.serviceAccountTokenCreator` | 署名付き URL を作る。Cloud Run には鍵のファイルがないので、IAM の signBlob で署名する |
 | `loadline-api` | `gs://loadline-app-audio` | `roles/storage.objectUser` | 音声を置く、一覧を取る、消す。再生は署名付き URL なので、利用者は権限なしで読める |
 | `loadline-deploy` | `loadline-api`、`loadline-tts` | `roles/iam.serviceAccountUser` | それぞれを実行用に指定してデプロイする（actAs） |
-| `loadline-deploy` | Artifact Registry の `loadline` | `roles/artifactregistry.writer` | イメージを push し、動いている版に `live` のタグを付ける |
+| `loadline-deploy` | Artifact Registry の `loadline` | `roles/artifactregistry.writer` | イメージを push する |
+| `loadline-deploy` | Artifact Registry の `loadline` | `projects/loadline-app/roles/artifactRegistryTagMover`（カスタムロール） | `live` のタグを、前の版から動いている版に移す。`writer` にはタグの削除の権限がない |
 | `loadline-deploy` | `gs://loadline-app-models` | `roles/storage.objectViewer` | tts のイメージを組み立てる前にモデルをコピーする |
 | GitHub の `d-station-grid/loadline`（Workload Identity のプール経由） | `loadline-deploy` | `roles/iam.workloadIdentityUser` | Actions が鍵なしで `loadline-deploy` になる |
 
@@ -82,6 +83,8 @@ gcloud iam service-accounts create loadline-deploy --project loadline-app
 Cloud Text-to-Speech（日本語の声）のためには、ロールを足していません。`loadline-api` が今のロールのままで呼べることを、2026-11-15 に本番で確かめました。
 
 音声の権限は、オブジェクトの権限の設定まで含む `objectAdmin` ではなく、読み書きと削除だけの `objectUser` にしています。
+
+`live` のタグを移す権限は、イメージの削除まで含む `repoAdmin` ではなく、`artifactregistry.tags.update` と `artifactregistry.tags.delete` だけのカスタムロールにしています。
 
 ```sh
 # tts と音声（ほかの権限も、同じ形のコマンドで付けている）
@@ -111,6 +114,19 @@ gcloud iam service-accounts add-iam-policy-binding \
   --project loadline-app \
   --member=serviceAccount:loadline-deploy@loadline-app.iam.gserviceaccount.com \
   --role=roles/iam.serviceAccountUser
+
+# live のタグを移す
+gcloud iam roles create artifactRegistryTagMover \
+  --project loadline-app \
+  --title "Artifact Registry tag mover" \
+  --description "Move the live tag between images on deploy" \
+  --permissions artifactregistry.tags.update,artifactregistry.tags.delete \
+  --stage GA
+
+gcloud artifacts repositories add-iam-policy-binding loadline \
+  --project loadline-app --location asia-northeast1 \
+  --member=serviceAccount:loadline-deploy@loadline-app.iam.gserviceaccount.com \
+  --role=projects/loadline-app/roles/artifactRegistryTagMover
 ```
 
 ## Cloud Run
