@@ -8,7 +8,7 @@ from app.core.db import get_session
 from app.routers.deps import IngestLimiter, enforce_rate_limit
 from app.schemas.ingest import IngestPayload, IngestResult
 from app.services.ingest import ingest
-from app.services.ingest_tokens import find_user_id_by_token
+from app.services.ingest_tokens import find_active_token, mark_token_used
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
@@ -26,10 +26,13 @@ async def get_ingest_user_id(
     )
     if credentials is None:
         raise unauthorized
-    user_id = await find_user_id_by_token(session, credentials.credentials)
-    if user_id is None:
+    row = await find_active_token(session, credentials.credentials)
+    if row is None:
         raise unauthorized
+    user_id = row.user_id
+    # 上限を超えたリクエストでは DB に書かない
     enforce_rate_limit(limiter, f"ingest:{user_id}")
+    await mark_token_used(session, row)
     return user_id
 
 

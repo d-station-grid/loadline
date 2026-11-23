@@ -1,15 +1,18 @@
+import asyncio
 from collections.abc import AsyncIterator, Iterator
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import JSONResponse
+from starlette.types import Receive, Scope, Send
 
 from app.core.auth import Identity, InvalidTokenError, get_token_verifier
-from app.core.body_limit import MAX_BODY_BYTES, MAX_INGEST_BODY_BYTES
+from app.core.body_limit import MAX_BODY_BYTES, MAX_INGEST_BODY_BYTES, BodySizeLimitMiddleware
 from app.core.rate_limit import RateLimiter
 from app.main import app
 from app.routers.deps import get_ingest_limiter, get_write_limiter
-from app.services.ingest_tokens import issue_token
+from app.services.ingest_tokens import current_token, issue_token
 from tests.factories import UserFactory
 
 ONE = {"Authorization": "Bearer one"}
@@ -121,6 +124,27 @@ async def test_ingest_over_the_limit_is_429(client: AsyncClient, session: AsyncS
     assert "Retry-After" in res.headers
 
 
+async def test_ingest_over_the_limit_does_not_update_last_used_at(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    limiter = RateLimiter(1)
+    app.dependency_overrides[get_ingest_limiter] = lambda: limiter
+    user = await UserFactory.create_async()
+    token, _ = await issue_token(session, user.id)
+    headers = {"Authorization": f"Bearer {token}"}
+    body: dict[str, dict[str, list[str]]] = {"data": {"workouts": []}}
+    await client.post("/ingest", json=body, headers=headers)
+    row = await current_token(session, user.id)
+    assert row is not None
+    used_at = row.last_used_at
+    assert used_at is not None
+
+    assert (await client.post("/ingest", json=body, headers=headers)).status_code == 429
+
+    await session.refresh(row)
+    assert row.last_used_at == used_at
+
+
 async def test_wrong_ingest_token_is_not_counted(client: AsyncClient) -> None:
     limiter = RateLimiter(1)
     app.dependency_overrides[get_ingest_limiter] = lambda: limiter
@@ -154,3 +178,66 @@ async def test_body_without_content_length_is_counted(client: AsyncClient) -> No
     res = await client.post("/notes", content=chunks(), headers=ONE)
 
     assert res.status_code == 413
+
+
+class HeldApp:
+    """本文を読んだあと、release されるまで応答しない。"""
+
+    def __init__(self) -> None:
+        self.entered = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        await receive()
+        self.entered.set()
+        await self.release.wait()
+        await JSONResponse({"ok": True})(scope, receive, send)
+
+
+async def test_total_body_over_the_limit_is_503_until_the_first_finishes() -> None:
+    held = HeldApp()
+    guarded = BodySizeLimitMiddleware(held, max_inflight_bytes=10)
+    async with AsyncClient(transport=ASGITransport(app=guarded), base_url="http://t") as c:
+        first = asyncio.create_task(c.post("/notes", content=b"x" * 6))
+        await held.entered.wait()
+
+        second = await c.post("/notes", content=b"x" * 6)
+        assert second.status_code == 503
+        assert second.headers["Retry-After"] == "5"
+
+        held.release.set()
+        assert (await first).status_code == 200
+        assert (await c.post("/notes", content=b"x" * 6)).status_code == 200
+
+
+async def test_total_counts_bodies_without_content_length() -> None:
+    held = HeldApp()
+    guarded = BodySizeLimitMiddleware(held, max_inflight_bytes=10)
+
+    async def chunks() -> AsyncIterator[bytes]:
+        for _ in range(3):
+            yield b"x" * 3
+
+    async with AsyncClient(transport=ASGITransport(app=guarded), base_url="http://t") as c:
+        first = asyncio.create_task(c.post("/notes", content=b"x" * 6))
+        await held.entered.wait()
+        assert (await c.post("/notes", content=chunks())).status_code == 503
+        held.release.set()
+        assert (await first).status_code == 200
+
+
+async def test_total_is_released_when_the_app_raises() -> None:
+    calls = 0
+
+    async def failing(scope: Scope, receive: Receive, send: Send) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError
+        await JSONResponse({"ok": True})(scope, receive, send)
+
+    guarded = BodySizeLimitMiddleware(failing, max_inflight_bytes=10)
+    async with AsyncClient(transport=ASGITransport(app=guarded), base_url="http://t") as c:
+        with pytest.raises(RuntimeError):
+            await c.post("/notes", content=b"x" * 6)
+        assert (await c.post("/notes", content=b"x" * 6)).status_code == 200

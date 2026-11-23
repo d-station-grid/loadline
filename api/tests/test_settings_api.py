@@ -9,10 +9,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import Identity, InvalidTokenError, get_token_verifier
 from app.main import app
 from app.models import User
-from app.services.ingest_tokens import find_user_id_by_token, issue_token
+from app.services.ingest_tokens import find_active_token, issue_token
 from tests.factories import UserFactory
 
 HEADERS = {"Authorization": "Bearer good"}
+
+
+async def _owner(session: AsyncSession, token: str) -> int | None:
+    row = await find_active_token(session, token)
+    return None if row is None else row.user_id
 
 
 class FakeVerifier:
@@ -232,8 +237,8 @@ async def test_reissue_does_not_revoke_another_users_token(
     assert (first.status_code, second.status_code) == (200, 200)
     settings = await client.get("/settings", headers=HEADERS)
     assert settings.json()["ingest_token_last_four"] == second.json()["last_four"]
-    assert await find_user_id_by_token(session, first.json()["token"]) is None
-    assert await find_user_id_by_token(session, other_token) == other.id
+    assert await _owner(session, first.json()["token"]) is None
+    assert await _owner(session, other_token) == other.id
 
 
 async def test_last_received_at_is_set_by_the_first_ingest(
