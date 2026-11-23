@@ -41,15 +41,16 @@ async def current_token(session: AsyncSession, user_id: int) -> IngestToken | No
     )
 
 
-async def find_user_id_by_token(session: AsyncSession, token: str) -> int | None:
-    """有効なトークンなら持ち主の user_id を返し、last_used_at を更新する。それ以外は None。"""
-    row = await session.scalar(
+async def find_active_token(session: AsyncSession, token: str) -> IngestToken | None:
+    """有効なトークンの行。なければ None。読むだけで、DB は更新しない。"""
+    return await session.scalar(
         select(IngestToken).where(
             IngestToken.token_digest == _digest(token), IngestToken.revoked_at.is_(None)
         )
     )
-    if row is None:
-        return None
+
+
+async def mark_token_used(session: AsyncSession, row: IngestToken) -> None:
+    """last_used_at を更新する。回数の上限を通ったリクエストだけが呼ぶ。"""
     row.last_used_at = datetime.now(UTC)
     await session.commit()
-    return row.user_id

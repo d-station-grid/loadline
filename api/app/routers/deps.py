@@ -14,6 +14,7 @@ from app.adapters.tts import kokoro_voice
 from app.core.auth import Identity, get_identity
 from app.core.config import get_settings
 from app.core.db import get_session
+from app.core.rate_limit import INGEST_LIMIT_PER_WINDOW, WRITE_LIMIT_PER_WINDOW, RateLimiter
 from app.models import User
 from app.services.accounts import AccountDeleter
 from app.services.audio import AudioStore, Voice, voices
@@ -60,15 +61,44 @@ async def get_current_user(
     return await resolve_user(session, identity, guest_language=guest_language)
 
 
+@lru_cache
+def get_write_limiter() -> RateLimiter:
+    """画面からの書き込みの回数の上限。プロセスで 1 つ。"""
+    return RateLimiter(WRITE_LIMIT_PER_WINDOW)
+
+
+@lru_cache
+def get_ingest_limiter() -> RateLimiter:
+    """記録の取り込みの回数の上限。画面の書き込みとは別に数える。"""
+    return RateLimiter(INGEST_LIMIT_PER_WINDOW)
+
+
+WriteLimiter = Annotated[RateLimiter, Depends(get_write_limiter)]
+IngestLimiter = Annotated[RateLimiter, Depends(get_ingest_limiter)]
+
+
+def enforce_rate_limit(limiter: RateLimiter, key: str) -> None:
+    """上限を超えたら 429 にし、次に試せるまでの秒数を Retry-After で伝える。"""
+    retry_after = limiter.hit(key)
+    if retry_after is not None:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "too many requests",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
 CurrentUser = Annotated[User, Depends(get_current_user)]
 DbSession = Annotated[AsyncSession, Depends(get_session)]
 CurrentIdentity = Annotated[Identity, Depends(get_identity)]
 
 
-def get_writable_user(user: CurrentUser) -> User:
-    """書き込める本人。ゲスト（デモの利用者）は見るだけなので 403 にし、デモデータを守る。"""
+def get_writable_user(user: CurrentUser, limiter: WriteLimiter) -> User:
+    """書き込める本人。ゲスト（デモの利用者）は見るだけなので 403 にし、デモデータを守る。
+    書き込みの回数の上限もここで数える。"""
     if user.is_demo:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "guests can only view")
+    enforce_rate_limit(limiter, f"user:{user.id}")
     return user
 
 

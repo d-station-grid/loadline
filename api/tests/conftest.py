@@ -9,14 +9,17 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engin
 
 from app.core.config import get_settings
 from app.core.db import get_session
+from app.core.rate_limit import INGEST_LIMIT_PER_WINDOW, WRITE_LIMIT_PER_WINDOW, RateLimiter
 from app.main import app
 from app.models import Base
 from app.routers.deps import (
     get_audio_store,
+    get_ingest_limiter,
     get_line_checker,
     get_review_queue,
     get_review_writer,
     get_voice,
+    get_write_limiter,
 )
 from tests.factories import BaseFactory
 
@@ -82,6 +85,11 @@ async def client(session: AsyncSession) -> AsyncIterator[AsyncClient]:
     # tts と Cloud Storage も使わない。声にするテストは個別に差し替える
     app.dependency_overrides[get_voice] = lambda: None
     app.dependency_overrides[get_audio_store] = lambda: None
+    # 回数の上限はテストごとに数え直す。巻き戻しで同じ id が別のテストに出るため
+    write_limiter = RateLimiter(WRITE_LIMIT_PER_WINDOW)
+    ingest_limiter = RateLimiter(INGEST_LIMIT_PER_WINDOW)
+    app.dependency_overrides[get_write_limiter] = lambda: write_limiter
+    app.dependency_overrides[get_ingest_limiter] = lambda: ingest_limiter
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c

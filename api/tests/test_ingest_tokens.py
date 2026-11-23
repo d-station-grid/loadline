@@ -6,8 +6,18 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import IngestToken
-from app.services.ingest_tokens import current_token, find_user_id_by_token, issue_token
+from app.services.ingest_tokens import (
+    current_token,
+    find_active_token,
+    issue_token,
+    mark_token_used,
+)
 from tests.factories import IngestTokenFactory, UserFactory
+
+
+async def _owner(session: AsyncSession, token: str) -> int | None:
+    row = await find_active_token(session, token)
+    return None if row is None else row.user_id
 
 
 async def test_issue_stores_only_digest(session: AsyncSession) -> None:
@@ -28,19 +38,25 @@ async def test_reissue_revokes_the_old_token(session: AsyncSession) -> None:
 
     assert old_row.revoked_at is not None
     assert new_row.revoked_at is None
-    assert await find_user_id_by_token(session, old_token) is None
-    assert await find_user_id_by_token(session, new_token) == user.id
+    assert await find_active_token(session, old_token) is None
+    assert (await _owner(session, new_token)) == user.id
     current = await current_token(session, user.id)
     assert current is not None
     assert current.id == new_row.id
 
 
-async def test_find_user_updates_last_used_at(session: AsyncSession) -> None:
+async def test_find_does_not_update_last_used_at_until_marked(session: AsyncSession) -> None:
     user = await UserFactory.create_async()
     token, row = await issue_token(session, user.id)
     assert row.last_used_at is None
 
-    assert await find_user_id_by_token(session, token) == user.id
+    found = await find_active_token(session, token)
+
+    assert found is not None
+    assert found.user_id == user.id
+    assert row.last_used_at is None
+
+    await mark_token_used(session, found)
 
     assert row.last_used_at is not None
 
@@ -49,7 +65,7 @@ async def test_unknown_token_is_none(session: AsyncSession) -> None:
     user = await UserFactory.create_async()
     await issue_token(session, user.id)
 
-    assert await find_user_id_by_token(session, "not-a-token") is None
+    assert await find_active_token(session, "not-a-token") is None
     assert await session.scalar(select(func.count()).select_from(IngestToken)) == 1
 
 
