@@ -73,7 +73,8 @@ gcloud iam service-accounts create loadline-deploy --project loadline-app
 | `loadline-api` | `loadline-api` 自身 | `roles/iam.serviceAccountTokenCreator` | 署名付き URL を作る。Cloud Run には鍵のファイルがないので、IAM の signBlob で署名する |
 | `loadline-api` | `gs://loadline-app-audio` | `roles/storage.objectUser` | 音声を置く、一覧を取る、消す。再生は署名付き URL なので、利用者は権限なしで読める |
 | `loadline-deploy` | `loadline-api`、`loadline-tts` | `roles/iam.serviceAccountUser` | それぞれを実行用に指定してデプロイする（actAs） |
-| `loadline-deploy` | Artifact Registry の `loadline` | `roles/artifactregistry.writer` | イメージを push し、動いている版に `live` のタグを付ける |
+| `loadline-deploy` | Artifact Registry の `loadline` | `roles/artifactregistry.writer` | イメージを push する |
+| `loadline-deploy` | Artifact Registry の `loadline` | `projects/loadline-app/roles/artifactRegistryTagMover`（カスタムロール） | `live` のタグを、前の版から動いている版に移す。`writer` にはタグの削除の権限がない |
 | `loadline-deploy` | `gs://loadline-app-models` | `roles/storage.objectViewer` | tts のイメージを組み立てる前にモデルをコピーする |
 | GitHub の `d-station-grid/loadline`（Workload Identity のプール経由） | `loadline-deploy` | `roles/iam.workloadIdentityUser` | Actions が鍵なしで `loadline-deploy` になる |
 
@@ -82,6 +83,8 @@ gcloud iam service-accounts create loadline-deploy --project loadline-app
 Cloud Text-to-Speech（日本語の声）のためには、ロールを足していません。`loadline-api` が今のロールのままで呼べることを、2026-11-15 に本番で確かめました。
 
 音声の権限は、オブジェクトの権限の設定まで含む `objectAdmin` ではなく、読み書きと削除だけの `objectUser` にしています。
+
+`live` のタグを移す権限は、イメージの削除まで含む `repoAdmin` ではなく、`artifactregistry.tags.update` と `artifactregistry.tags.delete` だけのカスタムロールにしています。
 
 ```sh
 # tts と音声（ほかの権限も、同じ形のコマンドで付けている）
@@ -111,6 +114,19 @@ gcloud iam service-accounts add-iam-policy-binding \
   --project loadline-app \
   --member=serviceAccount:loadline-deploy@loadline-app.iam.gserviceaccount.com \
   --role=roles/iam.serviceAccountUser
+
+# live のタグを移す
+gcloud iam roles create artifactRegistryTagMover \
+  --project loadline-app \
+  --title "Artifact Registry tag mover" \
+  --description "Move the live tag between images on deploy" \
+  --permissions artifactregistry.tags.update,artifactregistry.tags.delete \
+  --stage GA
+
+gcloud artifacts repositories add-iam-policy-binding loadline \
+  --project loadline-app --location asia-northeast1 \
+  --member=serviceAccount:loadline-deploy@loadline-app.iam.gserviceaccount.com \
+  --role=projects/loadline-app/roles/artifactRegistryTagMover
 ```
 
 ## Cloud Run
@@ -299,27 +315,7 @@ gcloud storage cp tts/kokoro-v1.0.onnx tts/voices-v1.0.bin \
 
 ## 請求と予算
 
-請求先は CardiLife と共通です。
-
-「利用額上限」は、上限に達すると、そのプロジェクトのそのサービスの新しい利用を止めます。処理中のリクエストは最後まで処理され、リソースやデータは消えません。止まるまでには少し遅れがあるので、上限を少し超えることがあります。
-
-止まったサービスは、翌月の予算期間の初め（1 日）に自動で戻ります（既定。loadline の 2 つも既定のまま）。同じ月のうちに戻すには、上限を手で解除します。解除してから戻るまで、最大 1 時間ほどかかります。
-
-| 予算 | 対象 | 月額 | 種類 |
-|---|---|---|---|
-| loadline 月次 | `loadline-app` 全体 | 1,000 円 | 通知だけ（50%、90%、100%） |
-| loadline 上限 Cloud Run | `loadline-app` の Cloud Run | 2,000 円 | 利用額上限（自動で止まる） |
-| loadline 上限 Vertex AI | `loadline-app` の Vertex AI | 1,000 円 | 利用額上限（自動で止まる） |
-
-Cloud Storage、Artifact Registry、Cloud Text-to-Speech、Neon は、利用額上限では止まりません。
-
-Cloud Text-to-Speech（日本語の声）は、代わりに割り当てを下げています（2026-11-15）。超えた分はお金がかからず、呼び出しが失敗して、その週次レビューは音声なし（文字だけ）になります。
-
-| 割り当て | 既定 | 今の値 | なぜ |
-|---|---|---|---|
-| All requests per minute（`RequestsPerMinutePerProject`） | 1,000 | 30 | 週次レビューは 1 人に週 1 本なので、ふつうは届かない。バグで呼び続けても、被害を 1 分 30 回までにする |
-
-1 日あたりの割り当てや、Gemini の TTS だけの割り当てはありません。同じ 1 分に作る日本語の週次レビューが 30 本を超えるようになったら、この値を上げます。
+予算のアラートと利用額の上限を設定しています。具体的な金額と割り当ての値は、この文書には書きません。
 
 ## 有効な API
 
@@ -363,7 +359,7 @@ gcloud storage buckets describe gs://loadline-app-audio --project loadline-app -
 gcloud iam workload-identity-pools providers describe github-oidc \
   --project loadline-app --location global --workload-identity-pool github
 
-# Cloud Text-to-Speech の割り当て（既定から変えたものだけ出る）
+# 割り当て（既定から変えたものだけ出る）
 gcloud beta quotas preferences list --project loadline-app
 
 # 予算
