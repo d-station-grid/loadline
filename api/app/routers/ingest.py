@@ -5,6 +5,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
+from app.routers.deps import IngestLimiter, enforce_rate_limit
 from app.schemas.ingest import IngestPayload, IngestResult
 from app.services.ingest import ingest
 from app.services.ingest_tokens import find_user_id_by_token
@@ -17,6 +18,7 @@ _bearer = HTTPBearer(auto_error=False)
 async def get_ingest_user_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    limiter: IngestLimiter,
 ) -> int:
     """Authorization: Bearer <取り込み用トークン> から持ち主を決める。ログインとは別の鍵。"""
     unauthorized = HTTPException(
@@ -27,6 +29,7 @@ async def get_ingest_user_id(
     user_id = await find_user_id_by_token(session, credentials.credentials)
     if user_id is None:
         raise unauthorized
+    enforce_rate_limit(limiter, f"ingest:{user_id}")
     return user_id
 
 

@@ -1,6 +1,13 @@
 from fastapi import APIRouter, status
 
-from app.routers.deps import CurrentIdentity, DbSession, GuestLanguage, resolve_user
+from app.routers.deps import (
+    CurrentIdentity,
+    DbSession,
+    GuestLanguage,
+    WriteLimiter,
+    enforce_rate_limit,
+    resolve_user,
+)
 from app.schemas.user import LoginIn, UserOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -18,6 +25,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 async def login(
     identity: CurrentIdentity,
     session: DbSession,
+    limiter: WriteLimiter,
     body: LoginIn | None = None,
     guest_language: GuestLanguage = None,
 ) -> UserOut:
@@ -28,6 +36,7 @@ async def login(
     401（行を作り直さない）。ゲスト（Firebase の匿名ログイン）は行を作らず、X-Guest-Language の
     言語のデモの利用者を返す（ほかの窓口と同じ。本文の language はゲストには使わない）。
     """
+    enforce_rate_limit(limiter, f"login:{identity.uid}")
     user = await resolve_user(
         session,
         identity,

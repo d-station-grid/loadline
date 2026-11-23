@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 from starlette.types import Scope
 
+from app.core.body_limit import BodySizeLimitMiddleware
 from app.core.config import get_settings
 from app.core.log_setup import configure_logging
 from app.routers import auth, dashboard, ingest, internal, me, notes, reviews, workouts
@@ -34,6 +35,8 @@ def create_app(static_dir: str | None = None) -> FastAPI:
     configure_logging()
     settings = get_settings()
     app = FastAPI(title="loadline API")
+    # 後に足したものが外側になる。413 にも CORS のヘッダーが付くよう、CORS を外側に置く
+    app.add_middleware(BodySizeLimitMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
