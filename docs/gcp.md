@@ -299,27 +299,7 @@ gcloud storage cp tts/kokoro-v1.0.onnx tts/voices-v1.0.bin \
 
 ## 請求と予算
 
-請求先は CardiLife と共通です。
-
-「利用額上限」は、上限に達すると、そのプロジェクトのそのサービスの新しい利用を止めます。処理中のリクエストは最後まで処理され、リソースやデータは消えません。止まるまでには少し遅れがあるので、上限を少し超えることがあります。
-
-止まったサービスは、翌月の予算期間の初め（1 日）に自動で戻ります（既定。loadline の 2 つも既定のまま）。同じ月のうちに戻すには、上限を手で解除します。解除してから戻るまで、最大 1 時間ほどかかります。
-
-| 予算 | 対象 | 月額 | 種類 |
-|---|---|---|---|
-| loadline 月次 | `loadline-app` 全体 | 1,000 円 | 通知だけ（50%、90%、100%） |
-| loadline 上限 Cloud Run | `loadline-app` の Cloud Run | 2,000 円 | 利用額上限（自動で止まる） |
-| loadline 上限 Vertex AI | `loadline-app` の Vertex AI | 1,000 円 | 利用額上限（自動で止まる） |
-
-Cloud Storage、Artifact Registry、Cloud Text-to-Speech、Neon は、利用額上限では止まりません。
-
-Cloud Text-to-Speech（日本語の声）は、代わりに割り当てを下げています（2026-11-15）。超えた分はお金がかからず、呼び出しが失敗して、その週次レビューは音声なし（文字だけ）になります。
-
-| 割り当て | 既定 | 今の値 | なぜ |
-|---|---|---|---|
-| All requests per minute（`RequestsPerMinutePerProject`） | 1,000 | 30 | 週次レビューは 1 人に週 1 本なので、ふつうは届かない。バグで呼び続けても、被害を 1 分 30 回までにする |
-
-1 日あたりの割り当てや、Gemini の TTS だけの割り当てはありません。同じ 1 分に作る日本語の週次レビューが 30 本を超えるようになったら、この値を上げます。
+予算のアラートと利用額の上限を設定しています。具体的な金額と割り当ての値は、この文書には書きません。
 
 ## 有効な API
 
@@ -363,7 +343,7 @@ gcloud storage buckets describe gs://loadline-app-audio --project loadline-app -
 gcloud iam workload-identity-pools providers describe github-oidc \
   --project loadline-app --location global --workload-identity-pool github
 
-# Cloud Text-to-Speech の割り当て（既定から変えたものだけ出る）
+# 割り当て（既定から変えたものだけ出る）
 gcloud beta quotas preferences list --project loadline-app
 
 # 予算
