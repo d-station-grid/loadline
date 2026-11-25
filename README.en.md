@@ -5,6 +5,7 @@
 loadline is a web app that reviews your training week with an avatar. It imports the workouts you record on an Apple Watch and shows fitness, fatigue and VO2max on one dashboard. Once a week, a 3D avatar speaks a short review of the week and offers two or three options for the next week.
 
 - App (beta): https://api-qbvpsx77dq-an.a.run.app
+- Supported devices: Records are imported from an Apple Watch and an iPhone. Android is not supported. The records are sent by Health Auto Export, a paid iPhone app. The dashboard and the weekly review open in a browser on a PC or a smartphone. To try it as a guest, you only need a browser.
 - Click "Try as a guest" on the sign-in screen to see a dashboard and a weekly review with demo data. No sign-up is needed.
 - Article: [How much should an LLM decide?](https://dev.to/iotarduino/how-much-should-an-llm-decide-building-an-avatar-that-reviews-your-training-week-with-fastapi-40fg) explains the design of the weekly review
 
